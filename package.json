@@ -1,0 +1,21 @@
+{
+  "name": "jspsych-local-demo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5"
+  },
+  "dependencies": {
+    "@jspsych/plugin-html-button-response": "^2.1.0",
+    "@jspsych/plugin-html-keyboard-response": "^2.1.0",
+    "@jspsych/plugin-image-button-response": "^2.1.0",
+    "@jspsych/plugin-virtual-chinrest": "^3.1.0",
+    "jspsych": "^8.2.1"
+  }
+}
