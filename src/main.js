@@ -12,6 +12,7 @@ const timeline = [];
 const screenWidth = window.innerWidth;
 const screenHeight = window.innerHeight;
 const DURATION = 200;
+const ColorAnimationTime = 500;
 
 const sight_array=[
 [NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN],
@@ -475,14 +476,7 @@ function initGridStimulus(sight_array, angleArray,screenWidth,screenHeight, chin
   const cellSize = 10;
   
   // 根据中心百分比计算半径
-  let radius;
-  if (centerPercentage === 25) {
-    radius = 2.5; // 25% coverage
-  } else if (centerPercentage === 40) {
-    radius = 4.0; // 40% coverage
-  } else {
-    radius = 4.5; // 默认值
-  }
+  let radius = Math.sqrt(centerPercentage / 100 * (gridSize * gridSize) / Math.PI);
   
   const noiseLevel = 0.45; // percentage of edge cells to flip
 
@@ -621,6 +615,9 @@ function initBarChartStimulus(sight_array, angleArray,screenWidth,screenHeight, 
     .attr("fill", data[1].color);
 }
 
+const correctAudio = new Audio('/src/audio/correct.mp3');
+const wrongAudio = new Audio('/src/audio/wrong.mp3');
+
 timeline.push({
   type: jsPsychHtmlButtonResponse,
   stimulus: "Press continue to start the experiment.",
@@ -676,6 +673,7 @@ const gridCenterPercentages = [25, 40]; // 中心网格百分比：25%或40%
 // Motion trials - 四个位置，每个位置四个信号方向
 for (const position of positions) {
   for (const signalDirection of signalDirections) {
+	// console.log(signalDirection[1] > 0 ? 'Down' : 'Up');
     timeline.push({
       type: htmlKeyboardResponse,
       stimulus: function() {
@@ -693,7 +691,39 @@ for (const position of positions) {
     timeline.push({
       type: jsPsychHtmlButtonResponse,
       stimulus: `<p>What direction are the dots moving?</p>`,
-      choices: ['Up⬆️', 'Down⬇️']
+      choices: ['Up⬆️', 'Down⬇️'],
+      data: {
+        correct_direction: signalDirection[1] > 0 ? 'Down' : 'Up'
+      },
+      button_html: (choice, i) => `<button class="jspsych-btn" id="feedback-btn-${i}">${choice}</button>`,
+      on_load: function() {
+        document.querySelectorAll('.jspsych-btn').forEach((btn, i) => {
+          btn.addEventListener('click', function(e) {
+            if (window._feedbackClicked) return;
+            window._feedbackClicked = true;
+            const userChoice = i === 0 ? 'Up' : 'Down';
+            const correct = userChoice === jsPsych.getCurrentTrial().data.correct_direction;
+            btn.style.backgroundColor = correct ? 'green' : 'red';
+            btn.style.color = 'white';
+            document.querySelectorAll('.jspsych-btn').forEach(b => b.disabled = true);
+
+            // 播放音频反馈
+            if (correct) {
+              correctAudio.currentTime = 0;
+              correctAudio.play();
+            } else {
+              wrongAudio.currentTime = 0;
+              wrongAudio.play();
+            }
+
+            setTimeout(() => {
+              window._feedbackClicked = false;
+              jsPsych.finishTrial({correct: correct, userChoice: userChoice});
+            }, ColorAnimationTime);
+          });
+        });
+      },
+      response_ends_trial: false
     });
   }
 }
@@ -701,29 +731,59 @@ for (const position of positions) {
 // Drifting grating trials - 四个位置，每个位置六个条件组合
 for (const position of positions) {
   for (const direction of gratingDirections) {
-    // for (const spacing of gratingSpacings) {
-      timeline.push({
-        type: htmlKeyboardResponse,
-        stimulus: function() {
-          const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-          return createDriftingGratingStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position).stimulus;
-        },
-        choices: "NO_KEYS",
-        trial_duration: DURATION,
-        on_load: function() {
-          const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-          initDriftingGratingAnimation(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, direction, 5);
-        }
-      });
+    timeline.push({
+      type: htmlKeyboardResponse,
+      stimulus: function() {
+        const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
+        return createDriftingGratingStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position).stimulus;
+      },
+      choices: "NO_KEYS",
+      trial_duration: DURATION,
+      on_load: function() {
+        const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
+        initDriftingGratingAnimation(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, direction, 5);
+      }
+    });
 
-      timeline.push({
-        type: jsPsychHtmlButtonResponse,
-        stimulus: `<p>What direction are the stripes moving?</p>`,
-        choices: ['Left', 'Right']
-      });
-    }
+    timeline.push({
+      type: jsPsychHtmlButtonResponse,
+      stimulus: `<p>What direction are the stripes moving?</p>`,
+      choices: ['Left', 'Right'],
+      data: {
+        correct_direction: direction === 'left' ? 'Left' : 'Right'
+      },
+      button_html: (choice, i) => `<button class="jspsych-btn" id="feedback-btn-${i}">${choice}</button>`,
+      on_load: function() {
+        document.querySelectorAll('.jspsych-btn').forEach((btn, i) => {
+          btn.addEventListener('click', function(e) {
+            if (window._feedbackClicked) return;
+            window._feedbackClicked = true;
+            const userChoice = i === 0 ? 'Left' : 'Right';
+            const correct = userChoice === jsPsych.getCurrentTrial().data.correct_direction;
+            btn.style.backgroundColor = correct ? 'green' : 'red';
+            btn.style.color = 'white';
+            document.querySelectorAll('.jspsych-btn').forEach(b => b.disabled = true);
+
+            // 播放音频反馈
+            if (correct) {
+              correctAudio.currentTime = 0;
+              correctAudio.play();
+            } else {
+              wrongAudio.currentTime = 0;
+              wrongAudio.play();
+            }
+
+            setTimeout(() => {
+              window._feedbackClicked = false;
+              jsPsych.finishTrial({correct: correct, userChoice: userChoice});
+            }, ColorAnimationTime);
+          });
+        });
+      },
+      response_ends_trial: false
+    });
   }
-
+}
 
 // Grid trials - 四个位置，每个位置四种条件组合
 for (const position of positions) {
@@ -746,7 +806,39 @@ for (const position of positions) {
       timeline.push({
         type: jsPsychHtmlButtonResponse,
         stimulus: `<p>Are there more black cells or white cells?</p>`,
-        choices: ['Black', 'White']
+        choices: ['Black', 'White'],
+        data: {
+          correct_direction: (centerColor === 'black' && centerPercentage > 50) || (centerColor === 'white' && centerPercentage < 50) ? 'Black' : 'White'
+        },
+        button_html: (choice, i) => `<button class="jspsych-btn" id="feedback-btn-${i}">${choice}</button>`,
+        on_load: function() {
+          document.querySelectorAll('.jspsych-btn').forEach((btn, i) => {
+            btn.addEventListener('click', function(e) {
+              if (window._feedbackClicked) return;
+              window._feedbackClicked = true;
+              const userChoice = i === 0 ? 'Black' : 'White';
+              const correct = userChoice === jsPsych.getCurrentTrial().data.correct_direction;
+              btn.style.backgroundColor = correct ? 'green' : 'red';
+              btn.style.color = 'white';
+              document.querySelectorAll('.jspsych-btn').forEach(b => b.disabled = true);
+
+              // 播放音频反馈
+              if (correct) {
+                correctAudio.currentTime = 0;
+                correctAudio.play();
+              } else {
+                wrongAudio.currentTime = 0;
+                wrongAudio.play();
+              }
+
+              setTimeout(() => {
+                window._feedbackClicked = false;
+                jsPsych.finishTrial({correct: correct, userChoice: userChoice});
+              }, ColorAnimationTime);
+            });
+          });
+        },
+        response_ends_trial: false
       });
     }
   }
@@ -771,8 +863,40 @@ for (const position of barPositions) {
 
     timeline.push({
       type: jsPsychHtmlButtonResponse,
-      stimulus: `<p>Which bar is higher?</p>`,
-      choices: ['Left', 'Right']
+      stimulus: `<p>The height of the bars are</p>`,
+      choices: ['Same', 'Different'],
+      data: {
+        correct_direction: heights[0] === heights[1] ? 'Same' : 'Different'
+      },
+      button_html: (choice, i) => `<button class="jspsych-btn" id="feedback-btn-${i}">${choice}</button>`,
+      on_load: function() {
+        document.querySelectorAll('.jspsych-btn').forEach((btn, i) => {
+          btn.addEventListener('click', function(e) {
+            if (window._feedbackClicked) return;
+            window._feedbackClicked = true;
+            const userChoice = i === 0 ? 'Same' : 'Different';
+            const correct = userChoice === jsPsych.getCurrentTrial().data.correct_direction;
+            btn.style.backgroundColor = correct ? 'green' : 'red';
+            btn.style.color = 'white';
+            document.querySelectorAll('.jspsych-btn').forEach(b => b.disabled = true);
+
+            // 播放音频反馈
+            if (correct) {
+              correctAudio.currentTime = 0;
+              correctAudio.play();
+            } else {
+              wrongAudio.currentTime = 0;
+              wrongAudio.play();
+            }
+
+            setTimeout(() => {
+              window._feedbackClicked = false;
+              jsPsych.finishTrial({correct: correct, userChoice: userChoice});
+            }, ColorAnimationTime);
+          });
+        });
+      },
+      response_ends_trial: false
     });
   }
 }
