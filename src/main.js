@@ -182,8 +182,38 @@ function createBarChartStimulus(sight_array, angleArray,screenWidth,screenHeight
   };
 }
 
+// 十字准线全局参数
+const crosshairLength = 30; // 十字长度
+const crosshairStroke = 2;  // 线宽
+
+// 通用十字准线绘制函数
+function drawCrosshair(svg, width, height, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
+  // 移除旧的十字
+  svg.selectAll('.crosshair').remove();
+  const centerX = width / 2;
+  const centerY = height / 2;
+  // 水平线
+  svg.append('line')
+    .attr('class', 'crosshair')
+    .attr('x1', centerX - crosshairLen / 2)
+    .attr('y1', centerY)
+    .attr('x2', centerX + crosshairLen / 2)
+    .attr('y2', centerY)
+    .attr('stroke', 'black')
+    .attr('stroke-width', crosshairStrokeWidth);
+  // 垂直线
+  svg.append('line')
+    .attr('class', 'crosshair')
+    .attr('x1', centerX)
+    .attr('y1', centerY - crosshairLen / 2)
+    .attr('x2', centerX)
+    .attr('y2', centerY + crosshairLen / 2)
+    .attr('stroke', 'black')
+    .attr('stroke-width', crosshairStrokeWidth);
+}
+
 // Function to initialize motion animation
-function initMotionAnimation(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, signalDirection = [-1, 1], position = 'left_upper') {
+function initMotionAnimation(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, signalDirection = [-1, 1], position = 'left_upper', crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
   const svg = d3.select("#stimulus");
   
   // 获取实际的SVG尺寸
@@ -193,22 +223,6 @@ function initMotionAnimation(sight_array, angleArray,screenWidth,screenHeight, c
   // 设置SVG的viewBox以确保正确的缩放
   svg.attr("width", width).attr("height", height).attr("viewBox", `0 0 ${width} ${height}`);
   
-  // 计算丢失视野的中心位置
-//   const viewPositions = calculateViewPositions(sight_array, angleArray, chinrestData);
-//   let animationCenterX, animationCenterY;
-  
-//   if (viewPositions.lostView.center) {
-//     // 使用丢失视野的中心位置
-// 	console.log(
-// 		'[Motion] lostView.center:',
-// 		viewPositions.lostView.center);
-//     animationCenterX = viewPositions.lostView.center[0];
-//     animationCenterY = viewPositions.lostView.center[1];
-//   } else {
-//     // 如果没有丢失视野，使用屏幕中心作为后备
-//     animationCenterX = width / 2;
-//     animationCenterY = height / 2;
-//   }
 	// 根据位置参数设置动画中心位置
 	let animationCenterX, animationCenterY;
 	const offset = 100;
@@ -248,6 +262,7 @@ function initMotionAnimation(sight_array, angleArray,screenWidth,screenHeight, c
   function drawCircle() {
     // Clear previous circles
     svg.selectAll("circle").remove();
+    svg.selectAll(".crosshair").remove();
     
     // Draw light ring at the lost view center
     svg.append("circle")
@@ -257,6 +272,9 @@ function initMotionAnimation(sight_array, angleArray,screenWidth,screenHeight, c
       .attr("fill", "none")
       .attr("stroke", "black")
       .attr("stroke-width", "0");
+
+    // 绘制屏幕中央的十字准线
+    drawCrosshair(svg, width, height, crosshairLen, crosshairStrokeWidth);
   }
 
   function initializeDots() {
@@ -345,7 +363,7 @@ function initMotionAnimation(sight_array, angleArray,screenWidth,screenHeight, c
 }
 
 // Function to initialize drifting grating animation
-function initDriftingGratingAnimation(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', direction = 'left', spacing = 5) {
+function initDriftingGratingAnimation(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', direction = 'left', spacing = 5, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
   const svg = d3.select("#stimulus");
   
   // 获取实际的SVG尺寸
@@ -433,10 +451,12 @@ function initDriftingGratingAnimation(sight_array, angleArray,screenWidth,screen
   }
 
   createDriftingGrating("stimulus", direction, 10, spacing);   // 10Hz with specified direction and spacing
+  // 绘制十字准线
+  drawCrosshair(svg, width, height, crosshairLen, crosshairStrokeWidth);
 }
 
 // Function to initialize grid stimulus
-function initGridStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', centerColor = 'black', centerPercentage = 25) {
+function initGridStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', centerColor = 'black', centerPercentage = 25, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
   const svg = d3.select("#stimulus");
   
   // 获取实际的SVG尺寸
@@ -542,10 +562,12 @@ function initGridStimulus(sight_array, angleArray,screenWidth,screenHeight, chin
 
   // Draw stimulus with current parameters
   drawStimulus("#stimulus");
+  // 绘制十字准线
+  drawCrosshair(svg, width, height, crosshairLen, crosshairStrokeWidth);
 }
 
 // Function to initialize bar chart stimulus
-function initBarChartStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', heights = [1, 1]) {
+function initBarChartStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', heights = [1, 1], crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
   const svg = d3.select("#stimulus");
   
   // 获取实际的SVG尺寸
@@ -613,6 +635,8 @@ function initBarChartStimulus(sight_array, angleArray,screenWidth,screenHeight, 
     .attr("width", barWidth)
     .attr("height", (data[1].value / 100) * barHeight)
     .attr("fill", data[1].color);
+  // 绘制十字准线
+  drawCrosshair(svg, width, height, crosshairLen, crosshairStrokeWidth);
 }
 
 const correctAudio = new Audio('/src/audio/correct.mp3');
@@ -684,7 +708,7 @@ for (const position of positions) {
       trial_duration: DURATION,
       on_load: function() {
         const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-        initMotionAnimation(sight_array, angleArray, screenWidth, screenHeight, chinrestData, signalDirection, position);
+        initMotionAnimation(sight_array, angleArray, screenWidth, screenHeight, chinrestData, signalDirection, position, crosshairLength, crosshairStroke);
       }
     });
 
@@ -741,7 +765,7 @@ for (const position of positions) {
       trial_duration: DURATION,
       on_load: function() {
         const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-        initDriftingGratingAnimation(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, direction, 5);
+        initDriftingGratingAnimation(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, direction, 5, crosshairLength, crosshairStroke);
       }
     });
 
@@ -799,7 +823,7 @@ for (const position of positions) {
         trial_duration: DURATION,
         on_load: function() {
           const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-          initGridStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, centerPercentage);
+          initGridStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, centerPercentage, crosshairLength, crosshairStroke);
         }
       });
 
@@ -857,7 +881,7 @@ for (const position of barPositions) {
       trial_duration: DURATION,
       on_load: function() {
         const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-        initBarChartStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, heights);
+        initBarChartStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, heights, crosshairLength, crosshairStroke);
       }
     });
 
