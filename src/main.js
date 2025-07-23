@@ -11,7 +11,8 @@ const jsPsych = initJsPsych({
 const timeline = [];
 const screenWidth = window.innerWidth;
 const screenHeight = window.innerHeight;
-const DURATION = 200;
+const DURATION = 200; // 动画时长
+const CH_DURATION = 500; // 十字准线额外显示时长
 const ColorAnimationTime = 500;
 
 const sight_array=[
@@ -705,10 +706,20 @@ for (const position of positions) {
         return createMotionStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, signalDirection, position).stimulus;
       },
       choices: "NO_KEYS",
-      trial_duration: DURATION,
+      trial_duration: DURATION + CH_DURATION,
       on_load: function() {
         const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-        initMotionAnimation(sight_array, angleArray, screenWidth, screenHeight, chinrestData, signalDirection, position, crosshairLength, crosshairStroke);
+        // 只播放动画 DURATION 毫秒
+        initMotionAnimation(
+          sight_array, angleArray, screenWidth, screenHeight, chinrestData, signalDirection, position, crosshairLength, crosshairStroke, DURATION
+        );
+        // DURATION 后移除动画元素，只保留十字
+        setTimeout(() => {
+          const svg = d3.select("#stimulus");
+          svg.selectAll("circle").remove();
+          svg.selectAll("g").remove();
+          drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
+        }, DURATION);
       }
     });
 
@@ -762,10 +773,17 @@ for (const position of positions) {
         return createDriftingGratingStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position).stimulus;
       },
       choices: "NO_KEYS",
-      trial_duration: DURATION,
+      trial_duration: DURATION + CH_DURATION,
       on_load: function() {
         const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-        initDriftingGratingAnimation(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, direction, 5, crosshairLength, crosshairStroke);
+        initDriftingGratingAnimation(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, direction, 5, crosshairLength, crosshairStroke, DURATION);
+        setTimeout(() => {
+          const svg = d3.select("#stimulus");
+          svg.selectAll("g").remove();
+          svg.selectAll("clipPath").remove();
+          svg.selectAll("circle").remove();
+          drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
+        }, DURATION);
       }
     });
 
@@ -820,10 +838,15 @@ for (const position of positions) {
           return createGridStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, centerPercentage).stimulus;
         },
         choices: "NO_KEYS",
-        trial_duration: DURATION,
+        trial_duration: DURATION + CH_DURATION,
         on_load: function() {
           const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-          initGridStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, centerPercentage, crosshairLength, crosshairStroke);
+          initGridStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, centerPercentage, crosshairLength, crosshairStroke, DURATION);
+          setTimeout(() => {
+            const svg = d3.select("#stimulus");
+            svg.selectAll("rect").remove();
+            drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
+          }, DURATION);
         }
       });
 
@@ -878,10 +901,15 @@ for (const position of barPositions) {
         return createBarChartStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, heights).stimulus;
       },
       choices: "NO_KEYS",
-      trial_duration: DURATION,
+      trial_duration: DURATION + CH_DURATION,
       on_load: function() {
         const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-        initBarChartStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, heights, crosshairLength, crosshairStroke);
+        initBarChartStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, heights, crosshairLength, crosshairStroke, DURATION);
+        setTimeout(() => {
+          const svg = d3.select("#stimulus");
+          svg.selectAll("rect").remove();
+          drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
+        }, DURATION);
       }
     });
 
