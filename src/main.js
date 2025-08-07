@@ -11,9 +11,13 @@ const jsPsych = initJsPsych({
 const timeline = [];
 const screenWidth = window.innerWidth;
 const screenHeight = window.innerHeight;
+
+// const ColorAnimationTime = 500;
+// Individual crosshair stage durations
 const DURATION = 200; // 动画时长
-const CH_DURATION = 500; // 十字准线额外显示时长
-const ColorAnimationTime = 500;
+const PRE_STIMULUS_CH_DURATION = 1000;  // Part 1: Initial crosshair before stimulus
+const POST_STIMULUS_CH_DURATION = 500; // Part 3: Crosshair after stimulus  
+const FEEDBACK_CH_DURATION = 1000;      // Final: Colored feedback crosshair
 
 const sight_array=[
 [NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN],
@@ -131,6 +135,33 @@ function createDriftingGratingStimulus(sight_array, angleArray,screenWidth,scree
   };
 }
 
+// Function to create static grating stimulus
+function createGratingStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper') {
+  return {
+    type: htmlKeyboardResponse,
+    stimulus: `
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #ccc;
+			overflow: hidden;
+		}
+	</style>
+	
+	<svg id="stimulus" width="100%" height="100%"></svg>
+
+    `,
+    choices: "NO_KEYS",  // No key press allowed to skip
+    trial_duration: DURATION, // Duration for static display
+    on_load: function() {
+      // Initialize static grating display
+      initGratingStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData, position);
+    }
+  };
+}
+
 // Function to create grid stimulus
 function createGridStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', centerColor = 'black', centerPercentage = 25) {
   return {
@@ -188,7 +219,7 @@ const crosshairLength = 30; // 十字长度
 const crosshairStroke = 2;  // 线宽
 
 // 通用十字准线绘制函数
-function drawCrosshair(svg, width, height, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
+function drawCrosshair(svg, width, height, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke, color = 'black') {
   // 移除旧的十字
   svg.selectAll('.crosshair').remove();
   const centerX = width / 2;
@@ -200,7 +231,7 @@ function drawCrosshair(svg, width, height, crosshairLen = crosshairLength, cross
     .attr('y1', centerY)
     .attr('x2', centerX + crosshairLen / 2)
     .attr('y2', centerY)
-    .attr('stroke', 'black')
+    .attr('stroke', color)
     .attr('stroke-width', crosshairStrokeWidth);
   // 垂直线
   svg.append('line')
@@ -209,7 +240,7 @@ function drawCrosshair(svg, width, height, crosshairLen = crosshairLength, cross
     .attr('y1', centerY - crosshairLen / 2)
     .attr('x2', centerX)
     .attr('y2', centerY + crosshairLen / 2)
-    .attr('stroke', 'black')
+    .attr('stroke', color)
     .attr('stroke-width', crosshairStrokeWidth);
 }
 
@@ -364,7 +395,100 @@ function initMotionAnimation(sight_array, angleArray,screenWidth,screenHeight, c
 }
 
 // Function to initialize drifting grating animation
-function initDriftingGratingAnimation(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', direction = 'left', spacing = 5, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
+// function initDriftingGratingAnimation(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', direction = 'left', spacing = 5, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
+//   const svg = d3.select("#stimulus");
+  
+//   // 获取实际的SVG尺寸
+//   const width = screenWidth;
+//   const height = screenHeight;
+  
+//   // 设置SVG的viewBox以确保正确的缩放
+//   svg.attr("width", width).attr("height", height).attr("viewBox", `0 0 ${width} ${height}`);
+  
+//   // 根据位置参数设置动画中心位置
+//   let animationCenterX, animationCenterY;
+//   const offset = 100;
+  
+//   switch(position) {
+//     case 'left_upper':
+//       animationCenterX = width / 2 - offset;
+//       animationCenterY = height / 2 - offset;
+//       break;
+//     case 'left_lower':
+//       animationCenterX = width / 2 - offset;
+//       animationCenterY = height / 2 + offset;
+//       break;
+//     case 'right_upper':
+//       animationCenterX = width / 2 + offset;
+//       animationCenterY = height / 2 - offset;
+//       break;
+//     case 'right_lower':
+//       animationCenterX = width / 2 + offset;
+//       animationCenterY = height / 2 + offset;
+//       break;
+//     default:
+//       animationCenterX = width / 2 + offset;
+//       animationCenterY = height / 2 + offset;
+//   }
+
+//   function createDriftingGrating(containerId, direction = "left", driftHz = 10, spacing = 5) {
+//     const radius = 80;
+//     const stripeWidth = 3; // 固定条纹宽度为3
+
+//     // Define circular clip mask
+//     svg.append("clipPath")
+//       .attr("id", `clip-${containerId}`)
+//       .append("circle")
+//       .attr("cx", animationCenterX)
+//       .attr("cy", animationCenterY)
+//       .attr("r", radius);
+
+//     // Group for stripes (clipped)
+//     const g = svg.append("g")
+//       .attr("clip-path", `url(#clip-${containerId})`);
+
+//     // Add vertical stripes with specified spacing
+//     const totalWidth = stripeWidth + spacing; // 条纹宽度 + 间距
+//     const numStripes = Math.ceil(width / totalWidth);
+//     for (let i = -numStripes; i < numStripes * 2; i++) {
+//       g.append("rect")
+//         .attr("x", i * totalWidth)
+//         .attr("y", 0)
+//         .attr("width", stripeWidth)
+//         .attr("height", height)
+//         .attr("fill", "#fff");
+//     }
+
+//     // Circle outline
+//     svg.append("circle")
+//       .attr("cx", animationCenterX)
+//       .attr("cy", animationCenterY)
+//       .attr("r", radius)
+//       .attr("fill", "none")
+//       .attr("stroke", "black")
+//       .attr("stroke-width", "0");
+
+//     // Animation
+//     let phase = 0;
+//     const fps = 60;
+//     const pixelsPerSecond = driftHz * totalWidth; // 使用总宽度（条纹+间距）
+
+//     function animate() {
+//       phase += (direction === "left" ? -1 : 1) * (pixelsPerSecond / fps);
+//       g.attr("transform", `translate(${phase % totalWidth}, 0)`);
+//       requestAnimationFrame(animate);
+//     }
+
+//     animate();
+//   }
+
+//   createDriftingGrating("stimulus", direction, 10, spacing);   // 10Hz with specified direction and spacing
+//   // 绘制十字准线
+//   drawCrosshair(svg, width, height, crosshairLen, crosshairStrokeWidth);
+// }
+
+// Function to initialize static grating stimulus
+function initGratingStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData = null, position = 'left_upper', orientation = 'vertical', spacing = 5, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
   const svg = d3.select("#stimulus");
   
   // 获取实际的SVG尺寸
@@ -374,33 +498,33 @@ function initDriftingGratingAnimation(sight_array, angleArray,screenWidth,screen
   // 设置SVG的viewBox以确保正确的缩放
   svg.attr("width", width).attr("height", height).attr("viewBox", `0 0 ${width} ${height}`);
   
-  // 根据位置参数设置动画中心位置
-  let animationCenterX, animationCenterY;
+  // 根据位置参数设置刺激中心位置
+  let stimulusCenterX, stimulusCenterY;
   const offset = 100;
   
   switch(position) {
     case 'left_upper':
-      animationCenterX = width / 2 - offset;
-      animationCenterY = height / 2 - offset;
+      stimulusCenterX = width / 2 - offset;
+      stimulusCenterY = height / 2 - offset;
       break;
     case 'left_lower':
-      animationCenterX = width / 2 - offset;
-      animationCenterY = height / 2 + offset;
+      stimulusCenterX = width / 2 - offset;
+      stimulusCenterY = height / 2 + offset;
       break;
     case 'right_upper':
-      animationCenterX = width / 2 + offset;
-      animationCenterY = height / 2 - offset;
+      stimulusCenterX = width / 2 + offset;
+      stimulusCenterY = height / 2 - offset;
       break;
     case 'right_lower':
-      animationCenterX = width / 2 + offset;
-      animationCenterY = height / 2 + offset;
+      stimulusCenterX = width / 2 + offset;
+      stimulusCenterY = height / 2 + offset;
       break;
     default:
-      animationCenterX = width / 2 + offset;
-      animationCenterY = height / 2 + offset;
+      stimulusCenterX = width / 2 + offset;
+      stimulusCenterY = height / 2 + offset;
   }
 
-  function createDriftingGrating(containerId, direction = "left", driftHz = 10, spacing = 5) {
+  function createStaticGrating(containerId, orientation = "vertical", spacing = 5) {
     const radius = 80;
     const stripeWidth = 3; // 固定条纹宽度为3
 
@@ -408,50 +532,51 @@ function initDriftingGratingAnimation(sight_array, angleArray,screenWidth,screen
     svg.append("clipPath")
       .attr("id", `clip-${containerId}`)
       .append("circle")
-      .attr("cx", animationCenterX)
-      .attr("cy", animationCenterY)
+      .attr("cx", stimulusCenterX)
+      .attr("cy", stimulusCenterY)
       .attr("r", radius);
 
     // Group for stripes (clipped)
     const g = svg.append("g")
       .attr("clip-path", `url(#clip-${containerId})`);
 
-    // Add vertical stripes with specified spacing
     const totalWidth = stripeWidth + spacing; // 条纹宽度 + 间距
-    const numStripes = Math.ceil(width / totalWidth);
-    for (let i = -numStripes; i < numStripes * 2; i++) {
-      g.append("rect")
-        .attr("x", i * totalWidth)
-        .attr("y", 0)
-        .attr("width", stripeWidth)
-        .attr("height", height)
-        .attr("fill", "#fff");
+    
+    if (orientation === "vertical") {
+      // Add vertical stripes
+      const numStripes = Math.ceil(width / totalWidth);
+      for (let i = -numStripes; i < numStripes * 2; i++) {
+        g.append("rect")
+          .attr("x", i * totalWidth)
+          .attr("y", 0)
+          .attr("width", stripeWidth)
+          .attr("height", height)
+          .attr("fill", "#fff");
+      }
+    } else if (orientation === "horizontal") {
+      // Add horizontal stripes
+      const numStripes = Math.ceil(height / totalWidth);
+      for (let i = -numStripes; i < numStripes * 2; i++) {
+        g.append("rect")
+          .attr("x", 0)
+          .attr("y", i * totalWidth)
+          .attr("width", width)
+          .attr("height", stripeWidth)
+          .attr("fill", "#fff");
+      }
     }
 
     // Circle outline
     svg.append("circle")
-      .attr("cx", animationCenterX)
-      .attr("cy", animationCenterY)
+      .attr("cx", stimulusCenterX)
+      .attr("cy", stimulusCenterY)
       .attr("r", radius)
       .attr("fill", "none")
       .attr("stroke", "black")
       .attr("stroke-width", "0");
-
-    // Animation
-    let phase = 0;
-    const fps = 60;
-    const pixelsPerSecond = driftHz * totalWidth; // 使用总宽度（条纹+间距）
-
-    function animate() {
-      phase += (direction === "left" ? -1 : 1) * (pixelsPerSecond / fps);
-      g.attr("transform", `translate(${phase % totalWidth}, 0)`);
-      requestAnimationFrame(animate);
-    }
-
-    animate();
   }
 
-  createDriftingGrating("stimulus", direction, 10, spacing);   // 10Hz with specified direction and spacing
+  createStaticGrating("stimulus", orientation, spacing);
   // 绘制十字准线
   drawCrosshair(svg, width, height, crosshairLen, crosshairStrokeWidth);
 }
@@ -606,8 +731,8 @@ function initBarChartStimulus(sight_array, angleArray,screenWidth,screenHeight, 
   
   // 使用传入的高度参数创建数据
   const data = [
-    { color: "red", value: heights[0] * 30 }, // 将高度值转换为百分比
-    { color: "blue", value: heights[1] * 30 }
+    { color: "black", value: heights[0] * 30 }, // 将高度值转换为百分比
+    { color: "black", value: heights[1] * 30 }
   ];
   svg.selectAll("*").remove(); // Clear previous content
 
@@ -681,7 +806,7 @@ timeline.push({
 // 使用函数来创建刺激，这样可以在运行时访问chinrest数据
 const positions = ['left_upper', 'left_lower', 'right_upper', 'right_lower'];
 const signalDirections = [[0,1], [0,-1]]; // 四个不同的信号方向
-const gratingDirections = ['left', 'right']; // grating的左右方向
+const gratingOrientations = ['vertical', 'horizontal']; // grating的垂直和水平方向
 // const gratingSpacings = [3, 5, 7]; // grating条纹间距：3, 5, 7
 const barPositions = ['upper', 'lower']; // bar chart只有上下两个位置
 const barHeights = [
@@ -693,12 +818,38 @@ const barHeights = [
   [1, 3]  // 最大差异
 ]; // 6种不同的高度组合
 const gridCenterColors = ['black', 'white']; // 中心颜色：黑色或白色
-const gridCenterPercentages = [25, 40]; // 中心网格百分比：25%或40%
+const gridCenterPercentages = [15, 30]; // 中心网格百分比：25%或40%
 
 // Motion trials - 四个位置，每个位置四个信号方向
 for (const position of positions) {
   for (const signalDirection of signalDirections) {
 	// console.log(signalDirection[1] > 0 ? 'Down' : 'Up');
+    
+    // Part 1: Display crosshair
+    timeline.push({
+      type: htmlKeyboardResponse,
+      stimulus: `
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #ccc;
+			overflow: hidden;
+		}
+	</style>
+	<svg id="stimulus" width="100%" height="100%"></svg>
+      `,
+      choices: "NO_KEYS",
+      trial_duration: PRE_STIMULUS_CH_DURATION,
+      on_load: function() {
+        const svg = d3.select("#stimulus");
+        svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+        drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
+      }
+    });
+    
+    // Part 2: Display animation
     timeline.push({
       type: htmlKeyboardResponse,
       stimulus: function() {
@@ -706,123 +857,310 @@ for (const position of positions) {
         return createMotionStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, signalDirection, position).stimulus;
       },
       choices: "NO_KEYS",
-      trial_duration: DURATION + CH_DURATION,
+      trial_duration: DURATION,
       on_load: function() {
         const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-        // 只播放动画 DURATION 毫秒
         initMotionAnimation(
-          sight_array, angleArray, screenWidth, screenHeight, chinrestData, signalDirection, position, crosshairLength, crosshairStroke, DURATION
+          sight_array, angleArray, screenWidth, screenHeight, chinrestData, signalDirection, position, crosshairLength, crosshairStroke
         );
-        // DURATION 后移除动画元素，只保留十字
-        setTimeout(() => {
-          const svg = d3.select("#stimulus");
-          svg.selectAll("circle").remove();
-          svg.selectAll("g").remove();
-          drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
-        }, DURATION);
+      }
+    });
+    
+    // Part 3: Display crosshair
+    timeline.push({
+      type: htmlKeyboardResponse,
+      stimulus: `
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #ccc;
+			overflow: hidden;
+		}
+	</style>
+	<svg id="stimulus" width="100%" height="100%"></svg>
+      `,
+      choices: "NO_KEYS",
+      trial_duration: POST_STIMULUS_CH_DURATION,
+      on_load: function() {
+        const svg = d3.select("#stimulus");
+        svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+        drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
       }
     });
 
     timeline.push({
-      type: jsPsychHtmlButtonResponse,
-      stimulus: `<p>What direction are the dots moving?</p>`,
-      choices: ['Up⬆️', 'Down⬇️'],
+      type: htmlKeyboardResponse,
+      stimulus: `
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #ccc;
+			overflow: hidden;
+		}
+		.question-text {
+			position: absolute;
+			top: 40%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			color: black;
+			font-size: 18px;
+			z-index: 10;
+		}
+		.instruction-text {
+			position: absolute;
+			top: 60%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			color: black;
+			font-size: 16px;
+			z-index: 10;
+		}
+		.keycap {
+			display: inline-block;
+			background: #f0f0f0;
+			border: 2px solid #ccc;
+			border-radius: 4px;
+			padding: 4px 8px;
+			margin: 0 2px;
+			font-family: monospace;
+			font-weight: bold;
+			box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+			background: linear-gradient(145deg, #ffffff, #e6e6e6);
+		}
+	</style>
+	<div class="question-text">What direction are the dots moving?</div>
+	<div class="instruction-text">Press <span class="keycap">F</span> for Up ⬆️, <span class="keycap">J</span> for Down ⬇️</div>
+	<svg id="stimulus" width="100%" height="100%"></svg>
+      `,
+      choices: ['F', 'J'],
       data: {
         correct_direction: signalDirection[1] > 0 ? 'Down' : 'Up'
       },
-      button_html: (choice, i) => `<button class="jspsych-btn" id="feedback-btn-${i}">${choice}</button>`,
       on_load: function() {
-        document.querySelectorAll('.jspsych-btn').forEach((btn, i) => {
-          btn.addEventListener('click', function(e) {
-            if (window._feedbackClicked) return;
-            window._feedbackClicked = true;
-            const userChoice = i === 0 ? 'Up' : 'Down';
-            const correct = userChoice === jsPsych.getCurrentTrial().data.correct_direction;
-            btn.style.backgroundColor = correct ? 'green' : 'red';
-            btn.style.color = 'white';
-            document.querySelectorAll('.jspsych-btn').forEach(b => b.disabled = true);
-
-            // 播放音频反馈
-            if (correct) {
-              correctAudio.currentTime = 0;
-              correctAudio.play();
-            } else {
-              wrongAudio.currentTime = 0;
-              wrongAudio.play();
-            }
-
-            setTimeout(() => {
-              window._feedbackClicked = false;
-              jsPsych.finishTrial({correct: correct, userChoice: userChoice});
-            }, ColorAnimationTime);
-          });
-        });
+        const svg = d3.select("#stimulus");
+        svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+        drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
       },
-      response_ends_trial: false
+      on_finish: function(data) {
+        const userChoice = data.response === 'F' ? 'Up' : 'Down';
+        const correct = userChoice === data.correct_direction;
+        
+        // 播放音频反馈
+        if (correct) {
+          correctAudio.currentTime = 0;
+          correctAudio.play();
+        } else {
+          wrongAudio.currentTime = 0;
+          wrongAudio.play();
+        }
+        
+        data.correct = correct;
+        data.userChoice = userChoice;
+      }
+    });
+    
+    // Final crosshair stage
+    timeline.push({
+      type: htmlKeyboardResponse,
+      stimulus: `
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #ccc;
+			overflow: hidden;
+		}
+	</style>
+	<svg id="stimulus" width="100%" height="100%"></svg>
+      `,
+      choices: "NO_KEYS",
+      trial_duration: FEEDBACK_CH_DURATION,
+      on_load: function() {
+        const svg = d3.select("#stimulus");
+        svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+        
+        // Get the correctness from the previous trial
+        const previousTrial = jsPsych.data.get().last(1).values()[0];
+        const crosshairColor = previousTrial.correct ? 'green' : 'red';
+        
+        drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke, crosshairColor);
+      }
     });
   }
 }
 
-// Drifting grating trials - 四个位置，每个位置六个条件组合
+// Static grating trials - 四个位置，每个位置两种方向
 for (const position of positions) {
-  for (const direction of gratingDirections) {
+  for (const orientation of gratingOrientations) {
+    
+    // Part 1: Display crosshair
+    timeline.push({
+      type: htmlKeyboardResponse,
+      stimulus: `
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #ccc;
+			overflow: hidden;
+		}
+	</style>
+	<svg id="stimulus" width="100%" height="100%"></svg>
+      `,
+      choices: "NO_KEYS",
+      trial_duration: PRE_STIMULUS_CH_DURATION,
+      on_load: function() {
+        const svg = d3.select("#stimulus");
+        svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+        drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
+      }
+    });
+    
+    // Part 2: Display static grating
     timeline.push({
       type: htmlKeyboardResponse,
       stimulus: function() {
         const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-        return createDriftingGratingStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position).stimulus;
+        return createGratingStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position).stimulus;
       },
       choices: "NO_KEYS",
-      trial_duration: DURATION + CH_DURATION,
+      trial_duration: DURATION,
       on_load: function() {
         const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-        initDriftingGratingAnimation(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, direction, 5, crosshairLength, crosshairStroke, DURATION);
-        setTimeout(() => {
-          const svg = d3.select("#stimulus");
-          svg.selectAll("g").remove();
-          svg.selectAll("clipPath").remove();
-          svg.selectAll("circle").remove();
-          drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
-        }, DURATION);
+        initGratingStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, orientation, 5, crosshairLength, crosshairStroke);
+      }
+    });
+    
+    // Part 3: Display crosshair
+    timeline.push({
+      type: htmlKeyboardResponse,
+      stimulus: `
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #ccc;
+			overflow: hidden;
+		}
+	</style>
+	<svg id="stimulus" width="100%" height="100%"></svg>
+      `,
+      choices: "NO_KEYS",
+      trial_duration: POST_STIMULUS_CH_DURATION,
+      on_load: function() {
+        const svg = d3.select("#stimulus");
+        svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+        drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
       }
     });
 
     timeline.push({
-      type: jsPsychHtmlButtonResponse,
-      stimulus: `<p>What direction are the stripes moving?</p>`,
-      choices: ['Left', 'Right'],
+      type: htmlKeyboardResponse,
+      stimulus: `
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #ccc;
+			overflow: hidden;
+		}
+		.question-text {
+			position: absolute;
+			top: 40%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			color: black;
+			font-size: 18px;
+			z-index: 10;
+		}
+		.instruction-text {
+			position: absolute;
+			top: 60%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			color: black;
+			font-size: 16px;
+			z-index: 10;
+		}
+		.keycap {
+			display: inline-block;
+			background: #f0f0f0;
+			border: 2px solid #ccc;
+			border-radius: 4px;
+			padding: 4px 8px;
+			margin: 0 2px;
+			font-family: monospace;
+			font-weight: bold;
+			box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+			background: linear-gradient(145deg, #ffffff, #e6e6e6);
+		}
+	</style>
+	<div class="question-text">What orientation are the stripes?</div>
+	<div class="instruction-text">Press <span class="keycap">F</span> for Vertical ↕️, <span class="keycap">J</span> for Horizontal ↔️</div>
+	<svg id="stimulus" width="100%" height="100%"></svg>
+      `,
+      choices: ['F', 'J'],
       data: {
-        correct_direction: direction === 'left' ? 'Left' : 'Right'
+        correct_direction: orientation === 'vertical' ? 'Vertical' : 'Horizontal'
       },
-      button_html: (choice, i) => `<button class="jspsych-btn" id="feedback-btn-${i}">${choice}</button>`,
       on_load: function() {
-        document.querySelectorAll('.jspsych-btn').forEach((btn, i) => {
-          btn.addEventListener('click', function(e) {
-            if (window._feedbackClicked) return;
-            window._feedbackClicked = true;
-            const userChoice = i === 0 ? 'Left' : 'Right';
-            const correct = userChoice === jsPsych.getCurrentTrial().data.correct_direction;
-            btn.style.backgroundColor = correct ? 'green' : 'red';
-            btn.style.color = 'white';
-            document.querySelectorAll('.jspsych-btn').forEach(b => b.disabled = true);
-
-            // 播放音频反馈
-            if (correct) {
-              correctAudio.currentTime = 0;
-              correctAudio.play();
-            } else {
-              wrongAudio.currentTime = 0;
-              wrongAudio.play();
-            }
-
-            setTimeout(() => {
-              window._feedbackClicked = false;
-              jsPsych.finishTrial({correct: correct, userChoice: userChoice});
-            }, ColorAnimationTime);
-          });
-        });
+        const svg = d3.select("#stimulus");
+        svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+        drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
       },
-      response_ends_trial: false
+      on_finish: function(data) {
+        const userChoice = data.response === 'F' ? 'Vertical' : 'Horizontal';
+        const correct = userChoice === data.correct_direction;
+        
+        // 播放音频反馈
+        if (correct) {
+          correctAudio.currentTime = 0;
+          correctAudio.play();
+        } else {
+          wrongAudio.currentTime = 0;
+          wrongAudio.play();
+        }
+        
+        data.correct = correct;
+        data.userChoice = userChoice;
+      }
+    });
+    
+    // Final crosshair stage
+    timeline.push({
+      type: htmlKeyboardResponse,
+      stimulus: `
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #ccc;
+			overflow: hidden;
+		}
+	</style>
+	<svg id="stimulus" width="100%" height="100%"></svg>
+      `,
+      choices: "NO_KEYS",
+      trial_duration: FEEDBACK_CH_DURATION,
+      on_load: function() {
+        const svg = d3.select("#stimulus");
+        svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+        
+        // Get the correctness from the previous trial
+        const previousTrial = jsPsych.data.get().last(1).values()[0];
+        const crosshairColor = previousTrial.correct ? 'green' : 'red';
+        
+        drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke, crosshairColor);
+      }
     });
   }
 }
@@ -831,6 +1169,32 @@ for (const position of positions) {
 for (const position of positions) {
   for (const centerColor of gridCenterColors) {
     for (const centerPercentage of gridCenterPercentages) {
+      
+      // Part 1: Display crosshair
+      timeline.push({
+        type: htmlKeyboardResponse,
+        stimulus: `
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #ccc;
+			overflow: hidden;
+		}
+	</style>
+	<svg id="stimulus" width="100%" height="100%"></svg>
+      `,
+        choices: "NO_KEYS",
+        trial_duration: PRE_STIMULUS_CH_DURATION,
+        on_load: function() {
+          const svg = d3.select("#stimulus");
+          svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+          drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
+        }
+      });
+      
+      // Part 2: Display animation
       timeline.push({
         type: htmlKeyboardResponse,
         stimulus: function() {
@@ -838,54 +1202,137 @@ for (const position of positions) {
           return createGridStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, centerPercentage).stimulus;
         },
         choices: "NO_KEYS",
-        trial_duration: DURATION + CH_DURATION,
+        trial_duration: DURATION,
         on_load: function() {
           const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-          initGridStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, centerPercentage, crosshairLength, crosshairStroke, DURATION);
-          setTimeout(() => {
-            const svg = d3.select("#stimulus");
-            svg.selectAll("rect").remove();
-            drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
-          }, DURATION);
+          initGridStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, centerPercentage, crosshairLength, crosshairStroke);
+        }
+      });
+      
+      // Part 3: Display crosshair
+      timeline.push({
+        type: htmlKeyboardResponse,
+        stimulus: `
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #ccc;
+			overflow: hidden;
+		}
+	</style>
+	<svg id="stimulus" width="100%" height="100%"></svg>
+      `,
+        choices: "NO_KEYS",
+        trial_duration: POST_STIMULUS_CH_DURATION,
+        on_load: function() {
+          const svg = d3.select("#stimulus");
+          svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+          drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
         }
       });
 
       timeline.push({
-        type: jsPsychHtmlButtonResponse,
-        stimulus: `<p>Are there more black cells or white cells?</p>`,
-        choices: ['Black', 'White'],
+        type: htmlKeyboardResponse,
+        stimulus: `
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #ccc;
+			overflow: hidden;
+		}
+		.question-text {
+			position: absolute;
+			top: 40%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			color: black;
+			font-size: 18px;
+			z-index: 10;
+		}
+		.instruction-text {
+			position: absolute;
+			top: 60%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			color: black;
+			font-size: 16px;
+			z-index: 10;
+		}
+		.keycap {
+			display: inline-block;
+			background: #f0f0f0;
+			border: 2px solid #ccc;
+			border-radius: 4px;
+			padding: 4px 8px;
+			margin: 0 2px;
+			font-family: monospace;
+			font-weight: bold;
+			box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+			background: linear-gradient(145deg, #ffffff, #e6e6e6);
+		}
+	</style>
+	<div class="question-text">Are there more black cells or white cells?</div>
+	<div class="instruction-text">Press <span class="keycap">F</span> for Black ⬛, <span class="keycap">J</span> for White ⬜</div>
+	<svg id="stimulus" width="100%" height="100%"></svg>
+        `,
+        choices: ['F', 'J'],
         data: {
           correct_direction: (centerColor === 'black' && centerPercentage > 50) || (centerColor === 'white' && centerPercentage < 50) ? 'Black' : 'White'
         },
-        button_html: (choice, i) => `<button class="jspsych-btn" id="feedback-btn-${i}">${choice}</button>`,
         on_load: function() {
-          document.querySelectorAll('.jspsych-btn').forEach((btn, i) => {
-            btn.addEventListener('click', function(e) {
-              if (window._feedbackClicked) return;
-              window._feedbackClicked = true;
-              const userChoice = i === 0 ? 'Black' : 'White';
-              const correct = userChoice === jsPsych.getCurrentTrial().data.correct_direction;
-              btn.style.backgroundColor = correct ? 'green' : 'red';
-              btn.style.color = 'white';
-              document.querySelectorAll('.jspsych-btn').forEach(b => b.disabled = true);
-
-              // 播放音频反馈
-              if (correct) {
-                correctAudio.currentTime = 0;
-                correctAudio.play();
-              } else {
-                wrongAudio.currentTime = 0;
-                wrongAudio.play();
-              }
-
-              setTimeout(() => {
-                window._feedbackClicked = false;
-                jsPsych.finishTrial({correct: correct, userChoice: userChoice});
-              }, ColorAnimationTime);
-            });
-          });
+          const svg = d3.select("#stimulus");
+          svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+          drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
         },
-        response_ends_trial: false
+        on_finish: function(data) {
+          const userChoice = data.response === 'F' ? 'Black' : 'White';
+          const correct = userChoice === data.correct_direction;
+          
+          // 播放音频反馈
+          if (correct) {
+            correctAudio.currentTime = 0;
+            correctAudio.play();
+          } else {
+            wrongAudio.currentTime = 0;
+            wrongAudio.play();
+          }
+          
+          data.correct = correct;
+          data.userChoice = userChoice;
+        }
+      });
+      
+      // Final crosshair stage
+      timeline.push({
+        type: htmlKeyboardResponse,
+        stimulus: `
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #ccc;
+			overflow: hidden;
+		}
+	</style>
+	<svg id="stimulus" width="100%" height="100%"></svg>
+        `,
+        choices: "NO_KEYS",
+        trial_duration: FEEDBACK_CH_DURATION,
+        on_load: function() {
+          const svg = d3.select("#stimulus");
+          svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+          
+          // Get the correctness from the previous trial
+          const previousTrial = jsPsych.data.get().last(1).values()[0];
+          const crosshairColor = previousTrial.correct ? 'green' : 'red';
+          
+          drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke, crosshairColor);
+        }
       });
     }
   }
@@ -894,6 +1341,32 @@ for (const position of positions) {
 // Bar chart trials - 两个位置，每个位置六种高度组合
 for (const position of barPositions) {
   for (const heights of barHeights) {
+    
+    // Part 1: Display crosshair
+    timeline.push({
+      type: htmlKeyboardResponse,
+      stimulus: `
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #ccc;
+			overflow: hidden;
+		}
+	</style>
+	<svg id="stimulus" width="100%" height="100%"></svg>
+      `,
+      choices: "NO_KEYS",
+      trial_duration: PRE_STIMULUS_CH_DURATION,
+      on_load: function() {
+        const svg = d3.select("#stimulus");
+        svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+        drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
+      }
+    });
+    
+    // Part 2: Display animation
     timeline.push({
       type: htmlKeyboardResponse,
       stimulus: function() {
@@ -901,54 +1374,137 @@ for (const position of barPositions) {
         return createBarChartStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, heights).stimulus;
       },
       choices: "NO_KEYS",
-      trial_duration: DURATION + CH_DURATION,
+      trial_duration: DURATION,
       on_load: function() {
         const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-        initBarChartStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, heights, crosshairLength, crosshairStroke, DURATION);
-        setTimeout(() => {
-          const svg = d3.select("#stimulus");
-          svg.selectAll("rect").remove();
-          drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
-        }, DURATION);
+        initBarChartStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, heights, crosshairLength, crosshairStroke);
+      }
+    });
+    
+    // Part 3: Display crosshair
+    timeline.push({
+      type: htmlKeyboardResponse,
+      stimulus: `
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #ccc;
+			overflow: hidden;
+		}
+	</style>
+	<svg id="stimulus" width="100%" height="100%"></svg>
+      `,
+      choices: "NO_KEYS",
+      trial_duration: POST_STIMULUS_CH_DURATION,
+      on_load: function() {
+        const svg = d3.select("#stimulus");
+        svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+        drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
       }
     });
 
     timeline.push({
-      type: jsPsychHtmlButtonResponse,
-      stimulus: `<p>The height of the bars are</p>`,
-      choices: ['Same', 'Different'],
+      type: htmlKeyboardResponse,
+      stimulus: `
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #ccc;
+			overflow: hidden;
+		}
+		.question-text {
+			position: absolute;
+			top: 40%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			color: black;
+			font-size: 18px;
+			z-index: 10;
+		}
+		.instruction-text {
+			position: absolute;
+			top: 60%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			color: black;
+			font-size: 16px;
+			z-index: 10;
+		}
+		.keycap {
+			display: inline-block;
+			background: #f0f0f0;
+			border: 2px solid #ccc;
+			border-radius: 4px;
+			padding: 4px 8px;
+			margin: 0 2px;
+			font-family: monospace;
+			font-weight: bold;
+			box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+			background: linear-gradient(145deg, #ffffff, #e6e6e6);
+		}
+	</style>
+	<div class="question-text">The height of the bars are</div>
+	<div class="instruction-text">Press <span class="keycap">F</span> for Same ≡, <span class="keycap">J</span> for Different ≠</div>
+	<svg id="stimulus" width="100%" height="100%"></svg>
+      `,
+      choices: ['F', 'J'],
       data: {
         correct_direction: heights[0] === heights[1] ? 'Same' : 'Different'
       },
-      button_html: (choice, i) => `<button class="jspsych-btn" id="feedback-btn-${i}">${choice}</button>`,
       on_load: function() {
-        document.querySelectorAll('.jspsych-btn').forEach((btn, i) => {
-          btn.addEventListener('click', function(e) {
-            if (window._feedbackClicked) return;
-            window._feedbackClicked = true;
-            const userChoice = i === 0 ? 'Same' : 'Different';
-            const correct = userChoice === jsPsych.getCurrentTrial().data.correct_direction;
-            btn.style.backgroundColor = correct ? 'green' : 'red';
-            btn.style.color = 'white';
-            document.querySelectorAll('.jspsych-btn').forEach(b => b.disabled = true);
-
-            // 播放音频反馈
-            if (correct) {
-              correctAudio.currentTime = 0;
-              correctAudio.play();
-            } else {
-              wrongAudio.currentTime = 0;
-              wrongAudio.play();
-            }
-
-            setTimeout(() => {
-              window._feedbackClicked = false;
-              jsPsych.finishTrial({correct: correct, userChoice: userChoice});
-            }, ColorAnimationTime);
-          });
-        });
+        const svg = d3.select("#stimulus");
+        svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+        drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
       },
-      response_ends_trial: false
+      on_finish: function(data) {
+        const userChoice = data.response === 'F' ? 'Same' : 'Different';
+        const correct = userChoice === data.correct_direction;
+        
+        // 播放音频反馈
+        if (correct) {
+          correctAudio.currentTime = 0;
+          correctAudio.play();
+        } else {
+          wrongAudio.currentTime = 0;
+          wrongAudio.play();
+        }
+        
+        data.correct = correct;
+        data.userChoice = userChoice;
+      }
+    });
+    
+    // Final crosshair stage
+    timeline.push({
+      type: htmlKeyboardResponse,
+      stimulus: `
+	<style>
+		body {
+			font-family: Arial, sans-serif;
+			margin: 0;
+			padding: 0;
+			background-color: #ccc;
+			overflow: hidden;
+		}
+	</style>
+	<svg id="stimulus" width="100%" height="100%"></svg>
+      `,
+      choices: "NO_KEYS",
+      trial_duration: FEEDBACK_CH_DURATION,
+      on_load: function() {
+        const svg = d3.select("#stimulus");
+        svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+        
+        // Get the correctness from the previous trial
+        const previousTrial = jsPsych.data.get().last(1).values()[0];
+        const crosshairColor = previousTrial.correct ? 'green' : 'red';
+        
+        drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke, crosshairColor);
+      }
     });
   }
 }
