@@ -19,15 +19,23 @@ const PRE_STIMULUS_CH_DURATION = 1000;  // Part 1: Initial crosshair before stim
 const POST_STIMULUS_CH_DURATION = 500; // Part 3: Crosshair after stimulus  
 const FEEDBACK_CH_DURATION = 1000;      // Final: Colored feedback crosshair
 
-// deg2Pixel function: Convert visual angles to pixel offsets
+// deg2Pixel function: Convert visual angles to pixel offsets using calculator data
 function deg2Pixel(angleDeg, chinrestData = null, fallbackParams = {}) {
-    if (chinrestData && chinrestData.px2deg) {
-        // Use direct pixels-per-degree conversion from chinrest calibration
-		console.log(`Using chinrest data px2deg: ${chinrestData.px2deg}`);
+    // Try to get calculator data from jsPsych first
+    const allData = jsPsych.data.get();
+    const calculatorData = allData.values().find(trial => trial.calculator_data)?.calculator_data;
+    
+    if (calculatorData) {
+        // Use calculator data for precise conversion
+        console.log(`Using calculator data - pixels per degree: ${calculatorData.pixelsPerDegree}`);
+        return angleDeg * calculatorData.pixelsPerDegree;
+    } else if (chinrestData && chinrestData.px2deg) {
+        // Fallback to chinrest data if available (commented out but kept for reference)
+        console.log(`Using chinrest data px2deg: ${chinrestData.px2deg}`);
         return angleDeg * chinrestData.px2deg * 2; //deg of px2deg is double sided degree, angleDeg is one sided degree
     } else {
-        // Fall back to manual calculation with provided or default parameters
-		console.warn(`Using fallback parameters`);
+        // Final fallback to manual calculation with provided or default parameters
+        console.warn(`Using fallback parameters - consider running the visual angle calculator`);
         const viewingDistanceCm = fallbackParams.viewingDistanceCm || 80;
         const screenSizeCm = fallbackParams.screenSizeCm || [71, 51];
         const resolution = fallbackParams.resolution || [3840, 2160];
@@ -244,7 +252,7 @@ function initMotionAnimation(sight_array, angleArray,screenWidth,screenHeight, c
   
 	// 根据位置参数设置动画中心位置
 	let animationCenterX, animationCenterY;
-	const offset = deg2Pixel(2, chinrestData); // 2 degree visual angle offset
+	const offset = deg2Pixel(5, chinrestData); // 5 degree visual angle offset
 	
 	switch(position) {
 		case 'left_upper':
@@ -487,7 +495,7 @@ function initGratingStimulus(sight_array, angleArray, screenWidth, screenHeight,
   
   // 根据位置参数设置刺激中心位置
   let stimulusCenterX, stimulusCenterY;
-  const offset = deg2Pixel(2, chinrestData); // 2 degree visual angle offset
+  const offset = deg2Pixel(5, chinrestData); // 5 degree visual angle offset
   
   switch(position) {
     case 'left_upper':
@@ -581,7 +589,7 @@ function initGridStimulus(sight_array, angleArray,screenWidth,screenHeight, chin
   
   // 根据位置参数设置动画中心位置
   let animationCenterX, animationCenterY;
-  const offset = deg2Pixel(2, chinrestData); // 2 degree visual angle offset
+  const offset = deg2Pixel(5, chinrestData); // 5 degree visual angle offset
   
   switch(position) {
     case 'left_upper':
@@ -692,7 +700,7 @@ function initBarChartStimulus(sight_array, angleArray,screenWidth,screenHeight, 
   
   // 根据位置参数设置动画中心位置
   let lostViewCenterX, lostViewCenterY, goodViewCenterX, goodViewCenterY;
-  const offset = deg2Pixel(2, chinrestData); // 2 degree visual angle offset
+  const offset = deg2Pixel(5, chinrestData); // 5 degree visual angle offset
   switch(position) {
     case 'upper':
       // 上位置：左柱在左视野，右柱在右视野
@@ -920,15 +928,13 @@ function generateMotionTrialSequence(combination) {
   trialSequence.push({
     type: htmlKeyboardResponse,
     stimulus: function() {
-      const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-      return createMotionStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, signalDirection, position).stimulus;
+      return createMotionStimulus(sight_array, angleArray, screenWidth, screenHeight, null, signalDirection, position).stimulus;
     },
     choices: "NO_KEYS",
     trial_duration: DURATION,
     on_load: function() {
-      const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
       initMotionAnimation(
-        sight_array, angleArray, screenWidth, screenHeight, chinrestData, signalDirection, position, crosshairLength, crosshairStroke
+        sight_array, angleArray, screenWidth, screenHeight, null, signalDirection, position, crosshairLength, crosshairStroke
       );
     }
   });
@@ -1587,12 +1593,404 @@ timeline.push({
   button_html: (choice) => `<div class="my-btn-container"><button class="jspsych-btn">${choice}</button></div>`
 });
 
-var chinrestTrial = {
-	type: jsPsychVirtualChinrest,
-	blindspot_reps: 3,
-	resize_units: "none"
-};
-timeline.push(chinrestTrial);
+// User ID input trial
+timeline.push({
+  type: jsPsychHtmlButtonResponse,
+  stimulus: `
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #ccc;
+        overflow: hidden;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+      }
+      .user-id-container {
+        text-align: center;
+        color: black;
+        background: white;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+      }
+      .user-id-title {
+        font-size: 24px;
+        margin-bottom: 20px;
+      }
+      .user-id-input {
+        font-size: 18px;
+        padding: 10px;
+        margin: 10px;
+        border: 2px solid #ccc;
+        border-radius: 5px;
+        width: 200px;
+        text-align: center;
+      }
+      .user-id-instruction {
+        font-size: 16px;
+        margin: 15px 0;
+        color: #666;
+      }
+      .error-message {
+        color: red;
+        font-size: 14px;
+        margin-top: 10px;
+        display: none;
+      }
+    </style>
+    <div class="user-id-container">
+      <div class="user-id-title">Enter Your User ID</div>
+      <div class="user-id-instruction">Please enter your participant ID (numbers only)</div>
+      <input type="text" id="user-id-input" class="user-id-input" placeholder="e.g., 123" maxlength="10">
+      <div id="error-message" class="error-message">Please enter a valid ID (numbers only)</div>
+    </div>
+  `,
+  choices: ['Continue'],
+  button_html: (choice) => `<div class="my-btn-container"><button class="jspsych-btn" id="continue-btn">${choice}</button></div>`,
+  on_load: function() {
+    const continueBtn = document.getElementById('continue-btn');
+    const userIdInput = document.getElementById('user-id-input');
+    const errorMessage = document.getElementById('error-message');
+    
+    // Disable continue button initially
+    continueBtn.disabled = true;
+    continueBtn.style.opacity = '0.5';
+    
+    // Store user ID value in a variable that persists
+    let currentUserId = '';
+    
+    // Validate input on each keystroke
+    userIdInput.addEventListener('input', function() {
+      const value = this.value.trim();
+      const isValid = /^\d+$/.test(value) && value.length > 0;
+      currentUserId = value; // Store the current value
+      
+      if (isValid) {
+        errorMessage.style.display = 'none';
+        continueBtn.disabled = false;
+        continueBtn.style.opacity = '1';
+      } else {
+        if (value.length > 0) {
+          errorMessage.style.display = 'block';
+        }
+        continueBtn.disabled = true;
+        continueBtn.style.opacity = '0.5';
+      }
+    });
+    
+    // Store the user ID when continue button is clicked
+    continueBtn.addEventListener('click', function() {
+      if (currentUserId && /^\d+$/.test(currentUserId)) {
+        // Store user ID in jsPsych data for all subsequent trials
+        jsPsych.data.addProperties({
+          user_id: currentUserId
+        });
+      }
+    });
+    
+    // Focus on input field
+    userIdInput.focus();
+  },
+  on_finish: function(data) {
+    // The user ID should already be stored in jsPsych data from the button click
+    const allData = jsPsych.data.get();
+    const userIdFromData = allData.values()[0]?.user_id;
+    if (userIdFromData) {
+      data.user_id = userIdFromData;
+    }
+  }
+});
+
+// Visual Angle Calculator UI
+timeline.push({
+  type: jsPsychHtmlButtonResponse,
+  stimulus: `
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #ccc;
+        overflow: auto;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+      }
+      .calculator-container {
+        text-align: center;
+        color: black;
+        background: white;
+        padding: 40px;
+        border-radius: 15px;
+        box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+        max-width: 700px;
+        width: 90%;
+      }
+      .calculator-title {
+        font-size: 28px;
+        margin-bottom: 10px;
+        color: #2c3e50;
+      }
+      .calculator-subtitle {
+        font-size: 16px;
+        color: #7f8c8d;
+        margin-bottom: 30px;
+      }
+      .input-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 25px;
+        margin: 30px 0;
+      }
+      .input-section {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 10px;
+        border-left: 4px solid #3498db;
+      }
+      .section-title {
+        font-size: 18px;
+        font-weight: bold;
+        color: #2c3e50;
+        margin-bottom: 15px;
+      }
+      .input-group {
+        margin: 15px 0;
+        text-align: left;
+      }
+      .input-label {
+        display: block;
+        font-size: 14px;
+        color: #34495e;
+        margin-bottom: 5px;
+        font-weight: 500;
+      }
+      .calculator-input {
+        width: 100%;
+        padding: 10px;
+        border: 2px solid #bdc3c7;
+        border-radius: 5px;
+        font-size: 16px;
+        text-align: center;
+        box-sizing: border-box;
+      }
+      .calculator-input:focus {
+        border-color: #3498db;
+        outline: none;
+      }
+      .calculator-input.invalid {
+        border-color: #e74c3c;
+      }
+      .unit-label {
+        font-size: 12px;
+        color: #95a5a6;
+        margin-top: 3px;
+      }
+      .error-message {
+        color: #e74c3c;
+        font-size: 12px;
+        margin-top: 5px;
+        display: none;
+      }
+      .preview-section {
+        background: #e8f4fd;
+        padding: 20px;
+        border-radius: 10px;
+        margin: 20px 0;
+        border-left: 4px solid #3498db;
+      }
+      .preview-title {
+        font-size: 16px;
+        font-weight: bold;
+        color: #2c3e50;
+        margin-bottom: 10px;
+      }
+      .preview-text {
+        font-size: 14px;
+        color: #34495e;
+        margin: 5px 0;
+      }
+      .instructions {
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        padding: 15px;
+        border-radius: 8px;
+        margin: 20px 0;
+        font-size: 14px;
+        color: #856404;
+      }
+    </style>
+    <div class="calculator-container">
+      <div class="calculator-title">Visual Angle Calculator</div>
+      <div class="calculator-subtitle">Enter your display setup parameters for accurate visual angle calculations</div>
+      
+      <div class="instructions">
+        Please measure and enter your exact display parameters. These will be used to calculate precise visual angles for the experiment.
+      </div>
+      
+      <div class="input-grid">
+        <div class="input-section">
+          <div class="section-title">Screen Resolution</div>
+          <div class="input-group">
+            <label class="input-label">Width (pixels)</label>
+            <input type="number" id="resolution-width" class="calculator-input" placeholder="1920" value="1920">
+            <div class="error-message" id="resolution-width-error">Please enter a valid resolution</div>
+          </div>
+          <div class="input-group">
+            <label class="input-label">Height (pixels)</label>
+            <input type="number" id="resolution-height" class="calculator-input" placeholder="1080" value="1080">
+            <div class="error-message" id="resolution-height-error">Please enter a valid resolution</div>
+          </div>
+        </div>
+        
+        <div class="input-section">
+          <div class="section-title">Screen Dimensions</div>
+          <div class="input-group">
+            <label class="input-label">Width (cm)</label>
+            <input type="number" id="screen-width" class="calculator-input" placeholder="47.6" step="0.1" value="47.6">
+            <div class="unit-label">Measure the visible screen width</div>
+            <div class="error-message" id="screen-width-error">Please enter a valid dimension</div>
+          </div>
+          <div class="input-group">
+            <label class="input-label">Height (cm)</label>
+            <input type="number" id="screen-height" class="calculator-input" placeholder="26.8" step="0.1" value="26.8">
+            <div class="unit-label">Measure the visible screen height</div>
+            <div class="error-message" id="screen-height-error">Please enter a valid dimension</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="input-section" style="margin: 20px 0;">
+        <div class="section-title">Viewing Distance</div>
+        <div class="input-group">
+          <label class="input-label">Distance from screen (cm)</label>
+          <input type="number" id="viewing-distance" class="calculator-input" placeholder="50" step="0.5" value="50">
+          <div class="unit-label">Measure from your eyes to the screen</div>
+          <div class="error-message" id="viewing-distance-error">Please enter a valid distance</div>
+        </div>
+      </div>
+      
+      <div class="preview-section">
+        <div class="preview-title">Calculated Values</div>
+        <div class="preview-text">Pixels per degree: <span id="preview-ppd">--</span></div>
+        <div class="preview-text">Pixels per cm (X): <span id="preview-ppcm-x">--</span></div>
+        <div class="preview-text">Pixels per cm (Y): <span id="preview-ppcm-y">--</span></div>
+      </div>
+    </div>
+  `,
+  choices: ['Continue with Experiment'],
+  button_html: (choice) => `<div class="my-btn-container"><button class="jspsych-btn" id="continue-calc-btn" style="margin-top: 20px; padding: 12px 24px; font-size: 16px;">${choice}</button></div>`,
+  on_load: function() {
+    const continueBtn = document.getElementById('continue-calc-btn');
+    const inputs = {
+      resWidth: document.getElementById('resolution-width'),
+      resHeight: document.getElementById('resolution-height'),
+      screenWidth: document.getElementById('screen-width'),
+      screenHeight: document.getElementById('screen-height'),
+      viewingDistance: document.getElementById('viewing-distance')
+    };
+    
+    const previews = {
+      ppd: document.getElementById('preview-ppd'),
+      ppcmX: document.getElementById('preview-ppcm-x'),
+      ppcmY: document.getElementById('preview-ppcm-y')
+    };
+    
+    // Disable continue button initially
+    continueBtn.disabled = true;
+    continueBtn.style.opacity = '0.5';
+    
+    function validateInput(input, min = 1, max = 10000) {
+      const value = parseFloat(input.value);
+      return !isNaN(value) && value >= min && value <= max;
+    }
+    
+    function updateCalculations() {
+      const values = {
+        resWidth: parseFloat(inputs.resWidth.value),
+        resHeight: parseFloat(inputs.resHeight.value),
+        screenWidth: parseFloat(inputs.screenWidth.value),
+        screenHeight: parseFloat(inputs.screenHeight.value),
+        viewingDistance: parseFloat(inputs.viewingDistance.value)
+      };
+      
+      // Check if all values are valid
+      const allValid = Object.values(values).every(v => !isNaN(v) && v > 0);
+      
+      if (allValid) {
+        // Calculate pixels per cm
+        const pixelsPerCmX = values.resWidth / values.screenWidth;
+        const pixelsPerCmY = values.resHeight / values.screenHeight;
+        
+        // Calculate pixels per degree
+        // For 1 degree visual angle: tan(1°) * viewing distance = cm
+        const cmPerDegree = Math.tan(Math.PI / 180) * values.viewingDistance;
+        const pixelsPerDegree = (pixelsPerCmX + pixelsPerCmY) / 2 * cmPerDegree;
+        
+        // Update previews
+        previews.ppd.textContent = pixelsPerDegree.toFixed(2);
+        previews.ppcmX.textContent = pixelsPerCmX.toFixed(2);
+        previews.ppcmY.textContent = pixelsPerCmY.toFixed(2);
+        
+        // Enable continue button
+        continueBtn.disabled = false;
+        continueBtn.style.opacity = '1';
+      } else {
+        previews.ppd.textContent = '--';
+        previews.ppcmX.textContent = '--';
+        previews.ppcmY.textContent = '--';
+        
+        continueBtn.disabled = true;
+        continueBtn.style.opacity = '0.5';
+      }
+    }
+    
+    // Add validation and calculation for all inputs
+    Object.values(inputs).forEach(input => {
+      input.addEventListener('input', function() {
+        const isValid = validateInput(this);
+        this.classList.toggle('invalid', !isValid);
+        updateCalculations();
+      });
+    });
+    
+    // Store the calculated parameters when continue is clicked
+    continueBtn.addEventListener('click', function() {
+      const calculatorData = {
+        resolution: [parseFloat(inputs.resWidth.value), parseFloat(inputs.resHeight.value)],
+        screenSizeCm: [parseFloat(inputs.screenWidth.value), parseFloat(inputs.screenHeight.value)],
+        viewingDistanceCm: parseFloat(inputs.viewingDistance.value),
+        pixelsPerCmX: parseFloat(inputs.resWidth.value) / parseFloat(inputs.screenWidth.value),
+        pixelsPerCmY: parseFloat(inputs.resHeight.value) / parseFloat(inputs.screenHeight.value),
+        pixelsPerDegree: parseFloat(previews.ppd.textContent)
+      };
+      
+      // Store in jsPsych data
+      jsPsych.data.addProperties({
+        calculator_data: calculatorData
+      });
+    });
+    
+    // Initial calculation
+    updateCalculations();
+  },
+  on_finish: function(data) {
+    // Data is already stored in jsPsych via the button click event
+  }
+});
+
+// Original chinrest trial (commented out for manual visual angle calculation)
+// var chinrestTrial = {
+// 	type: jsPsychVirtualChinrest,
+// 	blindspot_reps: 3,
+// 	resize_units: "none"
+// };
+// timeline.push(chinrestTrial);
 
 // Clinic version uses the combination generation functions below
 
@@ -1602,7 +2000,8 @@ timeline.push(chinrestTrial);
 // 8 base trials × 12 blocks = 96 trials
 // Break after every 3 blocks (24 trials)
 const motionCombinations = generateMotionTrialCombinations();
-for (let block = 1; block <= 12; block++) {
+// for (let block = 1; block <= 12; block++) {
+for (let block = 1; block <= 2; block++) {
   // Add break after every 3 blocks (except the first block)
   if (block > 1 && (block - 1) % 3 === 0) {
     timeline.push(createBreakTrial());
@@ -1618,79 +2017,288 @@ for (let block = 1; block <= 12; block++) {
   }
 }
 
-// Break between Motion and Grating trials
-timeline.push(createBreakTrial());
+// // Break between Motion and Grating trials
+// timeline.push(createBreakTrial());
 
-// === GRATING TRIALS ===
-// 8 base trials × 12 blocks = 96 trials  
-// Break after every 3 blocks (24 trials)
-const gratingCombinations = generateGratingTrialCombinations();
-for (let block = 1; block <= 12; block++) {
-  // Add break after every 3 blocks (except the first block)
-  if (block > 1 && (block - 1) % 3 === 0) {
-    timeline.push(createBreakTrial());
-  }
+// // === GRATING TRIALS ===
+// // 8 base trials × 12 blocks = 96 trials  
+// // Break after every 3 blocks (24 trials)
+// const gratingCombinations = generateGratingTrialCombinations();
+// for (let block = 1; block <= 12; block++) {
+//   // Add break after every 3 blocks (except the first block)
+//   if (block > 1 && (block - 1) % 3 === 0) {
+//     timeline.push(createBreakTrial());
+//   }
   
-  // Generate randomized block
-  const randomizedBlock = shuffleArray(gratingCombinations);
-  for (const combination of randomizedBlock) {
-    const trialSequence = generateGratingTrialSequence(combination);
-    for (const trial of trialSequence) {
-      timeline.push(trial);
-    }
-  }
-}
+//   // Generate randomized block
+//   const randomizedBlock = shuffleArray(gratingCombinations);
+//   for (const combination of randomizedBlock) {
+//     const trialSequence = generateGratingTrialSequence(combination);
+//     for (const trial of trialSequence) {
+//       timeline.push(trial);
+//     }
+//   }
+// }
 
-// Break between Grating and Grid trials
-timeline.push(createBreakTrial());
+// // Break between Grating and Grid trials
+// timeline.push(createBreakTrial());
 
-// === GRID TRIALS ===
-// 16 base trials × 6 blocks = 96 trials
-// Break after every 2 blocks (32 trials)
-const gridCombinations = generateGridTrialCombinations();
-for (let block = 1; block <= 6; block++) {
-  // Add break after every 2 blocks (except the first block)
-  if (block > 1 && (block - 1) % 2 === 0) {
-    timeline.push(createBreakTrial());
-  }
+// // === GRID TRIALS ===
+// // 16 base trials × 6 blocks = 96 trials
+// // Break after every 2 blocks (32 trials)
+// const gridCombinations = generateGridTrialCombinations();
+// for (let block = 1; block <= 6; block++) {
+//   // Add break after every 2 blocks (except the first block)
+//   if (block > 1 && (block - 1) % 2 === 0) {
+//     timeline.push(createBreakTrial());
+//   }
   
-  // Generate randomized block
-  const randomizedBlock = shuffleArray(gridCombinations);
-  for (const combination of randomizedBlock) {
-    const trialSequence = generateGridTrialSequence(combination);
-    for (const trial of trialSequence) {
-      timeline.push(trial);
-    }
-  }
-}
+//   // Generate randomized block
+//   const randomizedBlock = shuffleArray(gridCombinations);
+//   for (const combination of randomizedBlock) {
+//     const trialSequence = generateGridTrialSequence(combination);
+//     for (const trial of trialSequence) {
+//       timeline.push(trial);
+//     }
+//   }
+// }
 
-// Break between Grid and Bar Chart trials
-timeline.push(createBreakTrial());
+// // Break between Grid and Bar Chart trials
+// timeline.push(createBreakTrial());
 
-// === BAR CHART TRIALS ===
-// 12 base trials × 8 blocks = 96 trials
-// Break after every 2 blocks (24 trials)
-const barChartCombinations = generateBarChartTrialCombinations();
-for (let block = 1; block <= 8; block++) {
-  // Add break after every 2 blocks (except the first block)
-  if (block > 1 && (block - 1) % 2 === 0) {
-    timeline.push(createBreakTrial());
-  }
+// // === BAR CHART TRIALS ===
+// // 12 base trials × 8 blocks = 96 trials
+// // Break after every 2 blocks (24 trials)
+// const barChartCombinations = generateBarChartTrialCombinations();
+// for (let block = 1; block <= 8; block++) {
+//   // Add break after every 2 blocks (except the first block)
+//   if (block > 1 && (block - 1) % 2 === 0) {
+//     timeline.push(createBreakTrial());
+//   }
   
-  // Generate randomized block
-  const randomizedBlock = shuffleArray(barChartCombinations);
-  for (const combination of randomizedBlock) {
-    const trialSequence = generateBarChartTrialSequence(combination);
-    for (const trial of trialSequence) {
-      timeline.push(trial);
-    }
-  }
-}
+//   // Generate randomized block
+//   const randomizedBlock = shuffleArray(barChartCombinations);
+//   for (const combination of randomizedBlock) {
+//     const trialSequence = generateBarChartTrialSequence(combination);
+//     for (const trial of trialSequence) {
+//       timeline.push(trial);
+//     }
+//   }
+// }
 
+// Results and download screen
 timeline.push({
-  type: htmlKeyboardResponse,
-  stimulus: "The experiment is over! Thank you for your participation.",
-  choices: ['Quit']
+  type: jsPsychHtmlButtonResponse,
+  stimulus: function() {
+    // Calculate accuracy for each trial type
+    const allData = jsPsych.data.get();
+    
+    // Filter response trials only (those with 'correct' property)
+    const responseTrials = allData.filter({correct: true}).trials.concat(
+      allData.filter({correct: false}).trials
+    );
+    
+    // Calculate accuracy for Motion trials (signalDirection data)
+    const motionTrials = responseTrials.filter(trial => 
+      trial.correct_direction === 'Up' || trial.correct_direction === 'Down'
+    );
+    const motionCorrect = motionTrials.filter(trial => trial.correct === true).length;
+    const motionAccuracy = motionTrials.length > 0 ? (motionCorrect / motionTrials.length * 100).toFixed(1) : 0;
+    
+    // Calculate accuracy for Grating trials (orientation data)
+    const gratingTrials = responseTrials.filter(trial => 
+      trial.correct_direction === 'Vertical' || trial.correct_direction === 'Horizontal'
+    );
+    const gratingCorrect = gratingTrials.filter(trial => trial.correct === true).length;
+    const gratingAccuracy = gratingTrials.length > 0 ? (gratingCorrect / gratingTrials.length * 100).toFixed(1) : 0;
+    
+    // Calculate accuracy for Grid trials (Black/White data)
+    const gridTrials = responseTrials.filter(trial => 
+      trial.correct_direction === 'Black' || trial.correct_direction === 'White'
+    );
+    const gridCorrect = gridTrials.filter(trial => trial.correct === true).length;
+    const gridAccuracy = gridTrials.length > 0 ? (gridCorrect / gridTrials.length * 100).toFixed(1) : 0;
+    
+    // Calculate accuracy for Bar Chart trials (Same/Different data)
+    const barTrials = responseTrials.filter(trial => 
+      trial.correct_direction === 'Same' || trial.correct_direction === 'Different'
+    );
+    const barCorrect = barTrials.filter(trial => trial.correct === true).length;
+    const barAccuracy = barTrials.length > 0 ? (barCorrect / barTrials.length * 100).toFixed(1) : 0;
+    
+    return `
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          margin: 0;
+          padding: 0;
+          background-color: #ccc;
+          overflow: hidden;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+        }
+        .results-container {
+          text-align: center;
+          color: black;
+          background: white;
+          padding: 40px;
+          border-radius: 15px;
+          box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+          max-width: 600px;
+        }
+        .results-title {
+          font-size: 28px;
+          margin-bottom: 30px;
+          color: #2c3e50;
+        }
+        .accuracy-section {
+          margin: 25px 0;
+        }
+        .accuracy-title {
+          font-size: 22px;
+          margin-bottom: 20px;
+          color: #34495e;
+          border-bottom: 2px solid #ecf0f1;
+          padding-bottom: 10px;
+        }
+        .accuracy-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 15px;
+          margin: 20px 0;
+        }
+        .accuracy-item {
+          background: #f8f9fa;
+          padding: 15px;
+          border-radius: 8px;
+          border-left: 4px solid #3498db;
+        }
+        .accuracy-label {
+          font-size: 16px;
+          color: #7f8c8d;
+          margin-bottom: 5px;
+        }
+        .accuracy-value {
+          font-size: 24px;
+          font-weight: bold;
+          color: #2c3e50;
+        }
+        .download-section {
+          margin-top: 30px;
+          padding-top: 20px;
+          border-top: 2px solid #ecf0f1;
+        }
+        .download-instruction {
+          font-size: 16px;
+          margin-bottom: 20px;
+          color: #7f8c8d;
+        }
+        .summary-stats {
+          background: #e8f4fd;
+          padding: 15px;
+          border-radius: 8px;
+          margin: 20px 0;
+          border-left: 4px solid #3498db;
+        }
+        .summary-text {
+          font-size: 14px;
+          color: #2c3e50;
+          margin: 5px 0;
+        }
+      </style>
+      <div class="results-container">
+        <div class="results-title">🎉 Experiment Complete!</div>
+        
+        <div class="accuracy-section">
+          <div class="accuracy-title">Your Performance Results</div>
+          <div class="accuracy-grid">
+            <div class="accuracy-item">
+              <div class="accuracy-label">Motion Trials</div>
+              <div class="accuracy-value">${motionAccuracy}%</div>
+            </div>
+            <div class="accuracy-item">
+              <div class="accuracy-label">Grating Trials</div>
+              <div class="accuracy-value">${gratingAccuracy}%</div>
+            </div>
+            <div class="accuracy-item">
+              <div class="accuracy-label">Grid Trials</div>
+              <div class="accuracy-value">${gridAccuracy}%</div>
+            </div>
+            <div class="accuracy-item">
+              <div class="accuracy-label">Bar Chart Trials</div>
+              <div class="accuracy-value">${barAccuracy}%</div>
+            </div>
+          </div>
+          
+          <div class="summary-stats">
+            <div class="summary-text"><strong>Motion Trials:</strong> ${motionCorrect}/${motionTrials.length} correct</div>
+            <div class="summary-text"><strong>Grating Trials:</strong> ${gratingCorrect}/${gratingTrials.length} correct</div>
+            <div class="summary-text"><strong>Grid Trials:</strong> ${gridCorrect}/${gridTrials.length} correct</div>
+            <div class="summary-text"><strong>Bar Chart Trials:</strong> ${barCorrect}/${barTrials.length} correct</div>
+          </div>
+        </div>
+        
+        <div class="download-section">
+          <div class="download-instruction">Click the button below to download your detailed results as a CSV file</div>
+        </div>
+      </div>
+    `;
+  },
+  choices: ['Download CSV', 'Finish'],
+  button_html: (choice) => {
+    if (choice === 'Download CSV') {
+      return `<button class="jspsych-btn" id="download-btn" style="background-color: #27ae60; color: white; margin: 10px; padding: 12px 24px; font-size: 16px;">${choice}</button>`;
+    } else {
+      return `<button class="jspsych-btn" id="finish-btn" style="background-color: #95a5a6; color: white; margin: 10px; padding: 12px 24px; font-size: 16px;">${choice}</button>`;
+    }
+  },
+  on_load: function() {
+    const downloadBtn = document.getElementById('download-btn');
+    if (downloadBtn) {
+      downloadBtn.addEventListener('click', function() {
+        // Get all experiment data
+        const allData = jsPsych.data.get();
+        const csvData = allData.csv();
+        
+        // Get user ID for filename
+        const userId = allData.values()[0].user_id || 'unknown';
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+        const filename = `user_${userId}_experiment_results_${timestamp}.csv`;
+        
+        // Create and download the file
+        const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Update button to show download completed
+        downloadBtn.textContent = '✓ Downloaded';
+        downloadBtn.style.backgroundColor = '#2ecc71';
+        downloadBtn.disabled = true;
+      });
+    }
+  },
+  on_finish: function(data) {
+    if (data.response === 1) { // Finish button clicked
+      // Show thank you message
+      document.body.innerHTML = `
+        <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #ccc; font-family: Arial, sans-serif;">
+          <div style="text-align: center; background: white; padding: 40px; border-radius: 15px; box-shadow: 0 6px 12px rgba(0,0,0,0.3);">
+            <h2 style="color: #2c3e50; margin-bottom: 20px;">Thank You!</h2>
+            <p style="font-size: 18px; color: #7f8c8d;">Your participation in this experiment is greatly appreciated.</p>
+            <p style="font-size: 16px; color: #95a5a6; margin-top: 20px;">You may now close this window.</p>
+          </div>
+        </div>
+      `;
+    }
+  }
 });
 
 jsPsych.run(timeline);
