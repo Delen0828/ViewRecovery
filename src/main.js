@@ -763,6 +763,50 @@ function initBarChartStimulus(sight_array, angleArray,screenWidth,screenHeight, 
 const correctAudio = new Audio('/src/audio/correct.mp3');
 const wrongAudio = new Audio('/src/audio/wrong.mp3');
 
+// Function to save data to server
+function saveDataToServer(filename, csvData) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', 'save_data.php', true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState === 4) {
+        console.log('XHR Response Status:', xhr.status);
+        console.log('XHR Response Text:', xhr.responseText);
+        
+        if (xhr.status === 200) {
+          try {
+            const response = JSON.parse(xhr.responseText);
+            if (response.success) {
+              resolve(response);
+            } else {
+              reject(new Error(response.error || 'Server save failed'));
+            }
+          } catch (e) {
+            console.error('JSON Parse Error:', e);
+            console.error('Raw Response:', xhr.responseText);
+            reject(new Error(`Invalid server response: ${xhr.responseText.substring(0, 100)}`));
+          }
+        } else {
+          reject(new Error(`Server error: ${xhr.status} - ${xhr.responseText}`));
+        }
+      }
+    };
+    
+    xhr.onerror = function() {
+      reject(new Error('Network error'));
+    };
+    
+    const postData = {
+      filename: filename,
+      filedata: csvData
+    };
+    
+    xhr.send(JSON.stringify(postData));
+  });
+}
+
 // Utility function to shuffle an array
 function shuffleArray(array) {
   const shuffled = [...array];
@@ -2207,6 +2251,25 @@ timeline.push({
           color: #2c3e50;
           margin: 5px 0;
         }
+        .server-status {
+          background: #fff3cd;
+          border: 1px solid #ffeaa7;
+          padding: 10px;
+          border-radius: 6px;
+          margin: 10px 0;
+          font-size: 14px;
+          color: #856404;
+        }
+        .server-status.success {
+          background: #d4edda;
+          border-color: #c3e6cb;
+          color: #155724;
+        }
+        .server-status.error {
+          background: #f8d7da;
+          border-color: #f5c6cb;
+          color: #721c24;
+        }
       </style>
       <div class="results-container">
         <div class="results-title">🎉 Experiment Complete!</div>
@@ -2241,7 +2304,12 @@ timeline.push({
         </div>
         
         <div class="download-section">
-          <div class="download-instruction">Click the button below to download your detailed results as a CSV file</div>
+          <div class="download-instruction">Your data has been automatically saved to the server</div>
+          <div id="server-save-status" class="server-status">
+            <span id="save-status-text">Saving data to server...</span>
+            <span id="save-status-icon">⏳</span>
+          </div>
+          <div class="download-instruction" style="margin-top: 15px;">You can also download your detailed results as a CSV file</div>
         </div>
       </div>
     `;
@@ -2256,17 +2324,54 @@ timeline.push({
   },
   on_load: function() {
     const downloadBtn = document.getElementById('download-btn');
+    const saveStatusText = document.getElementById('save-status-text');
+    const saveStatusIcon = document.getElementById('save-status-icon');
+    const serverStatus = document.getElementById('server-save-status');
+    
+    // Get all experiment data
+    const allData = jsPsych.data.get();
+    const csvData = allData.csv();
+    
+    // Get user ID for filename
+    const userId = allData.values()[0].user_id || 'unknown';
+    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+    const filename = `user_${userId}_experiment_results_${timestamp}.csv`;
+    
+    console.log('Generated filename:', filename);
+    console.log('User ID:', userId);
+    console.log('Timestamp:', timestamp);
+    
+    // Check if we're in development mode (Vite dev server)
+    const isDevelopment = window.location.port === '5173' || window.location.hostname === 'localhost' && window.location.port !== '8000';
+    
+    if (isDevelopment) {
+      // Skip server save in development mode
+      saveStatusText.textContent = 'Development mode - server save disabled';
+      saveStatusIcon.textContent = 'ℹ️';
+      serverStatus.classList.add('success');
+      serverStatus.style.background = '#e7f3ff';
+      serverStatus.style.borderColor = '#b3d9ff';
+      serverStatus.style.color = '#0066cc';
+    } else {
+      // Automatically save data to server
+      saveDataToServer(filename, csvData)
+        .then(response => {
+          saveStatusText.textContent = `Data saved successfully: ${response.filename}`;
+          saveStatusIcon.textContent = '✅';
+          serverStatus.classList.add('success');
+          console.log('Server save successful:', response);
+        })
+        .catch(error => {
+          saveStatusText.textContent = `Server save failed: ${error.message}`;
+          saveStatusIcon.textContent = '❌';
+          serverStatus.classList.add('error');
+          console.error('Server save error:', error);
+        });
+    }
+    
+    // Download button functionality
     if (downloadBtn) {
       downloadBtn.addEventListener('click', function() {
-        // Get all experiment data
-        const allData = jsPsych.data.get();
-        const csvData = allData.csv();
-        
-        // Get user ID for filename
-        const userId = allData.values()[0].user_id || 'unknown';
-        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-        const filename = `user_${userId}_experiment_results_${timestamp}.csv`;
-        
         // Create and download the file
         const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
