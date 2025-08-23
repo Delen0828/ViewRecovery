@@ -2335,7 +2335,7 @@ timeline.push({
     // Get user ID for filename
     const userId = allData.values()[0].user_id || 'unknown';
     const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-    const filename = `user_${userId}_experiment_results_${timestamp}.csv`;
+    const filename = `user_${userId}_${timestamp}.csv`;
     
     console.log('Generated filename:', filename);
     console.log('User ID:', userId);
