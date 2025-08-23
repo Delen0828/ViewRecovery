@@ -760,8 +760,8 @@ function initBarChartStimulus(sight_array, angleArray,screenWidth,screenHeight, 
   drawCrosshair(svg, width, height, crosshairLen, crosshairStrokeWidth);
 }
 
-const correctAudio = new Audio('/src/audio/correct.mp3');
-const wrongAudio = new Audio('/src/audio/wrong.mp3');
+const correctAudio = new Audio('/audio/correct.mp3');
+const wrongAudio = new Audio('/audio/wrong.mp3');
 
 // Function to save data to server
 function saveDataToServer(filename, csvData) {
