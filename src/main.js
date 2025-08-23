@@ -2061,74 +2061,74 @@ for (let block = 1; block <= 2; block++) {
   }
 }
 
-// // Break between Motion and Grating trials
-// timeline.push(createBreakTrial());
+// Break between Motion and Grating trials
+timeline.push(createBreakTrial());
 
-// // === GRATING TRIALS ===
-// // 8 base trials × 12 blocks = 96 trials  
-// // Break after every 3 blocks (24 trials)
-// const gratingCombinations = generateGratingTrialCombinations();
-// for (let block = 1; block <= 12; block++) {
-//   // Add break after every 3 blocks (except the first block)
-//   if (block > 1 && (block - 1) % 3 === 0) {
-//     timeline.push(createBreakTrial());
-//   }
+// === GRATING TRIALS ===
+// 8 base trials × 12 blocks = 96 trials  
+// Break after every 3 blocks (24 trials)
+const gratingCombinations = generateGratingTrialCombinations();
+for (let block = 1; block <= 12; block++) {
+  // Add break after every 3 blocks (except the first block)
+  if (block > 1 && (block - 1) % 3 === 0) {
+    timeline.push(createBreakTrial());
+  }
   
-//   // Generate randomized block
-//   const randomizedBlock = shuffleArray(gratingCombinations);
-//   for (const combination of randomizedBlock) {
-//     const trialSequence = generateGratingTrialSequence(combination);
-//     for (const trial of trialSequence) {
-//       timeline.push(trial);
-//     }
-//   }
-// }
+  // Generate randomized block
+  const randomizedBlock = shuffleArray(gratingCombinations);
+  for (const combination of randomizedBlock) {
+    const trialSequence = generateGratingTrialSequence(combination);
+    for (const trial of trialSequence) {
+      timeline.push(trial);
+    }
+  }
+}
 
-// // Break between Grating and Grid trials
-// timeline.push(createBreakTrial());
+// Break between Grating and Grid trials
+timeline.push(createBreakTrial());
 
-// // === GRID TRIALS ===
-// // 16 base trials × 6 blocks = 96 trials
-// // Break after every 2 blocks (32 trials)
-// const gridCombinations = generateGridTrialCombinations();
-// for (let block = 1; block <= 6; block++) {
-//   // Add break after every 2 blocks (except the first block)
-//   if (block > 1 && (block - 1) % 2 === 0) {
-//     timeline.push(createBreakTrial());
-//   }
+// === GRID TRIALS ===
+// 16 base trials × 6 blocks = 96 trials
+// Break after every 2 blocks (32 trials)
+const gridCombinations = generateGridTrialCombinations();
+for (let block = 1; block <= 6; block++) {
+  // Add break after every 2 blocks (except the first block)
+  if (block > 1 && (block - 1) % 2 === 0) {
+    timeline.push(createBreakTrial());
+  }
   
-//   // Generate randomized block
-//   const randomizedBlock = shuffleArray(gridCombinations);
-//   for (const combination of randomizedBlock) {
-//     const trialSequence = generateGridTrialSequence(combination);
-//     for (const trial of trialSequence) {
-//       timeline.push(trial);
-//     }
-//   }
-// }
+  // Generate randomized block
+  const randomizedBlock = shuffleArray(gridCombinations);
+  for (const combination of randomizedBlock) {
+    const trialSequence = generateGridTrialSequence(combination);
+    for (const trial of trialSequence) {
+      timeline.push(trial);
+    }
+  }
+}
 
-// // Break between Grid and Bar Chart trials
-// timeline.push(createBreakTrial());
+// Break between Grid and Bar Chart trials
+timeline.push(createBreakTrial());
 
-// // === BAR CHART TRIALS ===
-// // 12 base trials × 8 blocks = 96 trials
-// // Break after every 2 blocks (24 trials)
-// const barChartCombinations = generateBarChartTrialCombinations();
-// for (let block = 1; block <= 8; block++) {
-//   // Add break after every 2 blocks (except the first block)
-//   if (block > 1 && (block - 1) % 2 === 0) {
-//     timeline.push(createBreakTrial());
-//   }
+// === BAR CHART TRIALS ===
+// 12 base trials × 8 blocks = 96 trials
+// Break after every 2 blocks (24 trials)
+const barChartCombinations = generateBarChartTrialCombinations();
+for (let block = 1; block <= 8; block++) {
+  // Add break after every 2 blocks (except the first block)
+  if (block > 1 && (block - 1) % 2 === 0) {
+    timeline.push(createBreakTrial());
+  }
   
-//   // Generate randomized block
-//   const randomizedBlock = shuffleArray(barChartCombinations);
-//   for (const combination of randomizedBlock) {
-//     const trialSequence = generateBarChartTrialSequence(combination);
-//     for (const trial of trialSequence) {
-//       timeline.push(trial);
-//     }
-//   }
-// }
+  // Generate randomized block
+  const randomizedBlock = shuffleArray(barChartCombinations);
+  for (const combination of randomizedBlock) {
+    const trialSequence = generateBarChartTrialSequence(combination);
+    for (const trial of trialSequence) {
+      timeline.push(trial);
+    }
+  }
+}
 
 // Results and download screen
 timeline.push({
