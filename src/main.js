@@ -54,7 +54,39 @@ const TRIAL_CONFIG = {
   }
 };
 
-// Fixed parameters for each stimulus type
+// Staircase configuration - difficulty levels for adaptive testing
+const STAIRCASE_CONFIG = {
+  Motion: {
+    parameter: 'motionSpeed',
+    levels: [3, 4, 5, 6], // pixels/frame - higher = more difficult
+    startLevel: 1 // Start at level 1 (motionSpeed = 4)
+  },
+  Orientation: {
+    parameter: 'stripeSpacing', 
+    levels: [3, 2.5, 2, 1.5], // pixels - smaller spacing = more difficult
+    startLevel: 1 // Start at level 1 (stripeSpacing = 2.5)
+  },
+  Centrality: {
+    parameter: 'centerPercentage',
+    levels: [25, 30, 35, 40], // percent - higher = more difficult (closer to 50%)
+    startLevel: 1 // Start at level 1 (centerPercentage = 30)
+  },
+  Bar: {
+    parameter: 'heightRatio',
+    levels: [[1, 3], [1, 2.5], [1, 2], [1, 1.5]], // ratios - closer ratios = more difficult
+    startLevel: 1 // Start at level 1 (heightRatio = [1, 2.5])
+  }
+};
+
+// Staircase state tracking
+let staircaseState = {
+  Motion: { level: 1, consecutiveCorrect: 0, consecutiveIncorrect: 0, responses: [] },
+  Orientation: { level: 1, consecutiveCorrect: 0, consecutiveIncorrect: 0, responses: [] },
+  Centrality: { level: 1, consecutiveCorrect: 0, consecutiveIncorrect: 0, responses: [] },
+  Bar: { level: 1, consecutiveCorrect: 0, consecutiveIncorrect: 0, responses: [] }
+};
+
+// Fixed parameters for each stimulus type (kept for backward compatibility)
 const STIMULUS_PARAMS = {
   Motion: {
     motionSpeed: 4
@@ -69,6 +101,76 @@ const STIMULUS_PARAMS = {
     heightRatio: [1, 2]
   }
 };
+
+// Staircase Algorithm Functions
+
+// Reset staircase state for selected task
+function resetStaircaseState(taskType) {
+  if (staircaseState[taskType]) {
+    staircaseState[taskType] = {
+      level: STAIRCASE_CONFIG[taskType].startLevel,
+      consecutiveCorrect: 0,
+      consecutiveIncorrect: 0,
+      responses: []
+    };
+    console.log(`🔄 Reset staircase state for ${taskType} to level ${staircaseState[taskType].level}`);
+  }
+}
+
+// Get current difficulty value for a task type
+function getCurrentDifficultyValue(taskType) {
+  const config = STAIRCASE_CONFIG[taskType];
+  const state = staircaseState[taskType];
+  if (!config || !state) return null;
+  
+  const currentLevel = Math.max(0, Math.min(state.level, config.levels.length - 1));
+  return config.levels[currentLevel];
+}
+
+// Update difficulty based on 3-up-1-down staircase rule
+function updateDifficulty(taskType, isCorrect) {
+  const state = staircaseState[taskType];
+  const config = STAIRCASE_CONFIG[taskType];
+  
+  if (!state || !config) return;
+  
+  // Record response
+  state.responses.push({
+    correct: isCorrect,
+    level: state.level,
+    difficultyValue: getCurrentDifficultyValue(taskType)
+  });
+  
+  if (isCorrect) {
+    state.consecutiveCorrect++;
+    state.consecutiveIncorrect = 0;
+    
+    // 3-up rule: increase difficulty after 3 consecutive correct responses
+    if (state.consecutiveCorrect >= 3) {
+      const newLevel = Math.min(state.level + 1, config.levels.length - 1);
+      if (newLevel !== state.level) {
+        state.level = newLevel;
+        console.log(`⬆️ ${taskType}: Difficulty increased to level ${state.level} (${getCurrentDifficultyValue(taskType)})`);
+      }
+      state.consecutiveCorrect = 0;
+    }
+  } else {
+    state.consecutiveIncorrect++;
+    state.consecutiveCorrect = 0;
+    
+    // 1-down rule: decrease difficulty after 1 incorrect response
+    if (state.consecutiveIncorrect >= 1) {
+      const newLevel = Math.max(state.level - 1, 0);
+      if (newLevel !== state.level) {
+        state.level = newLevel;
+        console.log(`⬇️ ${taskType}: Difficulty decreased to level ${state.level} (${getCurrentDifficultyValue(taskType)})`);
+      }
+      state.consecutiveIncorrect = 0;
+    }
+  }
+  
+  console.log(`📊 ${taskType}: Correct=${isCorrect}, Level=${state.level}, ConsecCorrect=${state.consecutiveCorrect}, ConsecIncorrect=${state.consecutiveIncorrect}`);
+}
 
 
 // deg2Pixel function: Convert visual angles to pixel offsets using calculator data
@@ -1097,6 +1199,19 @@ function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, tot
 function createProgressOverlay(taskType, trialNum, totalTrials) {
   if (!SHOW_TASK_PROGRESS) return '';
   
+  // Get current difficulty information
+  const currentLevel = staircaseState[taskType]?.level || 0;
+  const currentValue = getCurrentDifficultyValue(taskType);
+  const parameterName = STAIRCASE_CONFIG[taskType]?.parameter || 'unknown';
+  
+  // Format difficulty value for display
+  let difficultyDisplay = currentValue;
+  if (Array.isArray(currentValue)) {
+    difficultyDisplay = `[${currentValue.join(', ')}]`;
+  } else if (typeof currentValue === 'number') {
+    difficultyDisplay = currentValue.toFixed(1);
+  }
+  
   return `
     <div id="progress-overlay" style="
       position: fixed;
@@ -1109,8 +1224,12 @@ function createProgressOverlay(taskType, trialNum, totalTrials) {
       font-size: 14px;
       font-family: Arial, sans-serif;
       z-index: 1000;
+      line-height: 1.4;
     ">
-      Task: ${taskType} | Trial ${trialNum} of ${totalTrials}
+      <div>Task: ${taskType} | Trial ${trialNum} of ${totalTrials}</div>
+      <div style="font-size: 12px; opacity: 0.9; margin-top: 2px;">
+        Difficulty Level ${currentLevel + 1}/4 | ${parameterName}: ${difficultyDisplay}
+      </div>
     </div>
   `;
 }
@@ -1174,7 +1293,7 @@ function generateBarChartTrialCombinations() {
   return combinations; // 12 combinations
 }
 
-// Function to generate trial sequence with fixed parameters
+// Function to generate trial sequence with adaptive difficulty parameters
 function generateTrialSequence(taskType, trialNum, totalTrials = null) {
   // Use totalTrials from config if not provided
   if (!totalTrials) {
@@ -1183,9 +1302,16 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
   
   console.log(`🔄 generateTrialSequence called - taskType: ${taskType}, trialNum: ${trialNum}, totalTrials: ${totalTrials}`);
   
-  // Get fixed parameters for the task type
-  const params = STIMULUS_PARAMS[taskType];
-  console.log(`📋 Parameters for ${taskType}:`, params);
+  // Get current difficulty value from staircase
+  const currentDifficultyValue = getCurrentDifficultyValue(taskType);
+  const params = { ...STIMULUS_PARAMS[taskType] }; // Start with defaults
+  
+  // Override with current staircase difficulty
+  const paramName = STAIRCASE_CONFIG[taskType].parameter;
+  params[paramName] = currentDifficultyValue;
+  
+  console.log(`📊 ${taskType} adaptive parameters:`, params);
+  console.log(`🎯 Current difficulty level: ${staircaseState[taskType].level}, value: ${currentDifficultyValue}`);
   
   // Randomly select position and other parameters
   const positions = taskType === 'Bar' ? ['upper', 'lower'] : ['left_upper', 'left_lower', 'right_upper', 'right_lower'];
@@ -1398,8 +1524,15 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
         wrongAudio.play();
       }
       
+      // Update staircase difficulty based on response
+      updateDifficulty(taskType, correct);
+      
+      // Store trial data with difficulty information
       data.correct = correct;
       data.userChoice = userChoice;
+      data.difficulty_level = staircaseState[taskType].level;
+      data.difficulty_value = getCurrentDifficultyValue(taskType);
+      data.staircase_parameter = STAIRCASE_CONFIG[taskType].parameter;
     }
   });
   
@@ -1580,8 +1713,15 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
         wrongAudio.play();
       }
       
+      // Update staircase difficulty based on response
+      updateDifficulty(taskType, correct);
+      
+      // Store trial data with difficulty information
       data.correct = correct;
       data.userChoice = userChoice;
+      data.difficulty_level = staircaseState[taskType].level;
+      data.difficulty_value = getCurrentDifficultyValue(taskType);
+      data.staircase_parameter = STAIRCASE_CONFIG[taskType].parameter;
     }
   });
   
@@ -1761,8 +1901,15 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
         wrongAudio.play();
       }
       
+      // Update staircase difficulty based on response
+      updateDifficulty(taskType, correct);
+      
+      // Store trial data with difficulty information
       data.correct = correct;
       data.userChoice = userChoice;
+      data.difficulty_level = staircaseState[taskType].level;
+      data.difficulty_value = getCurrentDifficultyValue(taskType);
+      data.staircase_parameter = STAIRCASE_CONFIG[taskType].parameter;
     }
   });
   
@@ -1942,8 +2089,15 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
         wrongAudio.play();
       }
       
+      // Update staircase difficulty based on response
+      updateDifficulty(taskType, correct);
+      
+      // Store trial data with difficulty information
       data.correct = correct;
       data.userChoice = userChoice;
+      data.difficulty_level = staircaseState[taskType].level;
+      data.difficulty_value = getCurrentDifficultyValue(taskType);
+      data.staircase_parameter = STAIRCASE_CONFIG[taskType].parameter;
     }
   });
   
@@ -2523,6 +2677,9 @@ timeline.push({
         this.classList.add('selected');
         selectedTask = this.dataset.task;
         continueButton.disabled = false;
+        
+        // Reset staircase state for the selected task
+        resetStaircaseState(selectedTask);
         
         // Store selected task in jsPsych data
         jsPsych.data.addProperties({selected_task: selectedTask});
