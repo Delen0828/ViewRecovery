@@ -25,6 +25,7 @@ const SHOW_TASK_PROGRESS = true; // Global flag to enable/disable task progress 
 
 // Simple task selection and configuration
 let selectedTask = null;
+let allTrialParameters = []; // Store all trial parameters for export
 
 // Trial configuration based on testing checklist requirements
 const TRIAL_CONFIG = {
@@ -86,7 +87,7 @@ let staircaseState = {
   Bar: { level: 1, consecutiveCorrect: 0, consecutiveIncorrect: 0, responses: [] }
 };
 
-// Fixed parameters for each stimulus type (kept for backward compatibility)
+// Default parameters for each stimulus type (used as base before applying staircase adjustments)
 const STIMULUS_PARAMS = {
   Motion: {
     motionSpeed: 4
@@ -113,7 +114,7 @@ function resetStaircaseState(taskType) {
       consecutiveIncorrect: 0,
       responses: []
     };
-    console.log(`🔄 Reset staircase state for ${taskType} to level ${staircaseState[taskType].level}`);
+    // Staircase reset
   }
 }
 
@@ -150,7 +151,7 @@ function updateDifficulty(taskType, isCorrect) {
       const newLevel = Math.min(state.level + 1, config.levels.length - 1);
       if (newLevel !== state.level) {
         state.level = newLevel;
-        console.log(`⬆️ ${taskType}: Difficulty increased to level ${state.level} (${getCurrentDifficultyValue(taskType)})`);
+        // Difficulty increased
       }
       state.consecutiveCorrect = 0;
     }
@@ -163,13 +164,13 @@ function updateDifficulty(taskType, isCorrect) {
       const newLevel = Math.max(state.level - 1, 0);
       if (newLevel !== state.level) {
         state.level = newLevel;
-        console.log(`⬇️ ${taskType}: Difficulty decreased to level ${state.level} (${getCurrentDifficultyValue(taskType)})`);
+        // Difficulty decreased
       }
       state.consecutiveIncorrect = 0;
     }
   }
   
-  console.log(`📊 ${taskType}: Correct=${isCorrect}, Level=${state.level}, ConsecCorrect=${state.consecutiveCorrect}, ConsecIncorrect=${state.consecutiveIncorrect}`);
+  // Staircase state updated
 }
 
 
@@ -181,15 +182,15 @@ function deg2Pixel(angleDeg, chinrestData = null, fallbackParams = {}) {
     
     if (calculatorData) {
         // Use calculator data for precise conversion
-        console.log(`Using calculator data - pixels per degree: ${calculatorData.pixelsPerDegree}`);
+        // Using calculator data
         return angleDeg * calculatorData.pixelsPerDegree;
     } else if (chinrestData && chinrestData.px2deg) {
         // Fallback to chinrest data if available (commented out but kept for reference)
-        console.log(`Using chinrest data px2deg: ${chinrestData.px2deg}`);
+        // Using chinrest data
         return angleDeg * chinrestData.px2deg * 2; //deg of px2deg is double sided degree, angleDeg is one sided degree
     } else {
         // Final fallback to manual calculation with provided or default parameters
-        console.warn(`Using fallback parameters - consider running the visual angle calculator`);
+        // Using fallback parameters
         const viewingDistanceCm = fallbackParams.viewingDistanceCm || 80;
         const screenSizeCm = fallbackParams.screenSizeCm || [71, 51];
         const resolution = fallbackParams.resolution || [3840, 2160];
@@ -257,32 +258,6 @@ function createMotionStimulus(sight_array, angleArray,screenWidth,screenHeight, 
   };
 }
 
-// // Function to create drifting grating stimulus
-// function createDriftingGratingStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper') {
-//   return {
-//     type: htmlKeyboardResponse,
-//     stimulus: `
-// 	<style>
-// 		body {
-// 			font-family: Arial, sans-serif;
-// 			margin: 0;
-// 			padding: 0;
-// 			background-color: #ccc;
-// 			overflow: hidden;
-// 		}
-// 	</style>
-	
-// 	<svg id="stimulus" width="100%" height="100%"></svg>
-
-//     `,
-//     choices: "NO_KEYS",  // No key press allowed to skip
-//     trial_duration: DURATION, // Duration 5 seconds
-//     on_load: function() {
-//       // Initialize drifting grating animation
-//       initDriftingGratingAnimation(sight_array, angleArray,screenWidth,screenHeight, chinrestData, position);
-//     }
-//   };
-// }
 
 // Function to create static grating stimulus
 function createGratingStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', orientation = 'vertical', spacing = 5) {
@@ -543,98 +518,6 @@ function initMotionAnimation(sight_array, angleArray,screenWidth,screenHeight, c
   startAnimation();
 }
 
-// Function to initialize drifting grating animation
-// function initDriftingGratingAnimation(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', direction = 'left', spacing = 5, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
-//   const svg = d3.select("#stimulus");
-  
-//   // 获取实际的SVG尺寸
-//   const width = screenWidth;
-//   const height = screenHeight;
-  
-//   // 设置SVG的viewBox以确保正确的缩放
-//   svg.attr("width", width).attr("height", height).attr("viewBox", `0 0 ${width} ${height}`);
-  
-//   // 根据位置参数设置动画中心位置
-//   let animationCenterX, animationCenterY;
-//   const offset = 100;
-  
-//   switch(position) {
-//     case 'left_upper':
-//       animationCenterX = width / 2 - offset;
-//       animationCenterY = height / 2 - offset;
-//       break;
-//     case 'left_lower':
-//       animationCenterX = width / 2 - offset;
-//       animationCenterY = height / 2 + offset;
-//       break;
-//     case 'right_upper':
-//       animationCenterX = width / 2 + offset;
-//       animationCenterY = height / 2 - offset;
-//       break;
-//     case 'right_lower':
-//       animationCenterX = width / 2 + offset;
-//       animationCenterY = height / 2 + offset;
-//       break;
-//     default:
-//       animationCenterX = width / 2 + offset;
-//       animationCenterY = height / 2 + offset;
-//   }
-
-//   function createDriftingGrating(containerId, direction = "left", driftHz = 10, spacing = 5) {
-//     const radius = 80;
-//     const stripeWidth = 3; // 固定条纹宽度为3
-
-//     // Define circular clip mask
-//     svg.append("clipPath")
-//       .attr("id", `clip-${containerId}`)
-//       .append("circle")
-//       .attr("cx", animationCenterX)
-//       .attr("cy", animationCenterY)
-//       .attr("r", radius);
-
-//     // Group for stripes (clipped)
-//     const g = svg.append("g")
-//       .attr("clip-path", `url(#clip-${containerId})`);
-
-//     // Add vertical stripes with specified spacing
-//     const totalWidth = stripeWidth + spacing; // 条纹宽度 + 间距
-//     const numStripes = Math.ceil(width / totalWidth);
-//     for (let i = -numStripes; i < numStripes * 2; i++) {
-//       g.append("rect")
-//         .attr("x", i * totalWidth)
-//         .attr("y", 0)
-//         .attr("width", stripeWidth)
-//         .attr("height", height)
-//         .attr("fill", "#fff");
-//     }
-
-//     // Circle outline
-//     svg.append("circle")
-//       .attr("cx", animationCenterX)
-//       .attr("cy", animationCenterY)
-//       .attr("r", radius)
-//       .attr("fill", "none")
-//       .attr("stroke", "black")
-//       .attr("stroke-width", "0");
-
-//     // Animation
-//     let phase = 0;
-//     const fps = 60;
-//     const pixelsPerSecond = driftHz * totalWidth; // 使用总宽度（条纹+间距）
-
-//     function animate() {
-//       phase += (direction === "left" ? -1 : 1) * (pixelsPerSecond / fps);
-//       g.attr("transform", `translate(${phase % totalWidth}, 0)`);
-//       requestAnimationFrame(animate);
-//     }
-
-//     animate();
-//   }
-
-//   createDriftingGrating("stimulus", direction, 10, spacing);   // 10Hz with specified direction and spacing
-//   // 绘制十字准线
-//   drawCrosshair(svg, width, height, crosshairLen, crosshairStrokeWidth);
-// }
 
 // Function to initialize static grating stimulus
 function initGratingStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData = null, position = 'left_upper', orientation = 'vertical', spacing = 5, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
@@ -926,8 +809,7 @@ function saveDataToServer(filename, csvData) {
     
     xhr.onreadystatechange = function() {
       if (xhr.readyState === 4) {
-        console.log('XHR Response Status:', xhr.status);
-        console.log('XHR Response Text:', xhr.responseText);
+        // XHR Response received
         
         if (xhr.status === 200) {
           try {
@@ -939,7 +821,6 @@ function saveDataToServer(filename, csvData) {
             }
           } catch (e) {
             console.error('JSON Parse Error:', e);
-            console.error('Raw Response:', xhr.responseText);
             reject(new Error(`Invalid server response: ${xhr.responseText.substring(0, 100)}`));
           }
         } else {
@@ -971,68 +852,6 @@ function shuffleArray(array) {
   return shuffled;
 }
 
-// Function to create a 30-second break trial with countdown
-// function createBreakTrial() {
-//   return {
-//     type: htmlKeyboardResponse,
-//     stimulus: function() {
-//       return `
-//         <style>
-//           body {
-//             font-family: Arial, sans-serif;
-//             margin: 0;
-//             padding: 0;
-//             background-color: #ccc;
-//             overflow: hidden;
-//             display: flex;
-//             justify-content: center;
-//             align-items: center;
-//             height: 100vh;
-//           }
-//           .break-container {
-//             text-align: center;
-//             color: black;
-//           }
-//           .break-title {
-//             font-size: 24px;
-//             margin-bottom: 20px;
-//           }
-//           .countdown {
-//             font-size: 48px;
-//             font-weight: bold;
-//             margin: 20px 0;
-//           }
-//           .break-instruction {
-//             font-size: 18px;
-//             margin-top: 20px;
-//           }
-//         </style>
-//         <div class="break-container">
-//           <div class="break-title">Take a Break</div>
-//           <div class="countdown" id="countdown">30</div>
-//           <div class="break-instruction">The next block will start automatically in <span id="seconds">30</span> seconds.</div>
-//         </div>
-//       `;
-//     },
-//     choices: "NO_KEYS",
-//     trial_duration: 30000, // 30 seconds
-//     on_load: function() {
-//       let timeLeft = 30;
-//       const countdownElement = document.getElementById('countdown');
-//       const secondsElement = document.getElementById('seconds');
-      
-//       const timer = setInterval(() => {
-//         timeLeft--;
-//         if (countdownElement) countdownElement.textContent = timeLeft;
-//         if (secondsElement) secondsElement.textContent = timeLeft;
-        
-//         if (timeLeft <= 0) {
-//           clearInterval(timer);
-//         }
-//       }, 1000);
-//     }
-//   };
-// }
 
 // Function to create a ready screen with countdown and spacebar continue
 function createReadyScreen(taskName = "next task") {
@@ -1121,78 +940,159 @@ function createReadyScreen(taskName = "next task") {
   };
 }
 
-// Helper function to create break screen
+// Helper function to create break screen with 30-second countdown (matching initial countdown style)
 function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, totalTrials) {
   return {
     type: htmlKeyboardResponse,
     stimulus: `
       <style>
         body {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          font-family: Arial, sans-serif;
           display: flex;
           justify-content: center;
           align-items: center;
-          height: 100vh;
+          min-height: 100vh;
           margin: 0;
-          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
-        .break-container {
-          background: rgba(255, 255, 255, 0.95);
+        .ready-container {
+          background: white;
+          padding: 60px;
           border-radius: 20px;
-          padding: 40px;
           box-shadow: 0 20px 60px rgba(0,0,0,0.3);
           text-align: center;
           max-width: 600px;
         }
-        .break-title {
+        .ready-title {
           font-size: 36px;
           font-weight: bold;
-          color: #333;
           margin-bottom: 20px;
+          color: #333;
         }
-        .break-info {
-          font-size: 24px;
+        .task-info {
+          font-size: 20px;
+          margin-bottom: 30px;
+          color: #444;
+        }
+        .countdown {
+          font-size: 48px;
+          font-weight: bold;
+          margin: 20px 0;
+          color: #667eea;
+        }
+        .start-instruction {
+          font-size: 18px;
           color: #666;
-          margin: 15px 0;
+          margin-top: 30px;
+        }
+        .spacebar-key {
+          display: inline-block;
+          background: #f0f0f0;
+          padding: 5px 15px;
+          border-radius: 5px;
+          font-family: monospace;
+          font-weight: bold;
+          border: 2px solid #ddd;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .progress-bar-container {
           width: 100%;
-          height: 30px;
+          height: 10px;
           background-color: #e0e0e0;
-          border-radius: 15px;
-          margin: 30px 0;
+          border-radius: 5px;
+          margin: 20px 0;
           overflow: hidden;
         }
         .progress-bar {
           height: 100%;
-          background: linear-gradient(90deg, #667eea, #764ba2);
-          border-radius: 15px;
+          background-color: #667eea;
           width: ${(trialsCompleted / totalTrials) * 100}%;
           transition: width 0.3s ease;
         }
-        .instruction {
-          font-size: 20px;
-          color: #667eea;
-          margin-top: 30px;
-          font-weight: 500;
-        }
       </style>
-      <div class="break-container">
-        <div class="break-title">Time for a Break!</div>
-        <div class="break-info">Break ${breakNum} of ${totalBreaks}</div>
-        <div class="break-info">You've completed ${trialsCompleted} of ${totalTrials} trials</div>
+      <div class="ready-container">
+        <div class="ready-title">Time for a Break!</div>
+        <div class="task-info">Break ${breakNum} of ${totalBreaks}<br>
+        ${taskType} Task<br>
+        Completed ${trialsCompleted} of ${totalTrials} trials</div>
         <div class="progress-bar-container">
           <div class="progress-bar"></div>
         </div>
-        <div class="break-info">${taskType} Task</div>
-        <div class="instruction">Press SPACEBAR when you're ready to continue</div>
+        <div class="countdown" id="countdown">30</div>
+        <div class="start-instruction">Press the <span class="spacebar-key">SPACEBAR</span> to continue early</div>
       </div>
     `,
     choices: [' '],
-    on_start: function() {
-      console.log(`Break screen ${breakNum}/${totalBreaks} - Completed ${trialsCompleted}/${totalTrials} trials`);
+    trial_duration: 30000, // 30 seconds auto-advance
+    on_load: function() {
+      let timeLeft = 30;
+      const countdownElement = document.getElementById('countdown');
+      
+      const timer = setInterval(() => {
+        timeLeft--;
+        if (countdownElement) {
+          countdownElement.textContent = timeLeft;
+        }
+        
+        if (timeLeft <= 0) {
+          clearInterval(timer);
+          if (countdownElement) {
+            countdownElement.textContent = '0';
+          }
+        }
+      }, 1000);
     }
   };
+}
+
+// Function to export trial parameters to a text file
+function exportTrialParameters() {
+  if (allTrialParameters.length === 0) return;
+  
+  // Create text content with one line per trial
+  let content = 'Trial Parameters Export\n';
+  content += `Task: ${selectedTask}\n`;
+  content += `Generated: ${new Date().toISOString()}\n`;
+  content += '=' .repeat(60) + '\n\n';
+  
+  allTrialParameters.forEach((params) => {
+    let line = `Trial ${params.trial}: Type=${params.type}, Position=${params.position}`;
+    
+    // Add task-specific parameters
+    switch(params.type) {
+      case 'Motion':
+        line += `, SignalDirection=${params.signalDirection}, MotionSpeed=${params.motionSpeed}`;
+        break;
+      case 'Orientation':
+        line += `, Orientation=${params.orientation}, StripeSpacing=${params.stripeSpacing}`;
+        break;
+      case 'Centrality':
+        line += `, CenterColor=${params.centerColor}, CenterPercentage=${params.centerPercentage}`;
+        break;
+      case 'Bar':
+        line += `, Heights=${params.heights}`;
+        break;
+    }
+    
+    line += `, DifficultyLevel=${params.difficultyLevel}`;
+    content += line + '\n';
+  });
+  
+  // Create and download the file
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+  const filename = `trial_parameters_${selectedTask}_${timestamp}.txt`;
+  const blob = new Blob([content], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  
+  console.log(`Trial parameters exported to ${filename}`);
 }
 
 // Helper function to create progress overlay HTML
@@ -1234,63 +1134,154 @@ function createProgressOverlay(taskType, trialNum, totalTrials) {
   `;
 }
 
-// Generate base trial combinations for each stimulus type
-function generateMotionTrialCombinations() {
-  const positions = ['left_upper', 'left_lower', 'right_upper', 'right_lower'];
-  const signalDirections = [[0,1], [0,-1]];
-  const combinations = [];
+// // Generate base trial combinations for each stimulus type
+// function generateMotionTrialCombinations() {
+//   const positions = ['left_upper', 'left_lower', 'right_upper', 'right_lower'];
+//   const signalDirections = [[0,1], [0,-1]];
+//   const combinations = [];
   
-  for (const position of positions) {
-    for (const signalDirection of signalDirections) {
-      combinations.push({ position, signalDirection });
-    }
-  }
-  return combinations; // 8 combinations
-}
+//   for (const position of positions) {
+//     for (const signalDirection of signalDirections) {
+//       combinations.push({ position, signalDirection });
+//     }
+//   }
+//   return combinations; // 8 combinations
+// }
 
-function generateGratingTrialCombinations() {
-  const positions = ['left_upper', 'left_lower', 'right_upper', 'right_lower'];
-  const orientations = ['vertical', 'horizontal'];
-  const combinations = [];
+// function generateGratingTrialCombinations() {
+//   const positions = ['left_upper', 'left_lower', 'right_upper', 'right_lower'];
+//   const orientations = ['vertical', 'horizontal'];
+//   const combinations = [];
   
-  for (const position of positions) {
-    for (const orientation of orientations) {
-      combinations.push({ position, orientation });
-    }
-  }
-  return combinations; // 8 combinations
-}
+//   for (const position of positions) {
+//     for (const orientation of orientations) {
+//       combinations.push({ position, orientation });
+//     }
+//   }
+//   return combinations; // 8 combinations
+// }
 
-function generateGridTrialCombinations() {
-  const positions = ['left_upper', 'left_lower', 'right_upper', 'right_lower'];
-  const centerColors = ['black', 'white'];
-  const centerPercentages = [15, 30];
-  const combinations = [];
+// function generateGridTrialCombinations() {
+//   const positions = ['left_upper', 'left_lower', 'right_upper', 'right_lower'];
+//   const centerColors = ['black', 'white'];
+//   const centerPercentages = [15, 30];
+//   const combinations = [];
   
-  for (const position of positions) {
-    for (const centerColor of centerColors) {
-      for (const centerPercentage of centerPercentages) {
-        combinations.push({ position, centerColor, centerPercentage });
+//   for (const position of positions) {
+//     for (const centerColor of centerColors) {
+//       for (const centerPercentage of centerPercentages) {
+//         combinations.push({ position, centerColor, centerPercentage });
+//       }
+//     }
+//   }
+//   return combinations; // 16 combinations
+// }
+
+// function generateBarChartTrialCombinations() {
+//   const positions = ['upper', 'lower'];
+//   const barHeights = [
+//     [1, 1], [2, 2], [3, 3], 
+//     [1, 2], [2, 3], [1, 3]
+//   ];
+//   const combinations = [];
+  
+//   for (const position of positions) {
+//     for (const heights of barHeights) {
+//       combinations.push({ position, heights });
+//     }
+//   }
+//   return combinations; // 12 combinations
+// }
+
+// Balanced condition generation functions
+function getConditionsForTask(taskType) {
+  const positions = taskType === 'Bar' ? ['upper', 'lower'] : ['left_upper', 'left_lower', 'right_upper', 'right_lower'];
+  
+  switch(taskType) {
+    case 'Motion':
+      const motionDirections = [[0, 1], [0, -1]]; // up, down
+      const motionConditions = [];
+      for (const position of positions) {
+        for (const direction of motionDirections) {
+          motionConditions.push({ position, signalDirection: direction });
+        }
       }
-    }
+      return motionConditions; // 8 conditions
+      
+    case 'Orientation':
+      const orientations = ['vertical', 'horizontal'];
+      const orientationConditions = [];
+      for (const position of positions) {
+        for (const orientation of orientations) {
+          orientationConditions.push({ position, orientation });
+        }
+      }
+      return orientationConditions; // 8 conditions
+      
+    case 'Centrality':
+      const centerColors = ['black', 'white'];
+      const centralityConditions = [];
+      for (const position of positions) {
+        for (const centerColor of centerColors) {
+          centralityConditions.push({ position, centerColor });
+        }
+      }
+      return centralityConditions; // 8 conditions
+      
+    case 'Bar':
+      const heightTypes = ['same', 'different']; // same = [1,1], different = heightRatio
+      const barOrders = ['left_higher', 'right_higher']; // which side is higher for different heights
+      const barConditions = [];
+      for (const position of positions) {
+        for (const heightType of heightTypes) {
+          if (heightType === 'same') {
+            // Create two same conditions per position to balance to 8 total
+            barConditions.push({ position, heightType, barOrder: 'equal_1' });
+            barConditions.push({ position, heightType, barOrder: 'equal_2' });
+          } else {
+            for (const barOrder of barOrders) {
+              barConditions.push({ position, heightType, barOrder });
+            }
+          }
+        }
+      }
+      return barConditions; // 8 conditions (2 positions × 4 height combinations)
+      
+    default:
+      throw new Error(`Unknown task type: ${taskType}`);
   }
-  return combinations; // 16 combinations
 }
 
-function generateBarChartTrialCombinations() {
-  const positions = ['upper', 'lower'];
-  const barHeights = [
-    [1, 1], [2, 2], [3, 3], 
-    [1, 2], [2, 3], [1, 3]
-  ];
-  const combinations = [];
+function getConditionFromTrialNumber(taskType, trialNum) {
+  const conditions = getConditionsForTask(taskType);
+  const blockSize = conditions.length; // 8 for all tasks
+  const blockNum = Math.floor((trialNum - 1) / blockSize);
+  const conditionIndex = (trialNum - 1) % blockSize;
   
-  for (const position of positions) {
-    for (const heights of barHeights) {
-      combinations.push({ position, heights });
-    }
+  // Create a shuffled order for this specific block
+  const blockSeed = blockNum * 1000 + taskType.charCodeAt(0); // Simple deterministic seed
+  const shuffledConditions = shuffleArrayDeterministic(conditions, blockSeed);
+  
+  return shuffledConditions[conditionIndex];
+}
+
+// Deterministic shuffle using a simple LCG (Linear Congruential Generator)
+function shuffleArrayDeterministic(array, seed) {
+  const shuffled = [...array];
+  let rng = seed;
+  
+  // Simple LCG parameters (same as used in some languages)
+  const a = 1664525;
+  const c = 1013904223;
+  const m = Math.pow(2, 32);
+  
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    rng = (a * rng + c) % m;
+    const j = Math.floor((rng / m) * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
-  return combinations; // 12 combinations
+  
+  return shuffled;
 }
 
 // Function to generate trial sequence with adaptive difficulty parameters
@@ -1300,7 +1291,7 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
     totalTrials = TRIAL_CONFIG[taskType].totalTrials;
   }
   
-  console.log(`🔄 generateTrialSequence called - taskType: ${taskType}, trialNum: ${trialNum}, totalTrials: ${totalTrials}`);
+  // Generating trial sequence
   
   // Get current difficulty value from staircase
   const currentDifficultyValue = getCurrentDifficultyValue(taskType);
@@ -1310,20 +1301,27 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
   const paramName = STAIRCASE_CONFIG[taskType].parameter;
   params[paramName] = currentDifficultyValue;
   
-  console.log(`📊 ${taskType} adaptive parameters:`, params);
-  console.log(`🎯 Current difficulty level: ${staircaseState[taskType].level}, value: ${currentDifficultyValue}`);
+  // Adaptive parameters set
   
-  // Randomly select position and other parameters
-  const positions = taskType === 'Bar' ? ['upper', 'lower'] : ['left_upper', 'left_lower', 'right_upper', 'right_lower'];
-  const position = positions[Math.floor(Math.random() * positions.length)];
+  // Get balanced condition for this trial number
+  const condition = getConditionFromTrialNumber(taskType, trialNum);
   
   let trialSequence = [];
   
   switch(taskType) {
     case 'Motion':
-      // Randomly select signal direction
-      const signalDirections = [[0, 1], [0, -1]];
-      const signalDirection = signalDirections[Math.floor(Math.random() * signalDirections.length)];
+      const { position, signalDirection } = condition;
+      
+      // Store trial parameters
+      allTrialParameters.push({
+        trial: trialNum,
+        type: 'Motion',
+        position: position,
+        signalDirection: `[${signalDirection[0]},${signalDirection[1]}]`,
+        motionSpeed: params.motionSpeed,
+        difficultyLevel: staircaseState[taskType].level
+      });
+      
       trialSequence = generateMotionTrialSequence(
         { position, signalDirection }, 
         taskType, 
@@ -1334,11 +1332,20 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
       break;
       
     case 'Orientation':
-      // Randomly select orientation
-      const orientations = ['vertical', 'horizontal'];
-      const orientation = orientations[Math.floor(Math.random() * orientations.length)];
+      const { position: orientationPosition, orientation } = condition;
+      
+      // Store trial parameters
+      allTrialParameters.push({
+        trial: trialNum,
+        type: 'Orientation',
+        position: orientationPosition,
+        orientation: orientation,
+        stripeSpacing: params.stripeSpacing,
+        difficultyLevel: staircaseState[taskType].level
+      });
+      
       trialSequence = generateGratingTrialSequence(
-        { position, orientation },
+        { position: orientationPosition, orientation },
         taskType,
         trialNum,
         totalTrials,
@@ -1347,11 +1354,20 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
       break;
       
     case 'Centrality':
-      // Randomly select center color
-      const centerColors = ['black', 'white'];
-      const centerColor = centerColors[Math.floor(Math.random() * centerColors.length)];
+      const { position: centralityPosition, centerColor } = condition;
+      
+      // Store trial parameters
+      allTrialParameters.push({
+        trial: trialNum,
+        type: 'Centrality',
+        position: centralityPosition,
+        centerColor: centerColor,
+        centerPercentage: params.centerPercentage,
+        difficultyLevel: staircaseState[taskType].level
+      });
+      
       trialSequence = generateGridTrialSequence(
-        { position, centerColor, centerPercentage: params.centerPercentage },
+        { position: centralityPosition, centerColor, centerPercentage: params.centerPercentage },
         taskType,
         trialNum,
         totalTrials
@@ -1359,10 +1375,32 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
       break;
       
     case 'Bar':
-      // Use fixed parameters for heights (either same or different based on random chance)
-      const heights = Math.random() < 0.5 ? [1, 1] : params.heightRatio;
+      const { position: barPosition, heightType, barOrder } = condition;
+      
+      // Determine heights based on condition
+      let heights;
+      if (heightType === 'same') {
+        heights = [1, 1];
+      } else {
+        // heightType === 'different'
+        if (barOrder === 'left_higher') {
+          heights = [params.heightRatio[1], params.heightRatio[0]]; // [higher, lower]
+        } else { // 'right_higher'
+          heights = [params.heightRatio[0], params.heightRatio[1]]; // [lower, higher]
+        }
+      }
+      
+      // Store trial parameters
+      allTrialParameters.push({
+        trial: trialNum,
+        type: 'Bar',
+        position: barPosition,
+        heights: `[${heights[0]},${heights[1]}]`,
+        difficultyLevel: staircaseState[taskType].level
+      });
+      
       trialSequence = generateBarChartTrialSequence(
-        { position, heights },
+        { position: barPosition, heights, heightType, barOrder },
         taskType,
         trialNum,
         totalTrials
@@ -1500,10 +1538,13 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
     choices: ['F', 'J'],
     data: {
       correct_direction: signalDirection[1] > 0 ? 'Down' : 'Up',
-      task_type: taskType
+      task_type: taskType,
+      motion_position: position,
+      motion_direction: signalDirection[1] > 0 ? 'Down' : 'Up',
+      motion_direction_vector: `[${signalDirection[0]},${signalDirection[1]}]`
     },
     on_start: function(trial) {
-      console.log(`Motion trial - Position: ${position}, Signal: [${signalDirection[0]},${signalDirection[1]}] - Correct answer: ${trial.data.correct_direction} (Press ${trial.data.correct_direction === 'Up' ? 'F' : 'J'})`);
+      // Motion trial started
     },
     on_load: function() {
       const svg = d3.select("#stimulus");
@@ -1514,7 +1555,7 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
       const userChoice = data.response.toLowerCase() === 'f' ? 'Up' : 'Down';
       const correct = userChoice === data.correct_direction;
       
-      console.log(`Motion trial result - User pressed: ${data.response}, User choice: ${userChoice}, Correct answer: ${data.correct_direction}, Match: ${correct}`);
+      console.log(`Motion trial: ${correct ? 'CORRECT' : 'INCORRECT'} (Answer: ${data.correct_direction})`);
       
       if (correct) {
         correctAudio.currentTime = 0;
@@ -1694,7 +1735,9 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
     choices: ['F', 'J'],
     data: {
       correct_direction: orientation === 'vertical' ? 'Vertical' : 'Horizontal',
-      task_type: taskType
+      task_type: taskType,
+      orientation_position: position,
+      orientation_type: orientation
     },
     on_load: function() {
       const svg = d3.select("#stimulus");
@@ -1704,6 +1747,8 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
     on_finish: function(data) {
       const userChoice = data.response.toLowerCase() === 'f' ? 'Vertical' : 'Horizontal';
       const correct = userChoice === data.correct_direction;
+      
+      console.log(`Orientation trial: ${correct ? 'CORRECT' : 'INCORRECT'} (Answer: ${data.correct_direction})`);
       
       if (correct) {
         correctAudio.currentTime = 0;
@@ -1882,7 +1927,9 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
     choices: ['F', 'J'],
     data: {
       correct_direction: (centerColor === 'black' && centerPercentage > 50) || (centerColor === 'white' && centerPercentage < 50) ? 'Black' : 'White',
-      task_type: taskType
+      task_type: taskType,
+      centrality_position: position,
+      center_color: centerColor
     },
     on_load: function() {
       const svg = d3.select("#stimulus");
@@ -1892,6 +1939,8 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
     on_finish: function(data) {
       const userChoice = data.response.toLowerCase() === 'f' ? 'Black' : 'White';
       const correct = userChoice === data.correct_direction;
+      
+      console.log(`Centrality trial: ${correct ? 'CORRECT' : 'INCORRECT'} (Answer: ${data.correct_direction})`);
       
       if (correct) {
         correctAudio.currentTime = 0;
@@ -1945,7 +1994,7 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
 }
 
 function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum = 1, totalTrials = 1) {
-  const { position, heights } = combination;
+  const { position, heights, heightType, barOrder } = combination;
   const trialSequence = [];
   
   // Pre-stimulus crosshair
@@ -2070,7 +2119,11 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
     choices: ['F', 'J'],
     data: {
       correct_direction: heights[0] === heights[1] ? 'Same' : 'Different',
-      task_type: taskType
+      task_type: taskType,
+      bar_position: position,
+      bar_height_type: heightType,
+      bar_height_configuration: barOrder,
+      bar_heights_array: `[${heights[0]},${heights[1]}]`
     },
     on_load: function() {
       const svg = d3.select("#stimulus");
@@ -2080,6 +2133,8 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
     on_finish: function(data) {
       const userChoice = data.response.toLowerCase() === 'f' ? 'Same' : 'Different';
       const correct = userChoice === data.correct_direction;
+      
+      console.log(`Bar trial: ${correct ? 'CORRECT' : 'INCORRECT'} (Answer: ${data.correct_direction})`);
       
       if (correct) {
         correctAudio.currentTime = 0;
@@ -2684,8 +2739,7 @@ timeline.push({
         // Store selected task in jsPsych data
         jsPsych.data.addProperties({selected_task: selectedTask});
         
-        console.log(`✓ User selected task: ${selectedTask}`);
-        console.log(`✓ Global selectedTask variable set to: ${selectedTask}`);
+        // Task selected
       });
     });
   },
@@ -2797,12 +2851,14 @@ function generateSelectedTaskTrials() {
   const trials = [];
   
   if (selectedTask) {
+    // Reset trial parameters array for new task
+    allTrialParameters = [];
+    
     const config = TRIAL_CONFIG[selectedTask];
     const totalTrials = config.totalTrials;
     const breakEvery = config.breakEvery;
     
-    console.log(`🚀 Dynamically generating ${totalTrials} trials for ${selectedTask} task`);
-    console.log(`📊 Configuration: ${config.blocks} blocks × ${config.trialsPerBlock} trials, breaks every ${breakEvery} trials`);
+    // Dynamically generating trials
     
     // Add the ready screen
     trials.push(conditionalReadyScreen);
@@ -2837,6 +2893,9 @@ function generateSelectedTaskTrials() {
     }
     
     console.log(`✅ Generated ready screen, ${totalTrials} trial sequences, and ${breakCounter} breaks for ${selectedTask}`);
+    
+    // Export trial parameters after generation
+    exportTrialParameters();
   }
   
   return trials;

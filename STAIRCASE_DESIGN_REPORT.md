@@ -47,13 +47,18 @@ Successfully implemented a 3-up-1-down adaptive stair casing algorithm for the V
 #### New Flow (Single Task with Adaptation)
 1. User ID input
 2. Visual angle calculator
-3. **Stimulus Selection Screen** (NEW)
+3. **Stimulus Selection Screen**
    - User selects ONE task type
    - Clear visual interface with descriptions
-4. Selected task with adaptive difficulty (50 trials max)
+4. Selected task with adaptive difficulty
    - Difficulty adjusts based on 3-up-1-down rule
    - Real-time performance tracking
-5. Results
+5. Trials and Breaks
+   -  Motion: Trial counter shows 1-96 (12 blocks × 8 trials), breaks every 24 trials
+   -  Orientation: Trial counter shows 1-96 (12 blocks × 8 trials), breaks every 24 trials 
+   -  Centrality: Trial counter shows 1-96 (6 blocks × 16 trials), breaks every 32 trials
+   -  Bar: Trial counter shows 1-96 (8 blocks × 12 trials), breaks every 24 trials
+6. Results
 
 ### 4. Key Code Modifications
 
