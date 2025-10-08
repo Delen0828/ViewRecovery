@@ -1,4 +1,7 @@
 #!/bin/bash
+# Delete running pm2 php
+echo "Deleting pm2 instance"
+pm2 delete php-server
 
 # Build the project
 echo "Building the project..."
