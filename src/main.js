@@ -404,7 +404,7 @@ function initMotionAnimation(sight_array, angleArray,screenWidth,screenHeight, c
 			animationCenterX = width / 2 + offset;
 			animationCenterY = height / 2 + offset;
 	}
-  const radius = 80;
+  const radius = deg2Pixel(5, chinrestData)/2;
   const dotRadius = 4;
   const numDots = 30;
   const numSignalDots = 20;
@@ -557,7 +557,7 @@ function initGratingStimulus(sight_array, angleArray, screenWidth, screenHeight,
   }
 
   function createStaticGrating(containerId, orientation = "vertical", spacing = 5) {
-    const radius = 80;
+    const radius = deg2Pixel(5, chinrestData)/2;
     const stripeWidth = 3; // 固定条纹宽度为3
 
     // Define circular clip mask
@@ -3200,6 +3200,44 @@ timeline.push({
         downloadBtn.textContent = '✓ Downloaded';
         downloadBtn.style.backgroundColor = '#2ecc71';
         downloadBtn.disabled = true;
+        
+        // Add success message
+        const downloadSection = document.querySelector('.download-section');
+        if (downloadSection) {
+          // Check if success message already exists
+          if (!document.getElementById('download-success-message')) {
+            const successMessage = document.createElement('div');
+            successMessage.id = 'download-success-message';
+            successMessage.style.cssText = `
+              background-color: #d4edda;
+              border: 1px solid #c3e6cb;
+              color: #155724;
+              padding: 12px 20px;
+              border-radius: 8px;
+              margin-top: 20px;
+              font-size: 16px;
+              font-weight: 500;
+              text-align: center;
+              animation: fadeIn 0.5s ease-in;
+            `;
+            successMessage.innerHTML = '✅ Download successful! Your CSV file has been saved to your Downloads folder.';
+            
+            // Add CSS animation
+            if (!document.getElementById('download-success-animation')) {
+              const style = document.createElement('style');
+              style.id = 'download-success-animation';
+              style.innerHTML = `
+                @keyframes fadeIn {
+                  from { opacity: 0; transform: translateY(-10px); }
+                  to { opacity: 1; transform: translateY(0); }
+                }
+              `;
+              document.head.appendChild(style);
+            }
+            
+            downloadSection.appendChild(successMessage);
+          }
+        }
       });
     }
   },

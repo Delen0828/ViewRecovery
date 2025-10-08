@@ -17,7 +17,7 @@ Successfully implemented a 3-up-1-down adaptive stair casing algorithm for the V
 - **Parameter**: `motionSpeed`
 - **Levels**: [3, 4, 5, 6] pixels/frame
 - **Effect**: Higher speed makes direction discrimination more difficult
-
+<!-- 100, 71.4, 51, 36.4, 26, 18.6, 13.3, and 0% of signal dots.  -->
 #### Orientation Discrimination  
 - **Parameter**: `stripeSpacing` (spacing between stripes)
 - **Levels**: [3, 2.5, 2, 1.5] pixels
