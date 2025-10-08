@@ -88,17 +88,19 @@
     </div>
 
     <script>
-        // Staircase configuration from main.js
+        // Staircase configuration from main.js - using tilt degree for Motion and Orientation only
         const STAIRCASE_CONFIG = {
             Motion: {
-                parameter: 'motionSpeed',
-                levels: [3, 4, 5, 6], // pixels/frame - higher = more difficult
-                startLevel: 1
+                parameter: 'tiltDegree',
+                levels: [0, 10, 20, 30], // degrees - higher = more difficult
+                startLevel: 1,
+                fixedParams: { motionSpeedDegreePerSecond: 10 }
             },
             Orientation: {
-                parameter: 'stripeSpacing', 
-                levels: [3, 2.5, 2, 1.5], // pixels - smaller spacing = more difficult
-                startLevel: 1
+                parameter: 'tiltDegree', 
+                levels: [0, 10, 20, 30], // degrees - higher = more difficult
+                startLevel: 1,
+                fixedParams: { stripeSpacingDegree: 0.05 }
             },
             Centrality: {
                 parameter: 'centerPercentage',
@@ -154,7 +156,7 @@
         }
 
         // Motion stimulus function (continuous animation)
-        function initMotionAnimation(containerId, motionSpeed = 3, signalDirection = [0, 1]) {
+        function initMotionAnimation(containerId, motionSpeedDegreePerSecond = 10, tiltDegree = 0, signalDirection = [0, 1]) {
             const svg = d3.select(`#${containerId}`);
             const width = 380;
             const height = 300;
@@ -171,8 +173,12 @@
             let dots = [];
             let directions = [];
             
-            // Draw circle boundary
-            svg.append("circle")
+            // Create a group for the rotated stimulus
+            const stimulusGroup = svg.append("g")
+                .attr("transform", `rotate(${tiltDegree}, ${centerX}, ${centerY})`);
+            
+            // Draw circle boundary (in the rotated group)
+            stimulusGroup.append("circle")
                 .attr("cx", centerX)
                 .attr("cy", centerY)
                 .attr("r", radius)
@@ -189,7 +195,7 @@
                     if (x * x + y * y <= radius * radius) break;
                 }
                 
-                const dot = svg.append("circle")
+                const dot = stimulusGroup.append("circle")
                     .attr("cx", centerX + x)
                     .attr("cy", centerY + y)
                     .attr("r", dotRadius)
@@ -207,10 +213,13 @@
             
             // Continuous animation
             function updateDots() {
+                // Convert degrees/second to degrees/frame by dividing by frame rate (60fps)
+                const motionSpeedDegreesPerFrame = motionSpeedDegreePerSecond / 60;
+                const motionSpeedPixels = deg2Pixel(motionSpeedDegreesPerFrame);
                 for (let i = 0; i < numDots; i++) {
                     let d = dots[i];
-                    d.x += directions[i][0] * motionSpeed;
-                    d.y += directions[i][1] * motionSpeed;
+                    d.x += directions[i][0] * motionSpeedPixels;
+                    d.y += directions[i][1] * motionSpeedPixels;
                     
                     // Wrap around if outside circle
                     if (d.x * d.x + d.y * d.y > radius * radius) {
@@ -240,7 +249,7 @@
         }
 
         // Grating stimulus function
-        function initGratingStimulus(containerId, orientation = "vertical", spacing = 5) {
+        function initGratingStimulus(containerId, orientation = "vertical", spacingDegree = 0.05, tiltDegree = 0) {
             const svg = d3.select(`#${containerId}`);
             const width = 380;
             const height = 300;
@@ -252,19 +261,24 @@
             const radius = 60;
             const stripeWidth = 3;
             
-            // Define circular clip mask
-            svg.append("clipPath")
+            // Create a group for the rotated stimulus
+            const stimulusGroup = svg.append("g")
+                .attr("transform", `rotate(${tiltDegree}, ${centerX}, ${centerY})`);
+            
+            // Define circular clip mask (in the rotated group)
+            stimulusGroup.append("clipPath")
                 .attr("id", `clip-${containerId}`)
                 .append("circle")
                 .attr("cx", centerX)
                 .attr("cy", centerY)
                 .attr("r", radius);
             
-            // Group for stripes (clipped)
-            const g = svg.append("g")
+            // Group for stripes (clipped and rotated)
+            const g = stimulusGroup.append("g")
                 .attr("clip-path", `url(#clip-${containerId})`);
             
-            const totalWidth = stripeWidth + spacing;
+            const spacingPixels = deg2Pixel(spacingDegree);
+            const totalWidth = stripeWidth + spacingPixels;
             
             if (orientation === "vertical") {
                 const numStripes = Math.ceil(width / totalWidth);
@@ -288,8 +302,8 @@
                 }
             }
             
-            // Circle outline
-            svg.append("circle")
+            // Circle outline (in the rotated group)
+            stimulusGroup.append("circle")
                 .attr("cx", centerX)
                 .attr("cy", centerY)
                 .attr("r", radius)
@@ -420,17 +434,18 @@
             motionHeader.className = 'section-header';
             motionHeader.innerHTML = `
                 <h2>Motion Detection</h2>
-                <p>Signal dots moving in coherent direction with varying speeds</p>
+                <p>Signal dots moving in coherent direction with varying tilt degree</p>
+                <p><strong>Fixed Parameters:</strong> Motion Speed: ${STAIRCASE_CONFIG.Motion.fixedParams.motionSpeedDegreePerSecond}°/second</p>
             `;
             grid.appendChild(motionHeader);
             
-            STAIRCASE_CONFIG.Motion.levels.forEach((speed, i) => {
+            STAIRCASE_CONFIG.Motion.levels.forEach((tiltDegree, i) => {
                 const container = document.createElement('div');
                 container.className = 'stimulus-container';
                 container.innerHTML = `
                     <div class="stimulus-header">
                         <div class="stimulus-title">Motion - Level ${i + 1}</div>
-                        <div class="stimulus-params">Speed: ${speed} px/frame</div>
+                        <div class="stimulus-params">Tilt: ${tiltDegree}°</div>
                     </div>
                     <svg id="motion-${i}" class="stimulus-svg"></svg>
                 `;
@@ -442,17 +457,18 @@
             orientationHeader.className = 'section-header';
             orientationHeader.innerHTML = `
                 <h2>Orientation Discrimination</h2>
-                <p>Vertical and horizontal gratings with varying stripe spacing</p>
+                <p>Vertical and horizontal gratings with varying tilt degree</p>
+                <p><strong>Fixed Parameters:</strong> Stripe Spacing: ${STAIRCASE_CONFIG.Orientation.fixedParams.stripeSpacingDegree}°</p>
             `;
             grid.appendChild(orientationHeader);
             
-            STAIRCASE_CONFIG.Orientation.levels.forEach((spacing, i) => {
+            STAIRCASE_CONFIG.Orientation.levels.forEach((tiltDegree, i) => {
                 const container = document.createElement('div');
                 container.className = 'stimulus-container';
                 container.innerHTML = `
                     <div class="stimulus-header">
                         <div class="stimulus-title">Orientation - Level ${i + 1}</div>
-                        <div class="stimulus-params">Spacing: ${spacing} px</div>
+                        <div class="stimulus-params">Tilt: ${tiltDegree}°</div>
                     </div>
                     <svg id="orientation-${i}" class="stimulus-svg"></svg>
                 `;
@@ -507,13 +523,13 @@
         // Initialize all stimuli
         function initializeAllStimuli() {
             // Initialize Motion animations
-            STAIRCASE_CONFIG.Motion.levels.forEach((speed, i) => {
-                initMotionAnimation(`motion-${i}`, speed, [0, 1]);
+            STAIRCASE_CONFIG.Motion.levels.forEach((tiltDegree, i) => {
+                initMotionAnimation(`motion-${i}`, STAIRCASE_CONFIG.Motion.fixedParams.motionSpeedDegreePerSecond, tiltDegree, [0, 1]);
             });
             
             // Initialize Orientation gratings
-            STAIRCASE_CONFIG.Orientation.levels.forEach((spacing, i) => {
-                initGratingStimulus(`orientation-${i}`, i % 2 === 0 ? "vertical" : "horizontal", spacing);
+            STAIRCASE_CONFIG.Orientation.levels.forEach((tiltDegree, i) => {
+                initGratingStimulus(`orientation-${i}`, i % 2 === 0 ? "vertical" : "horizontal", STAIRCASE_CONFIG.Orientation.fixedParams.stripeSpacingDegree, tiltDegree);
             });
             
             // Initialize Centrality grids

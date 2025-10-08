@@ -58,24 +58,24 @@ const TRIAL_CONFIG = {
 // Staircase configuration - difficulty levels for adaptive testing
 const STAIRCASE_CONFIG = {
   Motion: {
-    parameter: 'motionSpeed',
-    levels: [3, 4, 5, 6], // pixels/frame - higher = more difficult
-    startLevel: 1 // Start at level 1 (motionSpeed = 4)
+    parameter: 'tiltDegree',
+    levels: [0, 10, 20, 30], // degrees - higher = more difficult
+    startLevel: 0 // Start at level 1 (tiltDegree = 10)
   },
   Orientation: {
-    parameter: 'stripeSpacing', 
-    levels: [3, 2.5, 2, 1.5], // pixels - smaller spacing = more difficult
-    startLevel: 1 // Start at level 1 (stripeSpacing = 2.5)
+    parameter: 'tiltDegree', 
+    levels: [0, 10, 20, 30], // degrees - higher = more difficult
+    startLevel: 0 // Start at level 1 (tiltDegree = 10)
   },
   Centrality: {
     parameter: 'centerPercentage',
     levels: [25, 30, 35, 40], // percent - higher = more difficult (closer to 50%)
-    startLevel: 1 // Start at level 1 (centerPercentage = 30)
+    startLevel: 0 // Start at level 1 (centerPercentage = 30)
   },
   Bar: {
     parameter: 'heightRatio',
     levels: [[1, 3], [1, 2.5], [1, 2], [1, 1.5]], // ratios - closer ratios = more difficult
-    startLevel: 1 // Start at level 1 (heightRatio = [1, 2.5])
+    startLevel: 0 // Start at level 1 (heightRatio = [1, 2.5])
   }
 };
 
@@ -90,16 +90,18 @@ let staircaseState = {
 // Default parameters for each stimulus type (used as base before applying staircase adjustments)
 const STIMULUS_PARAMS = {
   Motion: {
-    motionSpeed: 4
+    motionSpeedDegreePerSecond: 10, // Fixed parameter in degrees/second
+    tiltDegree: 0                  // Starting tilt degree (will be adjusted by staircase)
   },
   Orientation: {
-    stripeSpacing: 2.5
+    stripeSpacingDegree: 0.05, // Fixed parameter in degrees
+    tiltDegree: 0             // Starting tilt degree (will be adjusted by staircase)
   },
   Centrality: {
-    centerPercentage: 30
+    centerPercentage: 30  // Starting center percentage (will be adjusted by staircase)
   },
   Bar: {
-    heightRatio: [1, 2]
+    heightRatio: [1, 2]   // Starting height ratio (will be adjusted by staircase)
   }
 };
 
@@ -205,18 +207,6 @@ function deg2Pixel(angleDeg, chinrestData = null, fallbackParams = {}) {
     }
 }
 
-const sight_array=[
-[NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN],
-[NaN,NaN,NaN,0,15,12,22,NaN,NaN,NaN],
-[NaN,NaN,0,0,7,15,23,21,NaN,NaN],
-[NaN,0,10,3,20,28,25,22,26,NaN],
-[0,0,0,0,0,26,26,4,26,NaN],
-[0,0,0,0,0,25,25,20,26,NaN],
-[NaN,0,0,0,0,24,24,25,24,NaN],
-[NaN,NaN,0,0,0,24,23,22,NaN,NaN],
-[NaN,NaN,NaN,0,0,14,23,NaN,NaN,NaN],
-[NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN]
-]
 function linspace(start, end, num) {
     const step = (end - start) / (num - 1);
     return Array.from({ length: num }, (_, i) => start + i * step);
@@ -230,7 +220,7 @@ const angleArray = yValues.map(y => xValues.map(x => [x, y]));
 
 
 // Function to create motion stimulus
-function createMotionStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, signalDirection = [-1, 1], position = 'left_upper', motionSpeed = 3) {
+function createMotionStimulus(angleArray,screenWidth,screenHeight, chinrestData = null, signalDirection = [-1, 1], position = 'left_upper', motionSpeedDegreePerSecond = 10, tiltDegree = 0) {
   return {
     type: htmlKeyboardResponse,
     stimulus: `
@@ -252,15 +242,15 @@ function createMotionStimulus(sight_array, angleArray,screenWidth,screenHeight, 
     trial_duration: DURATION, // Duration 5 seconds
     on_load: function() {
       // D3.js is already loaded in HTML, initialize animation directly
-	//   console.log(sight_array, angleArray);
-      initMotionAnimation(sight_array, angleArray,screenWidth,screenHeight, chinrestData, signalDirection, position, motionSpeed);
+	//   console.log(angleArray);
+      initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData, signalDirection, position, motionSpeedDegreePerSecond, tiltDegree);
     }
   };
 }
 
 
 // Function to create static grating stimulus
-function createGratingStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', orientation = 'vertical', spacing = 5) {
+function createGratingStimulus(angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', orientation = 'vertical', spacingDegree = 0.05, tiltDegree = 0) {
   return {
     type: htmlKeyboardResponse,
     stimulus: `
@@ -281,13 +271,13 @@ function createGratingStimulus(sight_array, angleArray,screenWidth,screenHeight,
     trial_duration: DURATION, // Duration for static display
     on_load: function() {
       // Initialize static grating display
-      initGratingStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData, position, orientation, spacing);
+      initGratingStimulus(angleArray,screenWidth,screenHeight, chinrestData, position, orientation, spacingDegree, tiltDegree);
     }
   };
 }
 
 // Function to create grid stimulus
-function createGridStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', centerColor = 'black', centerPercentage = 25) {
+function createGridStimulus(angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', centerColor = 'black', centerPercentage = 25) {
   return {
     type: htmlKeyboardResponse,
     stimulus: `
@@ -307,13 +297,13 @@ function createGridStimulus(sight_array, angleArray,screenWidth,screenHeight, ch
     trial_duration: DURATION, // Duration 5 seconds
     on_load: function() {
       // Initialize grid stimulus
-      initGridStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData, position, centerColor, centerPercentage);
+      initGridStimulus(angleArray,screenWidth,screenHeight, chinrestData, position, centerColor, centerPercentage);
     }
   };
 }
 
 // Function to create bar chart stimulus with adaptive heights
-function createBarChartStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', heights = [1, 1]) {
+function createBarChartStimulus(angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', heights = [1, 1]) {
   return {
     type: htmlKeyboardResponse,
     stimulus: `
@@ -333,7 +323,7 @@ function createBarChartStimulus(sight_array, angleArray,screenWidth,screenHeight
     trial_duration: DURATION, // Duration 5 seconds
     on_load: function() {
       // Initialize bar chart stimulus
-      initBarChartStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData, position, heights);
+      initBarChartStimulus(angleArray,screenWidth,screenHeight, chinrestData, position, heights);
     }
   };
 }
@@ -369,7 +359,7 @@ function drawCrosshair(svg, width, height, crosshairLen = crosshairLength, cross
 }
 
 // Function to initialize motion animation
-function initMotionAnimation(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, signalDirection = [-1, 1], position = 'left_upper', motionSpeed = 3, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
+function initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData = null, signalDirection = [-1, 1], position = 'left_upper', motionSpeedDegreePerSecond = 10, tiltDegree = 0, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
   const svg = d3.select("#stimulus");
   
   // 获取实际的SVG尺寸
@@ -414,14 +404,18 @@ function initMotionAnimation(sight_array, angleArray,screenWidth,screenHeight, c
   let dots = [];
   let directions = [];
   let animationTimeout = null;
+  
+  // Create a group for the stimulus that can be rotated
+  const stimulusGroup = svg.append("g")
+    .attr("transform", `rotate(${tiltDegree}, ${animationCenterX}, ${animationCenterY})`);
 
   function drawCircle() {
     // Clear previous circles
-    svg.selectAll("circle").remove();
+    stimulusGroup.selectAll("circle").remove();
     svg.selectAll(".crosshair").remove();
     
-    // Draw light ring at the lost view center
-    svg.append("circle")
+    // Draw light ring at the lost view center (in the rotated group)
+    stimulusGroup.append("circle")
       .attr("cx", animationCenterX)
       .attr("cy", animationCenterY)
       .attr("r", radius)
@@ -429,13 +423,13 @@ function initMotionAnimation(sight_array, angleArray,screenWidth,screenHeight, c
       .attr("stroke", "black")
       .attr("stroke-width", "0");
 
-    // 绘制屏幕中央的十字准线
+    // 绘制屏幕中央的十字准线 (not rotated)
     drawCrosshair(svg, width, height, crosshairLen, crosshairStrokeWidth);
   }
 
   function initializeDots() {
     // Clear previous dots
-    svg.selectAll("circle:not(:first-child)").remove();
+    stimulusGroup.selectAll("circle:not(:first-child)").remove();
     dots = [];
     directions = [];
 
@@ -446,7 +440,7 @@ function initMotionAnimation(sight_array, angleArray,screenWidth,screenHeight, c
         y = Math.random() * 2 * radius - radius;
         if (x * x + y * y <= radius * radius) break;
       }
-      const dot = svg.append("circle")
+      const dot = stimulusGroup.append("circle")
         .attr("cx", animationCenterX + x)
         .attr("cy", animationCenterY + y)
         .attr("r", dotRadius)
@@ -463,10 +457,13 @@ function initMotionAnimation(sight_array, angleArray,screenWidth,screenHeight, c
   }
 
   function updateDots() {
+    // Convert degrees/second to degrees/frame by dividing by frame rate (60fps)
+    const motionSpeedDegreesPerFrame = motionSpeedDegreePerSecond / 60;
+    const motionSpeedPixels = deg2Pixel(motionSpeedDegreesPerFrame, chinrestData);
     for (let i = 0; i < numDots; i++) {
       let d = dots[i];
-      d.x += directions[i][0] * motionSpeed;
-      d.y += directions[i][1] * motionSpeed;
+      d.x += directions[i][0] * motionSpeedPixels;
+      d.y += directions[i][1] * motionSpeedPixels;
 
       // Check if outside the light ring
       if (d.x * d.x + d.y * d.y > radius * radius) {
@@ -520,7 +517,7 @@ function initMotionAnimation(sight_array, angleArray,screenWidth,screenHeight, c
 
 
 // Function to initialize static grating stimulus
-function initGratingStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData = null, position = 'left_upper', orientation = 'vertical', spacing = 5, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
+function initGratingStimulus(angleArray, screenWidth, screenHeight, chinrestData = null, position = 'left_upper', orientation = 'vertical', spacingDegree = 0.05, tiltDegree = 0, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
   const svg = d3.select("#stimulus");
   
   // 获取实际的SVG尺寸
@@ -560,19 +557,24 @@ function initGratingStimulus(sight_array, angleArray, screenWidth, screenHeight,
     const radius = deg2Pixel(5, chinrestData)/2;
     const stripeWidth = 3; // 固定条纹宽度为3
 
-    // Define circular clip mask
-    svg.append("clipPath")
+    // Create a group for the rotated stimulus
+    const stimulusGroup = svg.append("g")
+      .attr("transform", `rotate(${tiltDegree}, ${stimulusCenterX}, ${stimulusCenterY})`);
+
+    // Define circular clip mask (in the rotated group)
+    stimulusGroup.append("clipPath")
       .attr("id", `clip-${containerId}`)
       .append("circle")
       .attr("cx", stimulusCenterX)
       .attr("cy", stimulusCenterY)
       .attr("r", radius);
 
-    // Group for stripes (clipped)
-    const g = svg.append("g")
+    // Group for stripes (clipped and rotated)
+    const g = stimulusGroup.append("g")
       .attr("clip-path", `url(#clip-${containerId})`);
 
-    const totalWidth = stripeWidth + spacing; // 条纹宽度 + 间距
+    const spacingPixels = deg2Pixel(spacingDegree, chinrestData);
+    const totalWidth = stripeWidth + spacingPixels; // 条纹宽度 + 间距
     
     if (orientation === "vertical") {
       // Add vertical stripes
@@ -598,8 +600,8 @@ function initGratingStimulus(sight_array, angleArray, screenWidth, screenHeight,
       }
     }
 
-    // Circle outline
-    svg.append("circle")
+    // Circle outline (in the rotated group)
+    stimulusGroup.append("circle")
       .attr("cx", stimulusCenterX)
       .attr("cy", stimulusCenterY)
       .attr("r", radius)
@@ -614,7 +616,7 @@ function initGratingStimulus(sight_array, angleArray, screenWidth, screenHeight,
 }
 
 // Function to initialize grid stimulus
-function initGridStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', centerColor = 'black', centerPercentage = 25, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
+function initGridStimulus(angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', centerColor = 'black', centerPercentage = 25, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
   const svg = d3.select("#stimulus");
   
   // 获取实际的SVG尺寸
@@ -725,7 +727,7 @@ function initGridStimulus(sight_array, angleArray,screenWidth,screenHeight, chin
 }
 
 // Function to initialize bar chart stimulus
-function initBarChartStimulus(sight_array, angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', heights = [1, 1], crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
+function initBarChartStimulus(angleArray,screenWidth,screenHeight, chinrestData = null, position = 'left_upper', heights = [1, 1], crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
   const svg = d3.select("#stimulus");
   
   // 获取实际的SVG尺寸
@@ -1061,20 +1063,20 @@ function exportTrialParameters() {
     // Add task-specific parameters
     switch(params.type) {
       case 'Motion':
-        line += `, SignalDirection=${params.signalDirection}, MotionSpeed=${params.motionSpeed}`;
+        line += `, SignalDirection=${params.signalDirection}, MotionSpeedDegreePerSecond=${params.motionSpeedDegreePerSecond}`;
         break;
       case 'Orientation':
-        line += `, Orientation=${params.orientation}, StripeSpacing=${params.stripeSpacing}`;
+        line += `, Orientation=${params.orientation}, StripeSpacingDegree=${params.stripeSpacingDegree}`;
         break;
       case 'Centrality':
-        line += `, CenterColor=${params.centerColor}, CenterPercentage=${params.centerPercentage}`;
+        line += `, CenterColor=${params.centerColor}, CenterPercentage=${params.centerPercentage}, RatioOrder=${params.ratioOrder}`;
         break;
       case 'Bar':
         line += `, Heights=${params.heights}`;
         break;
     }
     
-    line += `, DifficultyLevel=${params.difficultyLevel}`;
+    line += `, TiltDegree=${params.tiltDegree}, DifficultyLevel=${params.difficultyLevel}`;
     content += line + '\n';
   });
   
@@ -1220,13 +1222,16 @@ function getConditionsForTask(taskType) {
       
     case 'Centrality':
       const centerColors = ['black', 'white'];
+      const ratioOrders = ['center_more', 'center_less']; // which way the center color dominates
       const centralityConditions = [];
       for (const position of positions) {
         for (const centerColor of centerColors) {
-          centralityConditions.push({ position, centerColor });
+          for (const ratioOrder of ratioOrders) {
+            centralityConditions.push({ position, centerColor, ratioOrder });
+          }
         }
       }
-      return centralityConditions; // 8 conditions
+      return centralityConditions; // 16 conditions
       
     case 'Bar':
       const heightTypes = ['same', 'different']; // same = [1,1], different = heightRatio
@@ -1318,7 +1323,8 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
         type: 'Motion',
         position: position,
         signalDirection: `[${signalDirection[0]},${signalDirection[1]}]`,
-        motionSpeed: params.motionSpeed,
+        motionSpeedDegreePerSecond: params.motionSpeedDegreePerSecond,
+        tiltDegree: params.tiltDegree,
         difficultyLevel: staircaseState[taskType].level
       });
       
@@ -1327,7 +1333,8 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
         taskType, 
         trialNum, 
         totalTrials,
-        params.motionSpeed
+        params.motionSpeedDegreePerSecond,
+        params.tiltDegree
       );
       break;
       
@@ -1340,7 +1347,8 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
         type: 'Orientation',
         position: orientationPosition,
         orientation: orientation,
-        stripeSpacing: params.stripeSpacing,
+        stripeSpacingDegree: params.stripeSpacingDegree,
+        tiltDegree: params.tiltDegree,
         difficultyLevel: staircaseState[taskType].level
       });
       
@@ -1349,12 +1357,23 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
         taskType,
         trialNum,
         totalTrials,
-        params.stripeSpacing
+        params.stripeSpacingDegree,
+        params.tiltDegree
       );
       break;
       
     case 'Centrality':
-      const { position: centralityPosition, centerColor } = condition;
+      const { position: centralityPosition, centerColor, ratioOrder } = condition;
+      
+      // Calculate final percentage based on ratioOrder and staircase level
+      let finalCenterPercentage;
+      if (ratioOrder === 'center_more') {
+        // Center color should be MORE dominant (> 50%)
+        finalCenterPercentage = 100 - params.centerPercentage;
+      } else {
+        // Center color should be LESS dominant (< 50%)  
+        finalCenterPercentage = params.centerPercentage;
+      }
       
       // Store trial parameters
       allTrialParameters.push({
@@ -1362,12 +1381,13 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
         type: 'Centrality',
         position: centralityPosition,
         centerColor: centerColor,
-        centerPercentage: params.centerPercentage,
+        centerPercentage: finalCenterPercentage,
+        ratioOrder: ratioOrder,
         difficultyLevel: staircaseState[taskType].level
       });
       
       trialSequence = generateGridTrialSequence(
-        { position: centralityPosition, centerColor, centerPercentage: params.centerPercentage },
+        { position: centralityPosition, centerColor, centerPercentage: finalCenterPercentage },
         taskType,
         trialNum,
         totalTrials
@@ -1412,7 +1432,7 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
 }
 
 // Function to generate a single trial sequence for motion stimulus
-function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum = 1, totalTrials = 1, motionSpeed = 3) {
+function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum = 1, totalTrials = 1, motionSpeedDegreePerSecond = 10, tiltDegree = 0) {
   const { position, signalDirection } = combination;
   const trialSequence = [];
   
@@ -1447,13 +1467,13 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
   trialSequence.push({
     type: htmlKeyboardResponse,
     stimulus: function() {
-      return createMotionStimulus(sight_array, angleArray, screenWidth, screenHeight, null, signalDirection, position).stimulus + createProgressOverlay(taskType, trialNum, totalTrials);
+      return createMotionStimulus(angleArray, screenWidth, screenHeight, null, signalDirection, position).stimulus + createProgressOverlay(taskType, trialNum, totalTrials);
     },
     choices: "NO_KEYS",
     trial_duration: DURATION,
     on_load: function() {
       initMotionAnimation(
-        sight_array, angleArray, screenWidth, screenHeight, null, signalDirection, position, motionSpeed, crosshairLength, crosshairStroke
+        angleArray, screenWidth, screenHeight, null, signalDirection, position, motionSpeedDegreePerSecond, tiltDegree, crosshairLength, crosshairStroke
       );
     }
   });
@@ -1609,7 +1629,7 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
 }
 
 // Function to generate similar trial sequences for other stimulus types
-function generateGratingTrialSequence(combination, taskType = 'Orientation', trialNum = 1, totalTrials = 1, stripeSpacing = 5) {
+function generateGratingTrialSequence(combination, taskType = 'Orientation', trialNum = 1, totalTrials = 1, stripeSpacingDegree = 0.05, tiltDegree = 0) {
   const { position, orientation } = combination;
   const trialSequence = [];
   
@@ -1645,13 +1665,13 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
     type: htmlKeyboardResponse,
     stimulus: function() {
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-      return createGratingStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position).stimulus + createProgressOverlay(taskType, trialNum, totalTrials);
+      return createGratingStimulus(angleArray, screenWidth, screenHeight, chinrestData, position).stimulus + createProgressOverlay(taskType, trialNum, totalTrials);
     },
     choices: "NO_KEYS",
     trial_duration: DURATION,
     on_load: function() {
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-      initGratingStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, orientation, stripeSpacing, crosshairLength, crosshairStroke);
+      initGratingStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, orientation, stripeSpacingDegree, tiltDegree, crosshairLength, crosshairStroke);
     }
   });
   
@@ -1837,13 +1857,13 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
     type: htmlKeyboardResponse,
     stimulus: function() {
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-      return createGridStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, centerPercentage).stimulus + createProgressOverlay(taskType, trialNum, totalTrials);
+      return createGridStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, centerPercentage).stimulus + createProgressOverlay(taskType, trialNum, totalTrials);
     },
     choices: "NO_KEYS",
     trial_duration: DURATION,
     on_load: function() {
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-      initGridStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, centerPercentage, crosshairLength, crosshairStroke);
+      initGridStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, centerPercentage, crosshairLength, crosshairStroke);
     }
   });
   
@@ -2029,13 +2049,13 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
     type: htmlKeyboardResponse,
     stimulus: function() {
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-      return createBarChartStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, heights).stimulus + createProgressOverlay(taskType, trialNum, totalTrials);
+      return createBarChartStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, heights).stimulus + createProgressOverlay(taskType, trialNum, totalTrials);
     },
     choices: "NO_KEYS",
     trial_duration: DURATION,
     on_load: function() {
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-      initBarChartStimulus(sight_array, angleArray, screenWidth, screenHeight, chinrestData, position, heights, crosshairLength, crosshairStroke);
+      initBarChartStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, heights, crosshairLength, crosshairStroke);
     }
   });
   
