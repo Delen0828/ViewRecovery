@@ -25,7 +25,7 @@ const SHOW_TASK_PROGRESS = true; // Global flag to enable/disable task progress 
 
 // Simple task selection and configuration
 let selectedTask = null;
-let allTrialParameters = []; // Store all trial parameters for export
+// let allTrialParameters = []; // Store all trial parameters for export
 
 // Trial configuration based on testing checklist requirements
 const TRIAL_CONFIG = {
@@ -1048,54 +1048,54 @@ function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, tot
 }
 
 // Function to export trial parameters to a text file
-function exportTrialParameters() {
-  if (allTrialParameters.length === 0) return;
-  
-  // Create text content with one line per trial
-  let content = 'Trial Parameters Export\n';
-  content += `Task: ${selectedTask}\n`;
-  content += `Generated: ${new Date().toISOString()}\n`;
-  content += '=' .repeat(60) + '\n\n';
-  
-  allTrialParameters.forEach((params) => {
-    let line = `Trial ${params.trial}: Type=${params.type}, Position=${params.position}`;
-    
-    // Add task-specific parameters
-    switch(params.type) {
-      case 'Motion':
-        line += `, SignalDirection=${params.signalDirection}, MotionSpeedDegreePerSecond=${params.motionSpeedDegreePerSecond}`;
-        break;
-      case 'Orientation':
-        line += `, Orientation=${params.orientation}, StripeSpacingDegree=${params.stripeSpacingDegree}`;
-        break;
-      case 'Centrality':
-        line += `, CenterColor=${params.centerColor}, CenterPercentage=${params.centerPercentage}, RatioOrder=${params.ratioOrder}`;
-        break;
-      case 'Bar':
-        line += `, Heights=${params.heights}`;
-        break;
-    }
-    
-    line += `, TiltDegree=${params.tiltDegree}, DifficultyLevel=${params.difficultyLevel}`;
-    content += line + '\n';
-  });
-  
-  // Create and download the file
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-  const filename = `trial_parameters_${selectedTask}_${timestamp}.txt`;
-  const blob = new Blob([content], { type: 'text/plain' });
-  const url = URL.createObjectURL(blob);
-  
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  
-  console.log(`Trial parameters exported to ${filename}`);
-}
+// function exportTrialParameters() {
+//   if (allTrialParameters.length === 0) return;
+//   
+//   // Create text content with one line per trial
+//   let content = 'Trial Parameters Export\n';
+//   content += `Task: ${selectedTask}\n`;
+//   content += `Generated: ${new Date().toISOString()}\n`;
+//   content += '=' .repeat(60) + '\n\n';
+//   
+//   allTrialParameters.forEach((params) => {
+//     let line = `Trial ${params.trial}: Type=${params.type}, Position=${params.position}`;
+//     
+//     // Add task-specific parameters
+//     switch(params.type) {
+//       case 'Motion':
+//         line += `, SignalDirection=${params.signalDirection}, MotionSpeedDegreePerSecond=${params.motionSpeedDegreePerSecond}`;
+//         break;
+//       case 'Orientation':
+//         line += `, Orientation=${params.orientation}, StripeSpacingDegree=${params.stripeSpacingDegree}`;
+//         break;
+//       case 'Centrality':
+//         line += `, CenterColor=${params.centerColor}, CenterPercentage=${params.centerPercentage}, RatioOrder=${params.ratioOrder}`;
+//         break;
+//       case 'Bar':
+//         line += `, Heights=${params.heights}`;
+//         break;
+//     }
+//     
+//     line += `, TiltDegree=${params.tiltDegree}, DifficultyLevel=${params.difficultyLevel}`;
+//     content += line + '\n';
+//   });
+//   
+//   // Create and download the file
+//   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+//   const filename = `trial_parameters_${selectedTask}_${timestamp}.txt`;
+//   const blob = new Blob([content], { type: 'text/plain' });
+//   const url = URL.createObjectURL(blob);
+//   
+//   const a = document.createElement('a');
+//   a.href = url;
+//   a.download = filename;
+//   document.body.appendChild(a);
+//   a.click();
+//   document.body.removeChild(a);
+//   URL.revokeObjectURL(url);
+//   
+//   console.log(`Trial parameters exported to ${filename}`);
+// }
 
 // Helper function to create progress overlay HTML
 function createProgressOverlay(taskType, trialNum, totalTrials) {
@@ -1318,15 +1318,15 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
       const { position, signalDirection } = condition;
       
       // Store trial parameters
-      allTrialParameters.push({
-        trial: trialNum,
-        type: 'Motion',
-        position: position,
-        signalDirection: `[${signalDirection[0]},${signalDirection[1]}]`,
-        motionSpeedDegreePerSecond: params.motionSpeedDegreePerSecond,
-        tiltDegree: params.tiltDegree,
-        difficultyLevel: staircaseState[taskType].level
-      });
+      // allTrialParameters.push({
+      //   trial: trialNum,
+      //   type: 'Motion',
+      //   position: position,
+      //   signalDirection: `[${signalDirection[0]},${signalDirection[1]}]`,
+      //   motionSpeedDegreePerSecond: params.motionSpeedDegreePerSecond,
+      //   tiltDegree: params.tiltDegree,
+      //   difficultyLevel: staircaseState[taskType].level
+      // });
       
       trialSequence = generateMotionTrialSequence(
         { position, signalDirection }, 
@@ -1342,15 +1342,15 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
       const { position: orientationPosition, orientation } = condition;
       
       // Store trial parameters
-      allTrialParameters.push({
-        trial: trialNum,
-        type: 'Orientation',
-        position: orientationPosition,
-        orientation: orientation,
-        stripeSpacingDegree: params.stripeSpacingDegree,
-        tiltDegree: params.tiltDegree,
-        difficultyLevel: staircaseState[taskType].level
-      });
+      // allTrialParameters.push({
+      //   trial: trialNum,
+      //   type: 'Orientation',
+      //   position: orientationPosition,
+      //   orientation: orientation,
+      //   stripeSpacingDegree: params.stripeSpacingDegree,
+      //   tiltDegree: params.tiltDegree,
+      //   difficultyLevel: staircaseState[taskType].level
+      // });
       
       trialSequence = generateGratingTrialSequence(
         { position: orientationPosition, orientation },
@@ -1376,15 +1376,15 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
       }
       
       // Store trial parameters
-      allTrialParameters.push({
-        trial: trialNum,
-        type: 'Centrality',
-        position: centralityPosition,
-        centerColor: centerColor,
-        centerPercentage: finalCenterPercentage,
-        ratioOrder: ratioOrder,
-        difficultyLevel: staircaseState[taskType].level
-      });
+      // allTrialParameters.push({
+      //   trial: trialNum,
+      //   type: 'Centrality',
+      //   position: centralityPosition,
+      //   centerColor: centerColor,
+      //   centerPercentage: finalCenterPercentage,
+      //   ratioOrder: ratioOrder,
+      //   difficultyLevel: staircaseState[taskType].level
+      // });
       
       trialSequence = generateGridTrialSequence(
         { position: centralityPosition, centerColor, centerPercentage: finalCenterPercentage },
@@ -1411,13 +1411,13 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
       }
       
       // Store trial parameters
-      allTrialParameters.push({
-        trial: trialNum,
-        type: 'Bar',
-        position: barPosition,
-        heights: `[${heights[0]},${heights[1]}]`,
-        difficultyLevel: staircaseState[taskType].level
-      });
+      // allTrialParameters.push({
+      //   trial: trialNum,
+      //   type: 'Bar',
+      //   position: barPosition,
+      //   heights: `[${heights[0]},${heights[1]}]`,
+      //   difficultyLevel: staircaseState[taskType].level
+      // });
       
       trialSequence = generateBarChartTrialSequence(
         { position: barPosition, heights, heightType, barOrder },
@@ -2872,7 +2872,7 @@ function generateSelectedTaskTrials() {
   
   if (selectedTask) {
     // Reset trial parameters array for new task
-    allTrialParameters = [];
+    // allTrialParameters = [];
     
     const config = TRIAL_CONFIG[selectedTask];
     const totalTrials = config.totalTrials;
@@ -2915,7 +2915,7 @@ function generateSelectedTaskTrials() {
     console.log(`✅ Generated ready screen, ${totalTrials} trial sequences, and ${breakCounter} breaks for ${selectedTask}`);
     
     // Export trial parameters after generation
-    exportTrialParameters();
+    // exportTrialParameters();
   }
   
   return trials;
