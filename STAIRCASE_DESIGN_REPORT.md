@@ -1,7 +1,7 @@
 # Stair Casing Implementation Design Report
 
 ## Executive Summary
-Successfully implemented a 3-up-1-down adaptive stair casing algorithm for the ViewRecover jsPsych experiment. The system now allows participants to select a single stimulus type and adjusts difficulty dynamically based on performance.
+Successfully implemented a 3-up-1-down adaptive stair casing algorithm for the ViewRecover jsPsych experiment with 8 difficulty levels. The system now allows participants to select a single stimulus type and adjusts difficulty dynamically based on performance across a wider range of difficulty parameters.
 
 ## Implementation Details
 
@@ -11,27 +11,40 @@ Successfully implemented a 3-up-1-down adaptive stair casing algorithm for the V
 - **Bounds**: Difficulty levels are clamped to min/max values for each stimulus type
 - **State Tracking**: System maintains consecutive correct/incorrect counts and response history
 
-### 2. Difficulty Parameters by Stimulus Type
+### 2. Difficulty Parameters by Stimulus Type (8 Levels)
 
 #### Motion Discrimination
-- **Parameter**: `motionSpeed`
-- **Levels**: [3, 4, 5, 6] pixels/frame
-- **Effect**: Higher speed makes direction discrimination more difficult
-<!-- 100, 71.4, 51, 36.4, 26, 18.6, 13.3, and 0% of signal dots.  -->
+- **Parameter**: `directionRange`
+- **Levels**: [0, 25.71, 51.43, 77.14, 102.86, 128.57, 154.29, 180] degrees
+- **Range**: 0° (easiest - all dots move straight down) to 180° (hardest - complete randomness)
+- **Effect**: Higher direction range makes motion detection more difficult
+- **Implementation**: All 30 dots are signal dots moving within ±directionRange degrees from vertical (downward)
+- **No noise dots**: Unlike previous implementation, all dots contribute to the signal
+
 #### Orientation Discrimination  
-- **Parameter**: `stripeSpacing` (spacing between stripes)
-- **Levels**: [3, 2.5, 2, 1.5] pixels
-- **Effect**: Closer spacing makes orientation discrimination more difficult
+- **Parameter**: `tiltDegree`
+- **Levels**: [0, 6.43, 12.86, 19.29, 25.71, 32.14, 38.57, 45] degrees
+- **Range**: 0° (easiest) to 45° (hardest)
+- **Effect**: Greater tilt angle makes orientation discrimination more difficult
 
 #### Centrality Discrimination
 - **Parameter**: `centerPercentage` 
-- **Levels**: [25, 30, 35, 40] percent
-- **Effect**: Higher percentage (closer to 50%) makes centrality discrimination more difficult
+- **Levels**: [10, 17.14, 24.29, 31.43, 38.57, 42.86, 46.43, 50] percent
+- **Range**: 10% (easiest, 10:90 ratio) to 50% (hardest, 50:50 ratio)
+- **Effect**: Closer to 50% makes centrality discrimination more difficult
 
 #### Bar Comparison
-- **Parameter**: `heightRatio` (for different height cases)
-- **Levels**: [[1,3], [1,2.5], [1,2], [1,1.5]]
-- **Effect**: Closer ratios make height comparison more difficult
+- **Parameter**: `heightRatio`
+- **Levels**: 
+  - Level 1: [1, 3] - easiest (1:3 ratio)
+  - Level 2: [1.14, 2.86]
+  - Level 3: [1.29, 2.71]
+  - Level 4: [1.43, 2.57]
+  - Level 5: [1.57, 2.43]
+  - Level 6: [1.71, 2.29]
+  - Level 7: [1.86, 2.14]
+  - Level 8: [2, 2] - hardest (2:2 ratio)
+- **Effect**: Lower bar increases from 1→2, higher bar decreases from 3→2, making comparison more difficult
 
 ### 3. User Experience Flow
 
@@ -73,9 +86,9 @@ Successfully implemented a 3-up-1-down adaptive stair casing algorithm for the V
 
 #### Modified Components
 - Trial generation functions now accept difficulty parameters:
-  - `createMotionStimulus()` - added `motionSpeed` parameter
+  - `createMotionStimulus()` - uses `directionRange` instead of `tiltDegree`
   - `createGratingStimulus()` - added `spacing` parameter  
-  - `initMotionAnimation()` - uses dynamic `motionSpeed`
+  - `initMotionAnimation()` - implements direction range logic with all signal dots
   - `initGratingStimulus()` - uses dynamic `spacing`
 - Response handlers now:
   - Track difficulty level in trial data
@@ -92,7 +105,7 @@ Successfully implemented a 3-up-1-down adaptive stair casing algorithm for the V
 ### 5. Data Collection Enhancements
 
 Each trial now records:
-- `difficulty_level`: Current level index (0-3)
+- `difficulty_level`: Current level index (0-7)
 - `difficulty_value`: Actual parameter value used
 - `correct`: Whether response was correct
 - Standard trial data (RT, response, etc.)
@@ -108,13 +121,18 @@ This enables analysis of:
 #### Advantages
 - More efficient testing (single task focus)
 - Adaptive to individual ability levels
-- Better threshold estimation
+- Better threshold estimation with 8 levels providing finer granularity
 - Reduced testing fatigue
 - Simple, reliable trial execution using jsPsych's conditional system
 - No complex runtime timeline manipulation
+- Wider difficulty range covering more participant abilities
+- Motion stimulus improvements:
+  - All signal dots (no noise) provide clearer signal
+  - Direction range parameter is more intuitive than rotation
+  - 0-180° range covers full spectrum from perfect coherence to randomness
 
 #### Limitations
-- Maximum 50 trials per session (configurable)
+- Maximum 96 trials per session (configurable)
 - Fixed step sizes (1 level at a time)
 - No reversal tracking for threshold calculation
 - Pre-generates more trial nodes than needed (but skips unused ones)
@@ -137,4 +155,4 @@ Potential improvements:
 
 ## Conclusion
 
-The stair casing implementation successfully transforms the experiment from a fixed-difficulty, multi-task battery into an adaptive, single-task assessment tool. This provides more precise difficulty calibration and improved participant experience while maintaining data quality for clinical assessment purposes.
+The stair casing implementation successfully transforms the experiment from a fixed-difficulty, multi-task battery into an adaptive, single-task assessment tool with 8 difficulty levels. The expanded range from 4 to 8 levels provides more precise difficulty calibration, better coverage of participant abilities, and improved threshold estimation while maintaining data quality for clinical assessment purposes.

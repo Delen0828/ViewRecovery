@@ -58,24 +58,34 @@ const TRIAL_CONFIG = {
 // Staircase configuration - difficulty levels for adaptive testing
 const STAIRCASE_CONFIG = {
   Motion: {
-    parameter: 'tiltDegree',
-    levels: [0, 10, 20, 30], // degrees - higher = more difficult
-    startLevel: 0 // Start at level 1 (tiltDegree = 10)
+    parameter: 'directionRange',
+    levels: [0, 25.71, 51.43, 77.14, 102.86, 128.57, 154.29, 180], // degrees - higher = more difficult (0° to 180° range from vertical)
+    startLevel: 0, // Start at level 0 (directionRange = 0)
+    fixedParams: { motionSpeedDegreePerSecond: 10 }
   },
   Orientation: {
     parameter: 'tiltDegree', 
-    levels: [0, 10, 20, 30], // degrees - higher = more difficult
-    startLevel: 0 // Start at level 1 (tiltDegree = 10)
+    levels: [0, 6.43, 12.86, 19.29, 25.71, 32.14, 38.57, 45], // degrees - higher = more difficult (0° to 45°)
+    startLevel: 0 // Start at level 0 (tiltDegree = 0)
   },
   Centrality: {
     parameter: 'centerPercentage',
-    levels: [25, 30, 35, 40], // percent - higher = more difficult (closer to 50%)
-    startLevel: 0 // Start at level 1 (centerPercentage = 30)
+    levels: [10, 17.14, 24.29, 31.43, 38.57, 42.86, 46.43, 50], // percent - higher = more difficult (10% to 50%)
+    startLevel: 0 // Start at level 0 (centerPercentage = 10)
   },
   Bar: {
     parameter: 'heightRatio',
-    levels: [[1, 3], [1, 2.5], [1, 2], [1, 1.5]], // ratios - closer ratios = more difficult
-    startLevel: 0 // Start at level 1 (heightRatio = [1, 2.5])
+    levels: [
+      [1, 3], 
+      [1.14, 2.86], 
+      [1.29, 2.71], 
+      [1.43, 2.57], 
+      [1.57, 2.43], 
+      [1.71, 2.29], 
+      [1.86, 2.14], 
+      [2, 2]
+    ], // ratios - closer ratios = more difficult (lower: 1→2, higher: 3→2)
+    startLevel: 0 // Start at level 0 (heightRatio = [1, 3])
   }
 };
 
@@ -90,8 +100,8 @@ let staircaseState = {
 // Default parameters for each stimulus type (used as base before applying staircase adjustments)
 const STIMULUS_PARAMS = {
   Motion: {
-    motionSpeedDegreePerSecond: 10, // Fixed parameter in degrees/second
-    tiltDegree: 0                  // Starting tilt degree (will be adjusted by staircase)
+    motionSpeedDegreePerSecond: 5, // Fixed parameter in degrees/second (matching stimulus-display.html)
+    directionRange: 0            // Starting direction range (will be adjusted by staircase)
   },
   Orientation: {
     stripeSpacingDegree: 0.05, // Fixed parameter in degrees
@@ -220,7 +230,7 @@ const angleArray = yValues.map(y => xValues.map(x => [x, y]));
 
 
 // Function to create motion stimulus
-function createMotionStimulus(angleArray,screenWidth,screenHeight, chinrestData = null, signalDirection = [-1, 1], position = 'left_upper', motionSpeedDegreePerSecond = 10, tiltDegree = 0) {
+function createMotionStimulus(angleArray,screenWidth,screenHeight, chinrestData = null, signalDirection = [-1, 1], position = 'left_upper', motionSpeedDegreePerSecond = 5, directionRange = 0) {
   return {
     type: htmlKeyboardResponse,
     stimulus: `
@@ -243,7 +253,7 @@ function createMotionStimulus(angleArray,screenWidth,screenHeight, chinrestData 
     on_load: function() {
       // D3.js is already loaded in HTML, initialize animation directly
 	//   console.log(angleArray);
-      initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData, signalDirection, position, motionSpeedDegreePerSecond, tiltDegree);
+      initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData, signalDirection, position, motionSpeedDegreePerSecond, directionRange);
     }
   };
 }
@@ -359,7 +369,7 @@ function drawCrosshair(svg, width, height, crosshairLen = crosshairLength, cross
 }
 
 // Function to initialize motion animation
-function initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData = null, signalDirection = [-1, 1], position = 'left_upper', motionSpeedDegreePerSecond = 10, tiltDegree = 0, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
+function initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData = null, signalDirection = [-1, 1], position = 'left_upper', motionSpeedDegreePerSecond = 5, directionRange = 0, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
   const svg = d3.select("#stimulus");
   
   // 获取实际的SVG尺寸
@@ -396,8 +406,7 @@ function initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData =
 	}
   const radius = deg2Pixel(5, chinrestData)/2;
   const dotRadius = 4;
-  const numDots = 30;
-  const numSignalDots = 20;
+  const numDots = 30; // All dots are now signal dots
   // motionSpeed is now passed as parameter
 
   let interval = null;
@@ -405,9 +414,8 @@ function initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData =
   let directions = [];
   let animationTimeout = null;
   
-  // Create a group for the stimulus that can be rotated
-  const stimulusGroup = svg.append("g")
-    .attr("transform", `rotate(${tiltDegree}, ${animationCenterX}, ${animationCenterY})`);
+  // No rotation needed - dots will move within direction range from vertical
+  const stimulusGroup = svg.append("g");
 
   function drawCircle() {
     // Clear previous circles
@@ -444,15 +452,16 @@ function initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData =
         .attr("cx", animationCenterX + x)
         .attr("cy", animationCenterY + y)
         .attr("r", dotRadius)
-        .attr("fill", i < numSignalDots ? "white" : "white"); // Signal dots in red
+        .attr("fill", "white"); // All dots are white
       dots.push({ elem: dot, x: x, y: y });
 
-      if (i < numSignalDots) {
-        directions.push(signalDirection);
-      } else {
-        const theta = Math.random() * 2 * Math.PI;
-        directions.push([Math.cos(theta), Math.sin(theta)]);
-      }
+      // All dots are signal dots moving within direction range from vertical
+      // Direction range: 0 means straight up/down, 180 means ±180° from vertical
+      // signalDirection[1] > 0 means down, signalDirection[1] < 0 means up
+      const baseAngle = signalDirection[1] > 0 ? 90 : -90; // 90° is down, -90° is up in standard coordinates
+      const angleFromVertical = (Math.random() * 2 - 1) * directionRange; // Random angle within ±directionRange
+      const radians = (baseAngle + angleFromVertical) * Math.PI / 180;
+      directions.push([Math.cos(radians), Math.sin(radians)]);
     }
   }
 
@@ -476,10 +485,11 @@ function initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData =
             break;
           }
         }
-        if (i >= numSignalDots) {
-          const theta = Math.random() * 2 * Math.PI;
-          directions[i] = [Math.cos(theta), Math.sin(theta)];
-        }
+        // Re-randomize dot direction within range (all dots are signal dots)
+        const baseAngle = signalDirection[1] > 0 ? 90 : -90; // 90° is down, -90° is up
+        const angleFromVertical = (Math.random() * 2 - 1) * directionRange;
+        const radians = (baseAngle + angleFromVertical) * Math.PI / 180;
+        directions[i] = [Math.cos(radians), Math.sin(radians)];
       }
 
       d.elem
@@ -950,26 +960,23 @@ function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, tot
       <style>
         body {
           font-family: Arial, sans-serif;
+          margin: 0;
+          padding: 0;
+          background-color: #ccc;
+          overflow: hidden;
           display: flex;
           justify-content: center;
           align-items: center;
-          min-height: 100vh;
-          margin: 0;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          height: 100vh;
         }
         .ready-container {
-          background: white;
-          padding: 60px;
-          border-radius: 20px;
-          box-shadow: 0 20px 60px rgba(0,0,0,0.3);
           text-align: center;
-          max-width: 600px;
+          color: black;
         }
         .ready-title {
-          font-size: 36px;
-          font-weight: bold;
+          font-size: 32px;
           margin-bottom: 20px;
-          color: #333;
+          font-weight: bold;
         }
         .task-info {
           font-size: 20px;
@@ -980,36 +987,23 @@ function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, tot
           font-size: 48px;
           font-weight: bold;
           margin: 20px 0;
-          color: #667eea;
+          color: #333;
         }
         .start-instruction {
           font-size: 18px;
-          color: #666;
-          margin-top: 30px;
+          margin-bottom: 20px;
         }
         .spacebar-key {
           display: inline-block;
           background: #f0f0f0;
-          padding: 5px 15px;
-          border-radius: 5px;
+          border: 2px solid #ccc;
+          border-radius: 4px;
+          padding: 8px 20px;
+          margin: 0 4px;
           font-family: monospace;
           font-weight: bold;
-          border: 2px solid #ddd;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .progress-bar-container {
-          width: 100%;
-          height: 10px;
-          background-color: #e0e0e0;
-          border-radius: 5px;
-          margin: 20px 0;
-          overflow: hidden;
-        }
-        .progress-bar {
-          height: 100%;
-          background-color: #667eea;
-          width: ${(trialsCompleted / totalTrials) * 100}%;
-          transition: width 0.3s ease;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          background: linear-gradient(145deg, #ffffff, #e6e6e6);
         }
       </style>
       <div class="ready-container">
@@ -1017,11 +1011,8 @@ function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, tot
         <div class="task-info">Break ${breakNum} of ${totalBreaks}<br>
         ${taskType} Task<br>
         Completed ${trialsCompleted} of ${totalTrials} trials</div>
-        <div class="progress-bar-container">
-          <div class="progress-bar"></div>
-        </div>
         <div class="countdown" id="countdown">30</div>
-        <div class="start-instruction">Press the <span class="spacebar-key">SPACEBAR</span> to continue early</div>
+        <div class="start-instruction">Press <span class="spacebar-key">SPACE</span> when you're ready to continue.</div>
       </div>
     `,
     choices: [' '],
@@ -1334,7 +1325,7 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
         trialNum, 
         totalTrials,
         params.motionSpeedDegreePerSecond,
-        params.tiltDegree
+        params.directionRange
       );
       break;
       
@@ -1432,7 +1423,7 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
 }
 
 // Function to generate a single trial sequence for motion stimulus
-function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum = 1, totalTrials = 1, motionSpeedDegreePerSecond = 10, tiltDegree = 0) {
+function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum = 1, totalTrials = 1, motionSpeedDegreePerSecond = 5, directionRange = 0) {
   const { position, signalDirection } = combination;
   const trialSequence = [];
   
@@ -1473,7 +1464,7 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
     trial_duration: DURATION,
     on_load: function() {
       initMotionAnimation(
-        angleArray, screenWidth, screenHeight, null, signalDirection, position, motionSpeedDegreePerSecond, tiltDegree, crosshairLength, crosshairStroke
+        angleArray, screenWidth, screenHeight, null, signalDirection, position, motionSpeedDegreePerSecond, directionRange, crosshairLength, crosshairStroke
       );
     }
   });
