@@ -333,43 +333,96 @@
             const gridSize = 10;
             const cellSize = 10;
             
-            // Calculate radius based on center percentage
-            let radius = Math.sqrt(centerPercentage / 100 * (gridSize * gridSize) / Math.PI);
-            const noiseLevel = 0.45;
+            // Calculate exact number of center cells needed
+            const totalCells = gridSize * gridSize;
+            const targetCenterCells = Math.round(centerPercentage / 100 * totalCells);
+            
+            console.log(`${containerId}: Target ${centerPercentage}% = ${targetCenterCells}/${totalCells} cells`);
             
             // Calculate grid starting position
             const gridStartX = centerX - (gridSize * cellSize) / 2;
             const gridStartY = centerY - (gridSize * cellSize) / 2;
             
-            const center = { x: 4.5, y: 4.5 };
+            // Initialize grid with all cells unfilled
             let grid = [];
-            
-            // Create grid pattern
             for (let y = 0; y < gridSize; y++) {
                 for (let x = 0; x < gridSize; x++) {
-                    const dx = x - center.x;
-                    const dy = y - center.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    let filled = dist < radius;
-                    grid.push({ x, y, filled });
+                    const dx = x - 4.5; // Center of 10x10 grid
+                    const dy = y - 4.5;
+                    const distFromCenter = Math.sqrt(dx * dx + dy * dy);
+                    grid.push({ x, y, filled: false, distFromCenter, index: y * gridSize + x });
                 }
             }
             
-            // Add edge noise
-            grid.forEach(cell => {
-                const neighbors = [[0,1], [1,0], [0,-1], [-1,0]];
-                const isEdge = cell.filled && neighbors.some(([dx, dy]) => {
-                    const nx = cell.x + dx;
-                    const ny = cell.y + dy;
-                    if (nx < 0 || ny < 0 || nx >= gridSize || ny >= gridSize) return true;
-                    const neighbor = grid[ny * gridSize + nx];
-                    return !neighbor.filled;
-                });
+            // Sort cells by distance from center (closest first)
+            grid.sort((a, b) => a.distFromCenter - b.distFromCenter);
+            
+            // Fill the closest N cells to create the center pattern
+            for (let i = 0; i < targetCenterCells; i++) {
+                grid[i].filled = true;
+            }
+            
+            // Add controlled noise while maintaining exact count
+            // Find edge cells (filled cells next to unfilled, and vice versa) for swapping
+            const noiseSwaps = Math.floor(targetCenterCells * 0.15); // 15% noise
+            
+            // Helper function to get neighbor indices
+            function getNeighborIndices(index, size) {
+                const x = index % size;
+                const y = Math.floor(index / size);
+                const neighbors = [];
                 
-                if (isEdge && Math.random() < noiseLevel) {
-                    cell.filled = !cell.filled;
+                if (x > 0) neighbors.push(index - 1); // left
+                if (x < size - 1) neighbors.push(index + 1); // right
+                if (y > 0) neighbors.push(index - size); // top
+                if (y < size - 1) neighbors.push(index + size); // bottom
+                
+                return neighbors;
+            }
+            
+            // Sort back to original order first to work with grid indices
+            grid.sort((a, b) => a.index - b.index);
+            
+            // Find edge cells for swapping
+            const filledEdgeCells = [];
+            const unfilledEdgeCells = [];
+            
+            grid.forEach((cell, idx) => {
+                const neighbors = getNeighborIndices(idx, gridSize);
+                const hasUnfilledNeighbor = neighbors.some(nIdx => !grid[nIdx].filled);
+                const hasFilledNeighbor = neighbors.some(nIdx => grid[nIdx].filled);
+                
+                if (cell.filled && hasUnfilledNeighbor) {
+                    filledEdgeCells.push(idx);
+                } else if (!cell.filled && hasFilledNeighbor) {
+                    unfilledEdgeCells.push(idx);
                 }
             });
+            
+            // Randomly shuffle the edge cells
+            for (let i = filledEdgeCells.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [filledEdgeCells[i], filledEdgeCells[j]] = [filledEdgeCells[j], filledEdgeCells[i]];
+            }
+            for (let i = unfilledEdgeCells.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [unfilledEdgeCells[i], unfilledEdgeCells[j]] = [unfilledEdgeCells[j], unfilledEdgeCells[i]];
+            }
+            
+            // Swap edge cells to add noise while maintaining exact count
+            const maxSwaps = Math.min(filledEdgeCells.length, unfilledEdgeCells.length, noiseSwaps);
+            for (let i = 0; i < maxSwaps; i++) {
+                const filledIdx = filledEdgeCells[i];
+                const unfilledIdx = unfilledEdgeCells[i];
+                
+                // Swap the cells
+                grid[filledIdx].filled = false;
+                grid[unfilledIdx].filled = true;
+            }
+            
+            // Count final center cells
+            const finalCenterCells = grid.filter(cell => cell.filled).length;
+            console.log(`${containerId}: Final center cells=${finalCenterCells}/${totalCells} (${(finalCenterCells/totalCells*100).toFixed(1)}%)`);
             
             // Invert if center should be white
             if (centerColor === 'white') {

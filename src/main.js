@@ -91,10 +91,10 @@ const STAIRCASE_CONFIG = {
 
 // Staircase state tracking
 let staircaseState = {
-  Motion: { level: 1, consecutiveCorrect: 0, consecutiveIncorrect: 0, responses: [] },
-  Orientation: { level: 1, consecutiveCorrect: 0, consecutiveIncorrect: 0, responses: [] },
-  Centrality: { level: 1, consecutiveCorrect: 0, consecutiveIncorrect: 0, responses: [] },
-  Bar: { level: 1, consecutiveCorrect: 0, consecutiveIncorrect: 0, responses: [] }
+  Motion: { level: 0, consecutiveCorrect: 0, consecutiveIncorrect: 0, responses: [] },
+  Orientation: { level: 0, consecutiveCorrect: 0, consecutiveIncorrect: 0, responses: [] },
+  Centrality: { level: 0, consecutiveCorrect: 0, consecutiveIncorrect: 0, responses: [] },
+  Bar: { level: 0, consecutiveCorrect: 0, consecutiveIncorrect: 0, responses: [] }
 };
 
 // Default parameters for each stimulus type (used as base before applying staircase adjustments)
@@ -407,6 +407,10 @@ function initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData =
   const radius = deg2Pixel(5, chinrestData)/2;
   const dotRadius = 4;
   const numDots = 30; // All dots are now signal dots
+  
+  // DEBUG: Log what motion parameters are actually being used
+  console.log(`🎯 INIT MOTION ANIMATION: Received directionRange = ${directionRange}°`);
+  console.log(`🎯 INIT MOTION ANIMATION: Received motionSpeedDegreePerSecond = ${motionSpeedDegreePerSecond}°/s`);
   // motionSpeed is now passed as parameter
 
   let interval = null;
@@ -564,6 +568,11 @@ function initGratingStimulus(angleArray, screenWidth, screenHeight, chinrestData
   }
 
   function createStaticGrating(containerId, orientation = "vertical", spacing = 5) {
+    // DEBUG: Log what grating parameters are actually being used
+    console.log(`🎯 INIT GRATING STIMULUS: Received tiltDegree = ${tiltDegree}°`);
+    console.log(`🎯 INIT GRATING STIMULUS: Received spacingDegree = ${spacingDegree}°`);
+    console.log(`🎯 INIT GRATING STIMULUS: Received orientation = ${orientation}`);
+    
     const radius = deg2Pixel(5, chinrestData)/2;
     const stripeWidth = 3; // 固定条纹宽度为3
 
@@ -620,7 +629,7 @@ function initGratingStimulus(angleArray, screenWidth, screenHeight, chinrestData
       .attr("stroke-width", "0");
   }
 
-  createStaticGrating("stimulus", orientation, spacing);
+  createStaticGrating("stimulus", orientation, spacingDegree);
   // 绘制十字准线
   drawCrosshair(svg, width, height, crosshairLen, crosshairStrokeWidth);
 }
@@ -665,10 +674,13 @@ function initGridStimulus(angleArray,screenWidth,screenHeight, chinrestData = nu
   const gridSize = 10;
   const cellSize = 10;
   
-  // 根据中心百分比计算半径
-  let radius = Math.sqrt(centerPercentage / 100 * (gridSize * gridSize) / Math.PI);
+  // Calculate exact number of center cells needed
+  const totalCells = gridSize * gridSize;
+  const targetCenterCells = Math.round(centerPercentage / 100 * totalCells);
   
-  const noiseLevel = 0.45; // percentage of edge cells to flip
+  // DEBUG: Log what percentage is actually being used
+  console.log(`🎯 INIT GRID STIMULUS: Received centerPercentage = ${centerPercentage}%`);
+  console.log(`Centrality ${position}: Target ${centerPercentage}% = ${targetCenterCells}/${totalCells} cells`);
 
   function drawStimulus(svgId) {
     const svg = d3.select(svgId);
@@ -678,39 +690,88 @@ function initGridStimulus(angleArray,screenWidth,screenHeight, chinrestData = nu
     const gridStartX = animationCenterX - (gridSize * cellSize) / 2;
     const gridStartY = animationCenterY - (gridSize * cellSize) / 2;
     
-    const center = { x: 4.5, y: 4.5 };
+    // Initialize grid with all cells unfilled
     let grid = [];
-
-    // Step 1–2: Make black if inside central circle
     for (let y = 0; y < gridSize; y++) {
       for (let x = 0; x < gridSize; x++) {
-        const dx = x - center.x;
-        const dy = y - center.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        let filled = dist < radius;
-        grid.push({ x, y, filled });
+        const dx = x - 4.5; // Center of 10x10 grid
+        const dy = y - 4.5;
+        const distFromCenter = Math.sqrt(dx * dx + dy * dy);
+        grid.push({ x, y, filled: false, distFromCenter, index: y * gridSize + x });
       }
     }
-
-    // Step 3: Blur edge by flipping a portion of boundary cells
-    grid.forEach(cell => {
-      const neighbors = [
-        [0,1], [1,0], [0,-1], [-1,0]
-      ];
-      const isEdge = cell.filled && neighbors.some(([dx, dy]) => {
-        const nx = cell.x + dx;
-        const ny = cell.y + dy;
-        if (nx < 0 || ny < 0 || nx >= gridSize || ny >= gridSize) return true;
-        const neighbor = grid[ny * gridSize + nx];
-        return !neighbor.filled;
-      });
-
-      if (isEdge && Math.random() < noiseLevel) {
-        cell.filled = !cell.filled;
+    
+    // Sort cells by distance from center (closest first)
+    grid.sort((a, b) => a.distFromCenter - b.distFromCenter);
+    
+    // Fill the closest N cells to create the center pattern
+    for (let i = 0; i < targetCenterCells; i++) {
+      grid[i].filled = true;
+    }
+    
+    // Add controlled noise while maintaining exact count
+    // Find edge cells (filled cells next to unfilled, and vice versa) for swapping
+    const noiseSwaps = Math.floor(targetCenterCells * 0.15); // 15% noise
+    
+    // Helper function to get neighbor indices
+    function getNeighborIndices(index, size) {
+      const x = index % size;
+      const y = Math.floor(index / size);
+      const neighbors = [];
+      
+      if (x > 0) neighbors.push(index - 1); // left
+      if (x < size - 1) neighbors.push(index + 1); // right
+      if (y > 0) neighbors.push(index - size); // top
+      if (y < size - 1) neighbors.push(index + size); // bottom
+      
+      return neighbors;
+    }
+    
+    // Sort back to original order first to work with grid indices
+    grid.sort((a, b) => a.index - b.index);
+    
+    // Find edge cells for swapping
+    const filledEdgeCells = [];
+    const unfilledEdgeCells = [];
+    
+    grid.forEach((cell, idx) => {
+      const neighbors = getNeighborIndices(idx, gridSize);
+      const hasUnfilledNeighbor = neighbors.some(nIdx => !grid[nIdx].filled);
+      const hasFilledNeighbor = neighbors.some(nIdx => grid[nIdx].filled);
+      
+      if (cell.filled && hasUnfilledNeighbor) {
+        filledEdgeCells.push(idx);
+      } else if (!cell.filled && hasFilledNeighbor) {
+        unfilledEdgeCells.push(idx);
       }
     });
+    
+    // Randomly shuffle the edge cells
+    for (let i = filledEdgeCells.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [filledEdgeCells[i], filledEdgeCells[j]] = [filledEdgeCells[j], filledEdgeCells[i]];
+    }
+    for (let i = unfilledEdgeCells.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [unfilledEdgeCells[i], unfilledEdgeCells[j]] = [unfilledEdgeCells[j], unfilledEdgeCells[i]];
+    }
+    
+    // Swap edge cells to add noise while maintaining exact count
+    const maxSwaps = Math.min(filledEdgeCells.length, unfilledEdgeCells.length, noiseSwaps);
+    for (let i = 0; i < maxSwaps; i++) {
+      const filledIdx = filledEdgeCells[i];
+      const unfilledIdx = unfilledEdgeCells[i];
+      
+      // Swap the cells
+      grid[filledIdx].filled = false;
+      grid[unfilledIdx].filled = true;
+    }
+    
+    // Count final center cells
+    const finalCenterCells = grid.filter(cell => cell.filled).length;
+    console.log(`Centrality ${position}: Final center cells=${finalCenterCells}/${totalCells} (${(finalCenterCells/totalCells*100).toFixed(1)}%)`);
 
-    // Step 4: 根据中心颜色参数决定是否翻转颜色
+    // 根据中心颜色参数决定是否翻转颜色
     if (centerColor === 'white') {
       grid.forEach(cell => cell.filled = !cell.filled);
     }
@@ -772,6 +833,9 @@ function initBarChartStimulus(angleArray,screenWidth,screenHeight, chinrestData 
       goodViewCenterY = height / 2 - offset;
   }
   
+  
+  // DEBUG: Log what bar heights are actually being used
+  console.log(`🎯 INIT BAR CHART STIMULUS: Received heights = [${heights[0]}, ${heights[1]}]`);
   
   // 使用传入的高度参数创建数据
   const data = [
@@ -1121,7 +1185,7 @@ function createProgressOverlay(taskType, trialNum, totalTrials) {
     ">
       <div>Task: ${taskType} | Trial ${trialNum} of ${totalTrials}</div>
       <div style="font-size: 12px; opacity: 0.9; margin-top: 2px;">
-        Difficulty Level ${currentLevel + 1}/4 | ${parameterName}: ${difficultyDisplay}
+        Difficulty Level ${currentLevel + 1}/8 | ${parameterName}: ${difficultyDisplay}
       </div>
     </div>
   `;
@@ -1289,15 +1353,7 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
   
   // Generating trial sequence
   
-  // Get current difficulty value from staircase
-  const currentDifficultyValue = getCurrentDifficultyValue(taskType);
-  const params = { ...STIMULUS_PARAMS[taskType] }; // Start with defaults
-  
-  // Override with current staircase difficulty
-  const paramName = STAIRCASE_CONFIG[taskType].parameter;
-  params[paramName] = currentDifficultyValue;
-  
-  // Adaptive parameters set
+  // NOTE: Staircase parameters are now calculated dynamically at trial runtime, not pre-generated
   
   // Get balanced condition for this trial number
   const condition = getConditionFromTrialNumber(taskType, trialNum);
@@ -1308,77 +1364,30 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
     case 'Motion':
       const { position, signalDirection } = condition;
       
-      // Store trial parameters
-      // allTrialParameters.push({
-      //   trial: trialNum,
-      //   type: 'Motion',
-      //   position: position,
-      //   signalDirection: `[${signalDirection[0]},${signalDirection[1]}]`,
-      //   motionSpeedDegreePerSecond: params.motionSpeedDegreePerSecond,
-      //   tiltDegree: params.tiltDegree,
-      //   difficultyLevel: staircaseState[taskType].level
-      // });
-      
       trialSequence = generateMotionTrialSequence(
         { position, signalDirection }, 
         taskType, 
         trialNum, 
-        totalTrials,
-        params.motionSpeedDegreePerSecond,
-        params.directionRange
+        totalTrials
       );
       break;
       
     case 'Orientation':
       const { position: orientationPosition, orientation } = condition;
       
-      // Store trial parameters
-      // allTrialParameters.push({
-      //   trial: trialNum,
-      //   type: 'Orientation',
-      //   position: orientationPosition,
-      //   orientation: orientation,
-      //   stripeSpacingDegree: params.stripeSpacingDegree,
-      //   tiltDegree: params.tiltDegree,
-      //   difficultyLevel: staircaseState[taskType].level
-      // });
-      
       trialSequence = generateGratingTrialSequence(
         { position: orientationPosition, orientation },
         taskType,
         trialNum,
-        totalTrials,
-        params.stripeSpacingDegree,
-        params.tiltDegree
+        totalTrials
       );
       break;
       
     case 'Centrality':
       const { position: centralityPosition, centerColor, ratioOrder } = condition;
       
-      // Calculate final percentage based on ratioOrder and staircase level
-      let finalCenterPercentage;
-      if (ratioOrder === 'center_more') {
-        // Center color should be MORE dominant (> 50%)
-        finalCenterPercentage = 100 - params.centerPercentage;
-      } else {
-        // Center color should be LESS dominant (< 50%)  
-        finalCenterPercentage = params.centerPercentage;
-      }
-      
-      // Store trial parameters
-      // allTrialParameters.push({
-      //   trial: trialNum,
-      //   type: 'Centrality',
-      //   position: centralityPosition,
-      //   centerColor: centerColor,
-      //   centerPercentage: finalCenterPercentage,
-      //   ratioOrder: ratioOrder,
-      //   difficultyLevel: staircaseState[taskType].level
-      // });
-      
       trialSequence = generateGridTrialSequence(
-        { position: centralityPosition, centerColor, centerPercentage: finalCenterPercentage },
+        { position: centralityPosition, centerColor, ratioOrder },
         taskType,
         trialNum,
         totalTrials
@@ -1388,30 +1397,8 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
     case 'Bar':
       const { position: barPosition, heightType, barOrder } = condition;
       
-      // Determine heights based on condition
-      let heights;
-      if (heightType === 'same') {
-        heights = [1, 1];
-      } else {
-        // heightType === 'different'
-        if (barOrder === 'left_higher') {
-          heights = [params.heightRatio[1], params.heightRatio[0]]; // [higher, lower]
-        } else { // 'right_higher'
-          heights = [params.heightRatio[0], params.heightRatio[1]]; // [lower, higher]
-        }
-      }
-      
-      // Store trial parameters
-      // allTrialParameters.push({
-      //   trial: trialNum,
-      //   type: 'Bar',
-      //   position: barPosition,
-      //   heights: `[${heights[0]},${heights[1]}]`,
-      //   difficultyLevel: staircaseState[taskType].level
-      // });
-      
       trialSequence = generateBarChartTrialSequence(
-        { position: barPosition, heights, heightType, barOrder },
+        { position: barPosition, heightType, barOrder },
         taskType,
         trialNum,
         totalTrials
@@ -1423,7 +1410,7 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
 }
 
 // Function to generate a single trial sequence for motion stimulus
-function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum = 1, totalTrials = 1, motionSpeedDegreePerSecond = 5, directionRange = 0) {
+function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum = 1, totalTrials = 1) {
   const { position, signalDirection } = combination;
   const trialSequence = [];
   
@@ -1458,13 +1445,32 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
   trialSequence.push({
     type: htmlKeyboardResponse,
     stimulus: function() {
-      return createMotionStimulus(angleArray, screenWidth, screenHeight, null, signalDirection, position).stimulus + createProgressOverlay(taskType, trialNum, totalTrials);
+      const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
+      // Dynamic staircase parameter calculation
+      const currentDifficultyValue = getCurrentDifficultyValue(taskType);
+      const motionSpeedDegreePerSecond = STIMULUS_PARAMS.Motion.motionSpeedDegreePerSecond;
+      const directionRange = currentDifficultyValue;
+      return createMotionStimulus(angleArray, screenWidth, screenHeight, chinrestData, signalDirection, position, motionSpeedDegreePerSecond, directionRange).stimulus + createProgressOverlay(taskType, trialNum, totalTrials);
     },
     choices: "NO_KEYS",
     trial_duration: DURATION,
     on_load: function() {
+      const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
+      // Dynamic staircase parameter calculation at runtime
+      const currentDifficultyValue = getCurrentDifficultyValue(taskType);
+      const motionSpeedDegreePerSecond = STIMULUS_PARAMS.Motion.motionSpeedDegreePerSecond;
+      const directionRange = currentDifficultyValue;
+      
+      // DEBUG: Log dynamic motion parameters
+      console.log(`🔧 DYNAMIC MOTION STAIRCASE for Trial ${trialNum}:`);
+      console.log(`   Current Level: ${staircaseState[taskType].level}`);
+      console.log(`   DirectionRange: ${directionRange}°`);
+      console.log(`   MotionSpeedDegreePerSecond: ${motionSpeedDegreePerSecond}°/s`);
+      console.log(`   SignalDirection: [${signalDirection[0]}, ${signalDirection[1]}]`);
+      console.log(`   Position: ${position}`);
+      
       initMotionAnimation(
-        angleArray, screenWidth, screenHeight, null, signalDirection, position, motionSpeedDegreePerSecond, directionRange, crosshairLength, crosshairStroke
+        angleArray, screenWidth, screenHeight, chinrestData, signalDirection, position, motionSpeedDegreePerSecond, directionRange, crosshairLength, crosshairStroke
       );
     }
   });
@@ -1620,7 +1626,7 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
 }
 
 // Function to generate similar trial sequences for other stimulus types
-function generateGratingTrialSequence(combination, taskType = 'Orientation', trialNum = 1, totalTrials = 1, stripeSpacingDegree = 0.05, tiltDegree = 0) {
+function generateGratingTrialSequence(combination, taskType = 'Orientation', trialNum = 1, totalTrials = 1) {
   const { position, orientation } = combination;
   const trialSequence = [];
   
@@ -1656,12 +1662,29 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
     type: htmlKeyboardResponse,
     stimulus: function() {
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-      return createGratingStimulus(angleArray, screenWidth, screenHeight, chinrestData, position).stimulus + createProgressOverlay(taskType, trialNum, totalTrials);
+      // Dynamic staircase parameter calculation
+      const currentDifficultyValue = getCurrentDifficultyValue(taskType);
+      const stripeSpacingDegree = STIMULUS_PARAMS.Orientation.stripeSpacingDegree;
+      const tiltDegree = currentDifficultyValue;
+      return createGratingStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, orientation, stripeSpacingDegree, tiltDegree).stimulus + createProgressOverlay(taskType, trialNum, totalTrials);
     },
     choices: "NO_KEYS",
     trial_duration: DURATION,
     on_load: function() {
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
+      // Dynamic staircase parameter calculation at runtime
+      const currentDifficultyValue = getCurrentDifficultyValue(taskType);
+      const stripeSpacingDegree = STIMULUS_PARAMS.Orientation.stripeSpacingDegree;
+      const tiltDegree = currentDifficultyValue;
+      
+      // DEBUG: Log dynamic orientation parameters
+      console.log(`🔧 DYNAMIC ORIENTATION STAIRCASE for Trial ${trialNum}:`);
+      console.log(`   Current Level: ${staircaseState[taskType].level}`);
+      console.log(`   TiltDegree: ${tiltDegree}°`);
+      console.log(`   StripeSpacingDegree: ${stripeSpacingDegree}°`);
+      console.log(`   Orientation: ${orientation}`);
+      console.log(`   Position: ${position}`);
+      
       initGratingStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, orientation, stripeSpacingDegree, tiltDegree, crosshairLength, crosshairStroke);
     }
   });
@@ -1813,7 +1836,7 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
 }
 
 function generateGridTrialSequence(combination, taskType = 'Centrality', trialNum = 1, totalTrials = 1) {
-  const { position, centerColor, centerPercentage } = combination;
+  const { position, centerColor, ratioOrder } = combination;
   const trialSequence = [];
   
   // Pre-stimulus crosshair
@@ -1848,13 +1871,43 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
     type: htmlKeyboardResponse,
     stimulus: function() {
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-      return createGridStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, centerPercentage).stimulus + createProgressOverlay(taskType, trialNum, totalTrials);
+      // Dynamic staircase parameter calculation
+      const currentDifficultyValue = getCurrentDifficultyValue(taskType);
+      let finalCenterPercentage;
+      if (ratioOrder === 'center_more') {
+        // Center color should be MORE dominant (> 50%)
+        finalCenterPercentage = 100 - currentDifficultyValue;
+      } else {
+        // Center color should be LESS dominant (< 50%)  
+        finalCenterPercentage = currentDifficultyValue;
+      }
+      return createGridStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, finalCenterPercentage).stimulus + createProgressOverlay(taskType, trialNum, totalTrials);
     },
     choices: "NO_KEYS",
     trial_duration: DURATION,
     on_load: function() {
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
-      initGridStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, centerPercentage, crosshairLength, crosshairStroke);
+      // Dynamic staircase parameter calculation at runtime
+      const currentDifficultyValue = getCurrentDifficultyValue(taskType);
+      let finalCenterPercentage;
+      if (ratioOrder === 'center_more') {
+        // Center color should be MORE dominant (> 50%)
+        finalCenterPercentage = 100 - currentDifficultyValue;
+      } else {
+        // Center color should be LESS dominant (< 50%)  
+        finalCenterPercentage = currentDifficultyValue;
+      }
+      
+      // DEBUG: Log dynamic centrality parameters
+      console.log(`🔧 DYNAMIC CENTRALITY STAIRCASE for Trial ${trialNum}:`);
+      console.log(`   Current Level: ${staircaseState[taskType].level}`);
+      console.log(`   Raw centerPercentage from staircase: ${currentDifficultyValue}`);
+      console.log(`   RatioOrder: ${ratioOrder}`);
+      console.log(`   Final centerPercentage: ${finalCenterPercentage}`);
+      console.log(`   CenterColor: ${centerColor}`);
+      console.log(`   Position: ${position}`);
+      
+      initGridStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, finalCenterPercentage, crosshairLength, crosshairStroke);
     }
   });
   
@@ -1936,11 +1989,22 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
       `;
     },
     choices: ['F', 'J'],
-    data: {
-      correct_direction: (centerColor === 'black' && centerPercentage > 50) || (centerColor === 'white' && centerPercentage < 50) ? 'Black' : 'White',
-      task_type: taskType,
-      centrality_position: position,
-      center_color: centerColor
+    data: function() {
+      // Dynamic calculation for response data
+      const currentDifficultyValue = getCurrentDifficultyValue(taskType);
+      let finalCenterPercentage;
+      if (ratioOrder === 'center_more') {
+        finalCenterPercentage = 100 - currentDifficultyValue;
+      } else {
+        finalCenterPercentage = currentDifficultyValue;
+      }
+      return {
+        correct_direction: (centerColor === 'black' && finalCenterPercentage > 50) || (centerColor === 'white' && finalCenterPercentage < 50) ? 'Black' : 'White',
+        task_type: taskType,
+        centrality_position: position,
+        center_color: centerColor,
+        final_center_percentage: finalCenterPercentage
+      };
     },
     on_load: function() {
       const svg = d3.select("#stimulus");
@@ -2005,7 +2069,7 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
 }
 
 function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum = 1, totalTrials = 1) {
-  const { position, heights, heightType, barOrder } = combination;
+  const { position, heightType, barOrder } = combination;
   const trialSequence = [];
   
   // Pre-stimulus crosshair
@@ -2040,12 +2104,48 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
     type: htmlKeyboardResponse,
     stimulus: function() {
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
+      // Dynamic staircase parameter calculation
+      const currentDifficultyValue = getCurrentDifficultyValue(taskType);
+      let heights;
+      if (heightType === 'same') {
+        heights = [1, 1];
+      } else {
+        // heightType === 'different'
+        if (barOrder === 'left_higher') {
+          heights = [currentDifficultyValue[1], currentDifficultyValue[0]]; // [higher, lower]
+        } else { // 'right_higher'
+          heights = [currentDifficultyValue[0], currentDifficultyValue[1]]; // [lower, higher]
+        }
+      }
       return createBarChartStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, heights).stimulus + createProgressOverlay(taskType, trialNum, totalTrials);
     },
     choices: "NO_KEYS",
     trial_duration: DURATION,
     on_load: function() {
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
+      // Dynamic staircase parameter calculation at runtime
+      const currentDifficultyValue = getCurrentDifficultyValue(taskType);
+      let heights;
+      if (heightType === 'same') {
+        heights = [1, 1];
+      } else {
+        // heightType === 'different'
+        if (barOrder === 'left_higher') {
+          heights = [currentDifficultyValue[1], currentDifficultyValue[0]]; // [higher, lower]
+        } else { // 'right_higher'
+          heights = [currentDifficultyValue[0], currentDifficultyValue[1]]; // [lower, higher]
+        }
+      }
+      
+      // DEBUG: Log dynamic bar parameters
+      console.log(`🔧 DYNAMIC BAR STAIRCASE for Trial ${trialNum}:`);
+      console.log(`   Current Level: ${staircaseState[taskType].level}`);
+      console.log(`   Raw heightRatio from staircase: [${currentDifficultyValue[0]}, ${currentDifficultyValue[1]}]`);
+      console.log(`   HeightType: ${heightType}`);
+      console.log(`   BarOrder: ${barOrder}`);
+      console.log(`   Final calculated heights: [${heights[0]}, ${heights[1]}]`);
+      console.log(`   Position: ${position}`);
+      
       initBarChartStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, heights, crosshairLength, crosshairStroke);
     }
   });
@@ -2128,13 +2228,27 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
       `;
     },
     choices: ['F', 'J'],
-    data: {
-      correct_direction: heights[0] === heights[1] ? 'Same' : 'Different',
-      task_type: taskType,
-      bar_position: position,
-      bar_height_type: heightType,
-      bar_height_configuration: barOrder,
-      bar_heights_array: `[${heights[0]},${heights[1]}]`
+    data: function() {
+      // Dynamic calculation for response data
+      const currentDifficultyValue = getCurrentDifficultyValue(taskType);
+      let heights;
+      if (heightType === 'same') {
+        heights = [1, 1];
+      } else {
+        if (barOrder === 'left_higher') {
+          heights = [currentDifficultyValue[1], currentDifficultyValue[0]];
+        } else {
+          heights = [currentDifficultyValue[0], currentDifficultyValue[1]];
+        }
+      }
+      return {
+        correct_direction: heights[0] === heights[1] ? 'Same' : 'Different',
+        task_type: taskType,
+        bar_position: position,
+        bar_height_type: heightType,
+        bar_height_configuration: barOrder,
+        bar_heights_array: `[${heights[0]},${heights[1]}]`
+      };
     },
     on_load: function() {
       const svg = d3.select("#stimulus");
