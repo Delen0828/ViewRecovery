@@ -6,9 +6,25 @@
     <title>View Recovery Training</title>
     <!-- 引入D3.js库 -->
     <script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- WebGazer eye-tracking library -->
+    <script src="https://cdn.jsdelivr.net/gh/jspsych/jspsych@jspsych@7.0.0/examples/js/webgazer/webgazer.js"></script>
+    <style>
+      #gaze-point {
+        position: fixed;
+        width: 10px;
+        height: 10px;
+        background-color: red;
+        border-radius: 50%;
+        pointer-events: none;
+        z-index: 9999;
+        transform: translate(-50%, -50%);
+        display: none;
+      }
+    </style>
 </head>
 <body>
     <div id="jspsych-target"></div>
+    <div id="gaze-point"></div>
     <script type="module" src="src/main.js"></script>
 </body>
 </html>

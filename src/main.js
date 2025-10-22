@@ -3,11 +3,17 @@ import htmlKeyboardResponse from "@jspsych/plugin-html-keyboard-response";
 import jsPsychVirtualChinrest from "@jspsych/plugin-virtual-chinrest";
 import jsPsychHtmlButtonResponse from "@jspsych/plugin-html-button-response";
 import jsPsychFullscreen from "@jspsych/plugin-fullscreen";
+import jsPsychWebgazerInitCamera from "@jspsych/plugin-webgazer-init-camera";
+import jsPsychWebgazerCalibrate from "@jspsych/plugin-webgazer-calibrate";
+import jsPsychWebgazerValidate from "@jspsych/plugin-webgazer-validate";
+import jsPsychExtensionWebgazer from "@jspsych/extension-webgazer";
 // import imageButtonResponse from '@jspsych/plugin-image-button-response';
 
 import './style.css';
 const jsPsych = initJsPsych({
-
+  extensions: [
+    {type: jsPsychExtensionWebgazer}
+  ]
 });
 const timeline = [];
 const screenWidth = window.innerWidth;
@@ -19,6 +25,9 @@ const DURATION = 200; // 动画时长
 const PRE_STIMULUS_CH_DURATION = 1000;  // Part 1: Initial crosshair before stimulus
 const POST_STIMULUS_CH_DURATION = 500; // Part 3: Crosshair after stimulus  
 const FEEDBACK_CH_DURATION = 1000;      // Final: Colored feedback crosshair
+
+// Eye-tracking configuration
+const GAZE_DEVIATION_THRESHOLD = 200; // Pixels from center for gaze point color change
 
 // Task progress tracking
 const SHOW_TASK_PROGRESS = true; // Global flag to enable/disable task progress display
@@ -409,8 +418,8 @@ function initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData =
   const numDots = 30; // All dots are now signal dots
   
   // DEBUG: Log what motion parameters are actually being used
-  console.log(`🎯 INIT MOTION ANIMATION: Received directionRange = ${directionRange}°`);
-  console.log(`🎯 INIT MOTION ANIMATION: Received motionSpeedDegreePerSecond = ${motionSpeedDegreePerSecond}°/s`);
+  console.log(`INIT MOTION ANIMATION: Received directionRange = ${directionRange}°`);
+  console.log(`INIT MOTION ANIMATION: Received motionSpeedDegreePerSecond = ${motionSpeedDegreePerSecond}°/s`);
   // motionSpeed is now passed as parameter
 
   let interval = null;
@@ -569,9 +578,9 @@ function initGratingStimulus(angleArray, screenWidth, screenHeight, chinrestData
 
   function createStaticGrating(containerId, orientation = "vertical", spacing = 5) {
     // DEBUG: Log what grating parameters are actually being used
-    console.log(`🎯 INIT GRATING STIMULUS: Received tiltDegree = ${tiltDegree}°`);
-    console.log(`🎯 INIT GRATING STIMULUS: Received spacingDegree = ${spacingDegree}°`);
-    console.log(`🎯 INIT GRATING STIMULUS: Received orientation = ${orientation}`);
+    console.log(`INIT GRATING STIMULUS: Received tiltDegree = ${tiltDegree}°`);
+    console.log(`INIT GRATING STIMULUS: Received spacingDegree = ${spacingDegree}°`);
+    console.log(`INIT GRATING STIMULUS: Received orientation = ${orientation}`);
     
     const radius = deg2Pixel(5, chinrestData)/2;
     const stripeWidth = 3; // 固定条纹宽度为3
@@ -679,7 +688,7 @@ function initGridStimulus(angleArray,screenWidth,screenHeight, chinrestData = nu
   const targetCenterCells = Math.round(centerPercentage / 100 * totalCells);
   
   // DEBUG: Log what percentage is actually being used
-  console.log(`🎯 INIT GRID STIMULUS: Received centerPercentage = ${centerPercentage}%`);
+  console.log(`INIT GRID STIMULUS: Received centerPercentage = ${centerPercentage}%`);
   console.log(`Centrality ${position}: Target ${centerPercentage}% = ${targetCenterCells}/${totalCells} cells`);
 
   function drawStimulus(svgId) {
@@ -835,7 +844,7 @@ function initBarChartStimulus(angleArray,screenWidth,screenHeight, chinrestData 
   
   
   // DEBUG: Log what bar heights are actually being used
-  console.log(`🎯 INIT BAR CHART STIMULUS: Received heights = [${heights[0]}, ${heights[1]}]`);
+  console.log(`INIT BAR CHART STIMULUS: Received heights = [${heights[0]}, ${heights[1]}]`);
   
   // 使用传入的高度参数创建数据
   const data = [
@@ -1015,6 +1024,145 @@ function createReadyScreen(taskName = "next task") {
     }
   };
 }
+
+// Eye-tracking helper functions
+// function updateGazePoint(data, elapsedTime) {
+//   const gazePoint = document.getElementById('gaze-point');
+//   if (data == null) {
+//     gazePoint.style.display = 'none';
+//   } else {
+//     gazePoint.style.display = 'block';
+//     gazePoint.style.left = data.x + 'px';
+//     gazePoint.style.top = data.y + 'px';
+    
+//     // Calculate distance from screen center for color change
+//     const centerX = window.innerWidth / 2;
+//     const centerY = window.innerHeight / 2;
+//     const dx = data.x - centerX;
+//     const dy = data.y - centerY;
+//     const distance = Math.sqrt(dx * dx + dy * dy);
+    
+//     // Change color based on distance from center
+//     gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
+//   }
+// }
+
+function ensureGazepointVisible() {
+  const gazePoint = document.getElementById('gaze-point');
+  if (gazePoint) {
+    gazePoint.style.display = 'block';
+  }
+}
+
+// Eye-tracking calibration sequence functions
+const cameraInstructions = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: `
+    <p><strong>Camera Permission Required</strong></p>
+    <p>In order to participate you must allow the experiment to use your camera.</p>
+    <p>You will be prompted to do this on the next screen.</p>
+    <p>If you do not wish to allow use of your camera, you cannot participate in this experiment.<p>
+    <p>It may take up to 30 seconds for the camera to initialize after you give permission.</p>
+    <p><em>Note: We're requesting camera access before entering fullscreen mode so you can see and respond to the permission popup.</em></p>
+  `,
+  choices: ['Got it'],
+};
+
+const initCamera = {
+  type: jsPsychWebgazerInitCamera,
+  on_start: function() {
+    // Optimize canvas for multiple readback operations to reduce warnings
+    if (typeof HTMLCanvasElement !== 'undefined') {
+      const originalGetContext = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function(contextType, options = {}) {
+        if (contextType === '2d') {
+          options.willReadFrequently = true;
+        }
+        return originalGetContext.call(this, contextType, options);
+      };
+    }
+  }
+};
+
+const calibrationInstructions = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: `
+    <p>Now you'll calibrate the eye tracking, so that the software can use the image of your eyes to predict where you are looking.</p>
+    <p>You'll see a series of dots appear on the screen. Look at each dot and click on it.</p>
+  `,
+  choices: ['Got it'],
+};
+
+const calibration = {
+  type: jsPsychWebgazerCalibrate,
+  calibration_points: [
+    [25,25],[75,25],[50,50],[25,75],[75,75]
+  ],
+  repetitions_per_point: 2,
+  randomize_calibration_order: true,
+  on_start: function() {
+    // Gazepoint now remains visible during calibration
+  }
+};
+
+const validationInstructions = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: `
+    <p>Now we'll measure the accuracy of the calibration.</p>
+    <p>Look at each dot as it appears on the screen.</p>
+    <p style="font-weight: bold;">You do not need to click on the dots this time.</p>
+  `,
+  choices: ['Got it'],
+  post_trial_gap: 1000
+};
+
+const validation = {
+  type: jsPsychWebgazerValidate,
+  validation_points: [
+    [25,25],[75,25],[50,50],[25,75],[75,75]
+  ],
+  roi_radius: 200,
+  time_to_saccade: 1000,
+  validation_duration: 2000,
+  data: {
+    task: 'validate'
+  },
+  on_start: function() {
+    // Gazepoint now remains visible during calibration
+  }
+};
+
+const recalibrateInstructions = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: `
+    <p>The accuracy of the calibration is a little lower than we'd like.</p>
+    <p>Let's try calibrating one more time.</p>
+    <p>On the next screen, look at the dots and click on them.<p>
+  `,
+  choices: ['OK'],
+};
+
+const recalibrate = {
+  timeline: [recalibrateInstructions, calibration, validationInstructions, validation],
+  conditional_function: function(){
+    const validationData = jsPsych.data.get().filter({task: 'validate'}).values()[0];
+    return validationData.percent_in_roi.some(function(x){
+      const minimumPercentAcceptable = 50;
+      return x < minimumPercentAcceptable;
+    });
+  },
+  data: {
+    phase: 'recalibration'
+  }
+};
+
+const calibrationDone = {
+  type: jsPsychHtmlButtonResponse,
+  stimulus: `
+    <p>Great, we're done with calibration!</p>
+  `,
+  choices: ['OK']
+};
 
 // Helper function to create break screen with 30-second countdown (matching initial countdown style)
 function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, totalTrials) {
@@ -1472,6 +1620,31 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
       initMotionAnimation(
         angleArray, screenWidth, screenHeight, chinrestData, signalDirection, position, motionSpeedDegreePerSecond, directionRange, crosshairLength, crosshairStroke
       );
+      
+      // Start gaze tracking
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      webgazer.begin().then(() => {
+        // Ensure gazepoint is always visible
+        ensureGazepointVisible();
+        webgazer.setGazeListener((data) => {
+          const gazePoint = document.getElementById('gaze-point');
+          // Always ensure gazepoint is visible
+          gazePoint.style.display = 'block';
+          if (data) {
+            gazePoint.style.left = data.x + 'px';
+            gazePoint.style.top = data.y + 'px';
+            const dx = data.x - centerX;
+            const dy = data.y - centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
+          }
+        });
+      });
+    },
+    on_finish: function() {
+      // Keep gaze listener active for continuous tracking
+      // webgazer.clearGazeListener(); // Commented out to prevent freezing
     }
   });
   
@@ -1567,6 +1740,30 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
       const svg = d3.select("#stimulus");
       svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
+      
+      // Setup webgazer for response trial
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      webgazer.begin().then(() => {
+        // Ensure gazepoint is always visible
+        ensureGazepointVisible();
+        webgazer.setGazeListener((data) => {
+          const gazePoint = document.getElementById('gaze-point');
+          // Always ensure gazepoint is visible
+          gazePoint.style.display = 'block';
+          if (data) {
+            console.log(`[Motion Response] Gazepoint: x=${data.x.toFixed(1)}, y=${data.y.toFixed(1)}`);
+            gazePoint.style.left = data.x + 'px';
+            gazePoint.style.top = data.y + 'px';
+            const dx = data.x - centerX;
+            const dy = data.y - centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
+          } else {
+            console.log('[Motion Response] No gaze data received');
+          }
+        });
+      });
     },
     on_finish: function(data) {
       const userChoice = data.response.toLowerCase() === 'f' ? 'Up' : 'Down';
@@ -1686,6 +1883,31 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
       console.log(`   Position: ${position}`);
       
       initGratingStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, orientation, stripeSpacingDegree, tiltDegree, crosshairLength, crosshairStroke);
+      
+      // Start gaze tracking
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      webgazer.begin().then(() => {
+        // Ensure gazepoint is always visible
+        ensureGazepointVisible();
+        webgazer.setGazeListener((data) => {
+          const gazePoint = document.getElementById('gaze-point');
+          // Always ensure gazepoint is visible
+          gazePoint.style.display = 'block';
+          if (data) {
+            gazePoint.style.left = data.x + 'px';
+            gazePoint.style.top = data.y + 'px';
+            const dx = data.x - centerX;
+            const dy = data.y - centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
+          }
+        });
+      });
+    },
+    on_finish: function() {
+      // Keep gaze listener active for continuous tracking
+      // webgazer.clearGazeListener(); // Commented out to prevent freezing
     }
   });
   
@@ -1777,6 +1999,30 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
       const svg = d3.select("#stimulus");
       svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
+      
+      // Setup webgazer for response trial
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      webgazer.begin().then(() => {
+        // Ensure gazepoint is always visible
+        ensureGazepointVisible();
+        webgazer.setGazeListener((data) => {
+          const gazePoint = document.getElementById('gaze-point');
+          // Always ensure gazepoint is visible
+          gazePoint.style.display = 'block';
+          if (data) {
+            console.log(`[Orientation Response] Gazepoint: x=${data.x.toFixed(1)}, y=${data.y.toFixed(1)}`);
+            gazePoint.style.left = data.x + 'px';
+            gazePoint.style.top = data.y + 'px';
+            const dx = data.x - centerX;
+            const dy = data.y - centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
+          } else {
+            console.log('[Orientation Response] No gaze data received');
+          }
+        });
+      });
     },
     on_finish: function(data) {
       const userChoice = data.response.toLowerCase() === 'f' ? 'Vertical' : 'Horizontal';
@@ -1908,6 +2154,31 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
       console.log(`   Position: ${position}`);
       
       initGridStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, finalCenterPercentage, crosshairLength, crosshairStroke);
+      
+      // Start gaze tracking
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      webgazer.begin().then(() => {
+        // Ensure gazepoint is always visible
+        ensureGazepointVisible();
+        webgazer.setGazeListener((data) => {
+          const gazePoint = document.getElementById('gaze-point');
+          // Always ensure gazepoint is visible
+          gazePoint.style.display = 'block';
+          if (data) {
+            gazePoint.style.left = data.x + 'px';
+            gazePoint.style.top = data.y + 'px';
+            const dx = data.x - centerX;
+            const dy = data.y - centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
+          }
+        });
+      });
+    },
+    on_finish: function() {
+      // Keep gaze listener active for continuous tracking
+      // webgazer.clearGazeListener(); // Commented out to prevent freezing
     }
   });
   
@@ -2010,6 +2281,30 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
       const svg = d3.select("#stimulus");
       svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
+      
+      // Setup webgazer for response trial
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      webgazer.begin().then(() => {
+        // Ensure gazepoint is always visible
+        ensureGazepointVisible();
+        webgazer.setGazeListener((data) => {
+          const gazePoint = document.getElementById('gaze-point');
+          // Always ensure gazepoint is visible
+          gazePoint.style.display = 'block';
+          if (data) {
+            console.log(`[Centrality Response] Gazepoint: x=${data.x.toFixed(1)}, y=${data.y.toFixed(1)}`);
+            gazePoint.style.left = data.x + 'px';
+            gazePoint.style.top = data.y + 'px';
+            const dx = data.x - centerX;
+            const dy = data.y - centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
+          } else {
+            console.log('[Centrality Response] No gaze data received');
+          }
+        });
+      });
     },
     on_finish: function(data) {
       const userChoice = data.response.toLowerCase() === 'f' ? 'Black' : 'White';
@@ -2147,6 +2442,31 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
       console.log(`   Position: ${position}`);
       
       initBarChartStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, heights, crosshairLength, crosshairStroke);
+      
+      // Start gaze tracking
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      webgazer.begin().then(() => {
+        // Ensure gazepoint is always visible
+        ensureGazepointVisible();
+        webgazer.setGazeListener((data) => {
+          const gazePoint = document.getElementById('gaze-point');
+          // Always ensure gazepoint is visible
+          gazePoint.style.display = 'block';
+          if (data) {
+            gazePoint.style.left = data.x + 'px';
+            gazePoint.style.top = data.y + 'px';
+            const dx = data.x - centerX;
+            const dy = data.y - centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
+          }
+        });
+      });
+    },
+    on_finish: function() {
+      // Keep gaze listener active for continuous tracking
+      // webgazer.clearGazeListener(); // Commented out to prevent freezing
     }
   });
   
@@ -2254,6 +2574,30 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
       const svg = d3.select("#stimulus");
       svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
+      
+      // Setup webgazer for response trial
+      const centerX = window.innerWidth / 2;
+      const centerY = window.innerHeight / 2;
+      webgazer.begin().then(() => {
+        // Ensure gazepoint is always visible
+        ensureGazepointVisible();
+        webgazer.setGazeListener((data) => {
+          const gazePoint = document.getElementById('gaze-point');
+          // Always ensure gazepoint is visible
+          gazePoint.style.display = 'block';
+          if (data) {
+            console.log(`[Bar Response] Gazepoint: x=${data.x.toFixed(1)}, y=${data.y.toFixed(1)}`);
+            gazePoint.style.left = data.x + 'px';
+            gazePoint.style.top = data.y + 'px';
+            const dx = data.x - centerX;
+            const dy = data.y - centerY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
+          } else {
+            console.log('[Bar Response] No gaze data received');
+          }
+        });
+      });
     },
     on_finish: function(data) {
       const userChoice = data.response.toLowerCase() === 'f' ? 'Same' : 'Different';
@@ -2311,6 +2655,10 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
   
   return trialSequence;
 }
+
+// Camera setup BEFORE fullscreen to allow permission popup
+timeline.push(cameraInstructions);
+timeline.push(initCamera);
 
 // Enter fullscreen mode at the very beginning
 timeline.push({
@@ -2940,7 +3288,7 @@ const conditionalReadyScreen = {
       </style>
       <div class="ready-container">
         <div class="ready-title">Ready for ${taskName}?</div>
-        <div class="task-info">The task will begin after a brief countdown.</div>
+        <div class="task-info">Calibration complete! The task will begin after a brief countdown.</div>
         <div class="countdown" id="countdown">30</div>
         <div class="start-instruction">You can also press the <span class="spacebar-key">SPACEBAR</span> to skip the countdown.</div>
       </div>
@@ -2985,7 +3333,15 @@ function generateSelectedTaskTrials() {
     
     // Dynamically generating trials
     
-    // Add the ready screen
+    // Add eye-tracking calibration sequence (camera setup already done before fullscreen)
+    trials.push(calibrationInstructions);
+    trials.push(calibration);
+    trials.push(validationInstructions);
+    trials.push(validation);
+    trials.push(recalibrate);
+    trials.push(calibrationDone);
+    
+    // Add the ready screen AFTER calibration is complete
     trials.push(conditionalReadyScreen);
     
     // Calculate number of breaks
