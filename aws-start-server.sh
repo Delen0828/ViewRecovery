@@ -2,6 +2,7 @@
 # Delete running pm2 php
 echo "Deleting pm2 instance"
 pm2 delete php-server
+pm2 delete cloudflared-tunnel
 
 # Build the project
 echo "Building the project..."
