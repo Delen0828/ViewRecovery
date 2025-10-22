@@ -19,4 +19,11 @@ pm2 start "cloudflared tunnel --url http://localhost:8000" --name cloudflared-tu
 echo "Waiting for Cloudflare Tunnel to initialize..."
 sleep 5
 echo "Your Cloudflare HTTPS URL is:"
-curl --silent http://127.0.0.1:4040/api/tunnels | grep -o 'https://[^"]*'
+url=$(curl --silent http://127.0.0.1:4040/api/tunnels | grep -o 'https://[^"]*')
+if [ -z "$url" ]; then
+  echo "Could not fetch from API, checking pm2 logs..."
+  sleep 2
+  pm2 logs cloudflared-tunnel --lines 30 | grep -o 'https://[^ ]*trycloudflare.com' | head -n 1
+else
+  echo "$url"
+fi
