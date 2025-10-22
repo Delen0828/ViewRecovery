@@ -15,15 +15,10 @@ cp save_data.php dist/
 # Start PHP server in dist directory
 echo "Starting PHP server on 0.0.0.0:8000..."
 pm2 start "php -S 0.0.0.0:8000 -t dist" --name php-server
+
+echo "Starting Cloudflare tunnel..."
 pm2 start "cloudflared tunnel --url http://localhost:8000" --name cloudflared-tunnel
-echo "Waiting for Cloudflare Tunnel to initialize..."
-sleep 5
-echo "Your Cloudflare HTTPS URL is:"
-url=$(curl --silent http://127.0.0.1:4040/api/tunnels | grep -o 'https://[^"]*')
-if [ -z "$url" ]; then
-  echo "Could not fetch from API, checking pm2 logs..."
-  sleep 2
-  pm2 logs cloudflared-tunnel --lines 30 | grep -o 'https://[^ ]*trycloudflare.com' | head -n 1
-else
-  echo "$url"
-fi
+
+echo "Showing Cloudflare tunnel logs..."
+sleep 2
+pm2 logs cloudflared-tunnel --lines 20
