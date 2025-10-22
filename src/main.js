@@ -1129,6 +1129,12 @@ const validation = {
   },
   on_start: function() {
     // Gazepoint now remains visible during calibration
+    // Hide cursor during validation
+    document.body.style.cursor = 'none';
+  },
+  on_finish: function() {
+    // Restore cursor after validation
+    document.body.style.cursor = 'default';
   }
 };
 
@@ -1583,6 +1589,7 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
     choices: "NO_KEYS",
     trial_duration: PRE_STIMULUS_CH_DURATION,
     on_load: function() {
+	  document.body.style.cursor = 'none';
       const svg = d3.select("#stimulus");
       svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
@@ -1603,6 +1610,9 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
     choices: "NO_KEYS",
     trial_duration: DURATION,
     on_load: function() {
+      // Hide cursor during stimulus presentation
+      document.body.style.cursor = 'none';
+      
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
       // Dynamic staircase parameter calculation at runtime
       const currentDifficultyValue = getCurrentDifficultyValue(taskType);
@@ -1741,6 +1751,9 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
       svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
       
+      // Hide cursor during response trial
+      document.body.style.cursor = 'none';
+      
       // Setup webgazer for response trial
       const centerX = window.innerWidth / 2;
       const centerY = window.innerHeight / 2;
@@ -1766,6 +1779,9 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
       });
     },
     on_finish: function(data) {
+      // Restore cursor after response
+      document.body.style.cursor = 'default';
+      
       const userChoice = data.response.toLowerCase() === 'f' ? 'Up' : 'Down';
       const correct = userChoice === data.correct_direction;
       
@@ -1809,6 +1825,9 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
     choices: "NO_KEYS",
     trial_duration: FEEDBACK_CH_DURATION,
     on_load: function() {
+      // Hide cursor during feedback crosshair
+      document.body.style.cursor = 'none';
+      
       const svg = d3.select("#stimulus");
       svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
       
@@ -1816,6 +1835,10 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
       const crosshairColor = previousTrial && previousTrial.correct ? 'green' : 'red';
       
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke, crosshairColor);
+    },
+    on_finish: function() {
+      // Restore cursor after feedback crosshair
+      document.body.style.cursor = 'default';
     }
   });
   
@@ -1848,6 +1871,7 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
     choices: "NO_KEYS",
     trial_duration: PRE_STIMULUS_CH_DURATION,
     on_load: function() {
+	  document.body.style.cursor = 'none';
       const svg = d3.select("#stimulus");
       svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
@@ -1868,6 +1892,9 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
     choices: "NO_KEYS",
     trial_duration: DURATION,
     on_load: function() {
+      // Hide cursor during stimulus presentation
+      document.body.style.cursor = 'none';
+      
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
       // Dynamic staircase parameter calculation at runtime
       const currentDifficultyValue = getCurrentDifficultyValue(taskType);
@@ -2000,6 +2027,9 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
       svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
       
+      // Hide cursor during response trial
+      document.body.style.cursor = 'none';
+      
       // Setup webgazer for response trial
       const centerX = window.innerWidth / 2;
       const centerY = window.innerHeight / 2;
@@ -2025,6 +2055,9 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
       });
     },
     on_finish: function(data) {
+      // Restore cursor after response
+      document.body.style.cursor = 'default';
+      
       const userChoice = data.response.toLowerCase() === 'f' ? 'Vertical' : 'Horizontal';
       const correct = userChoice === data.correct_direction;
       
@@ -2068,6 +2101,9 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
     choices: "NO_KEYS",
     trial_duration: FEEDBACK_CH_DURATION,
     on_load: function() {
+      // Hide cursor during feedback crosshair
+      document.body.style.cursor = 'none';
+      
       const svg = d3.select("#stimulus");
       svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
       
@@ -2075,6 +2111,10 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
       const crosshairColor = previousTrial && previousTrial.correct ? 'green' : 'red';
       
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke, crosshairColor);
+    },
+    on_finish: function() {
+      // Restore cursor after feedback crosshair
+      document.body.style.cursor = 'default';
     }
   });
   
@@ -2106,6 +2146,7 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
     choices: "NO_KEYS",
     trial_duration: PRE_STIMULUS_CH_DURATION,
     on_load: function() {
+	  document.body.style.cursor = 'none';	
       const svg = d3.select("#stimulus");
       svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
@@ -2132,6 +2173,9 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
     choices: "NO_KEYS",
     trial_duration: DURATION,
     on_load: function() {
+      // Hide cursor during stimulus presentation
+      document.body.style.cursor = 'none';
+      
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
       // Dynamic staircase parameter calculation at runtime
       const currentDifficultyValue = getCurrentDifficultyValue(taskType);
@@ -2282,6 +2326,9 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
       svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
       
+      // Hide cursor during response trial
+      document.body.style.cursor = 'none';
+      
       // Setup webgazer for response trial
       const centerX = window.innerWidth / 2;
       const centerY = window.innerHeight / 2;
@@ -2307,6 +2354,9 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
       });
     },
     on_finish: function(data) {
+      // Restore cursor after response
+      document.body.style.cursor = 'default';
+      
       const userChoice = data.response.toLowerCase() === 'f' ? 'Black' : 'White';
       const correct = userChoice === data.correct_direction;
       
@@ -2350,6 +2400,9 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
     choices: "NO_KEYS",
     trial_duration: FEEDBACK_CH_DURATION,
     on_load: function() {
+      // Hide cursor during feedback crosshair
+      document.body.style.cursor = 'none';
+      
       const svg = d3.select("#stimulus");
       svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
       
@@ -2357,6 +2410,10 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
       const crosshairColor = previousTrial && previousTrial.correct ? 'green' : 'red';
       
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke, crosshairColor);
+    },
+    on_finish: function() {
+      // Restore cursor after feedback crosshair
+      document.body.style.cursor = 'default';
     }
   });
   
@@ -2388,6 +2445,7 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
     choices: "NO_KEYS",
     trial_duration: PRE_STIMULUS_CH_DURATION,
     on_load: function() {
+	  document.body.style.cursor = 'none';	
       const svg = d3.select("#stimulus");
       svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
@@ -2417,6 +2475,9 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
     choices: "NO_KEYS",
     trial_duration: DURATION,
     on_load: function() {
+      // Hide cursor during stimulus presentation
+      document.body.style.cursor = 'none';
+      
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
       // Dynamic staircase parameter calculation at runtime
       const currentDifficultyValue = getCurrentDifficultyValue(taskType);
@@ -2575,6 +2636,9 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
       svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
       
+      // Hide cursor during response trial
+      document.body.style.cursor = 'none';
+      
       // Setup webgazer for response trial
       const centerX = window.innerWidth / 2;
       const centerY = window.innerHeight / 2;
@@ -2600,6 +2664,9 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
       });
     },
     on_finish: function(data) {
+      // Restore cursor after response
+      document.body.style.cursor = 'default';
+      
       const userChoice = data.response.toLowerCase() === 'f' ? 'Same' : 'Different';
       const correct = userChoice === data.correct_direction;
       
@@ -2643,6 +2710,9 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
     choices: "NO_KEYS",
     trial_duration: FEEDBACK_CH_DURATION,
     on_load: function() {
+      // Hide cursor during feedback crosshair
+      document.body.style.cursor = 'none';
+      
       const svg = d3.select("#stimulus");
       svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
       
@@ -2650,6 +2720,10 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
       const crosshairColor = previousTrial && previousTrial.correct ? 'green' : 'red';
       
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke, crosshairColor);
+    },
+    on_finish: function() {
+      // Restore cursor after feedback crosshair
+      document.body.style.cursor = 'default';
     }
   });
   
