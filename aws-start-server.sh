@@ -14,4 +14,4 @@ cp save_data.php dist/
 # Start PHP server in dist directory
 echo "Starting PHP server on 0.0.0.0:8000..."
 pm2 start "php -S 0.0.0.0:8000 -t dist" --name php-server
-pm2 start "ngrok http 8000" --name ngrok-tunnel
+pm2 start "cloudflared tunnel --url http://localhost:8000" --name cloudflared-tunnel
