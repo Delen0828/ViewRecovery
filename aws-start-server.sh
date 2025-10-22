@@ -14,3 +14,4 @@ cp save_data.php dist/
 # Start PHP server in dist directory
 echo "Starting PHP server on 0.0.0.0:8000..."
 pm2 start "php -S 0.0.0.0:8000 -t dist" --name php-server
+ngrok http 8000
