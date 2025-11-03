@@ -23,6 +23,10 @@ const FEEDBACK_CH_DURATION = 1000;      // Final: Colored feedback crosshair
 // Task progress tracking
 const SHOW_TASK_PROGRESS = true; // Global flag to enable/disable task progress display
 
+// Position targeting configuration
+const USE_SINGLE_POSITION = true; // Global flag to target only one position instead of all four
+const TARGET_POSITION = 'left_upper'; // Which position to target when USE_SINGLE_POSITION is true
+
 // Simple task selection and configuration
 let selectedTask = null;
 // let allTrialParameters = []; // Store all trial parameters for export
@@ -30,28 +34,28 @@ let selectedTask = null;
 // Trial configuration based on testing checklist requirements
 const TRIAL_CONFIG = {
   Motion: { 
-    totalTrials: 96, 
-    trialsPerBlock: 8, 
-    blocks: 12,
-    breakEvery: 24  // Break after every 3 blocks (3 * 8 = 24)
+    totalTrials: 320, 
+    trialsPerBlock: 32, 
+    blocks: 10,
+    breakEvery: 64  // Break after every 2 blocks (2 * 32 = 64)
   },
   Orientation: { 
-    totalTrials: 96, 
-    trialsPerBlock: 8, 
-    blocks: 12,
-    breakEvery: 24  // Break after every 3 blocks
+    totalTrials: 320, 
+    trialsPerBlock: 32, 
+    blocks: 10,
+    breakEvery: 64  // Break after every 2 blocks
   },
   Centrality: { 
-    totalTrials: 96, 
-    trialsPerBlock: 16, 
-    blocks: 6,
-    breakEvery: 32  // Break after every 2 blocks (2 * 16 = 32)
+    totalTrials: 320, 
+    trialsPerBlock: 32, 
+    blocks: 10,
+    breakEvery: 64  // Break after every 2 blocks (2 * 32 = 64)
   },
   Bar: { 
-    totalTrials: 96, 
-    trialsPerBlock: 12, 
-    blocks: 8,
-    breakEvery: 24  // Break after every 2 blocks (2 * 12 = 24)
+    totalTrials: 320, 
+    trialsPerBlock: 32, 
+    blocks: 10,
+    breakEvery: 64  // Break after every 2 blocks (2 * 32 = 64)
   }
 };
 
@@ -59,7 +63,7 @@ const TRIAL_CONFIG = {
 const STAIRCASE_CONFIG = {
   Motion: {
     parameter: 'directionRange',
-    levels: [0, 25.71, 51.43, 77.14, 102.86, 128.57, 154.29, 180], // degrees - higher = more difficult (0° to 180° range from vertical)
+    levels: [0, 20, 40, 60, 80, 100, 120, 140, 160], // degrees - higher = more difficult (0° to 160° range from vertical)
     startLevel: 0, // Start at level 0 (directionRange = 0)
     fixedParams: { motionSpeedDegreePerSecond: 10 }
   },
@@ -70,8 +74,8 @@ const STAIRCASE_CONFIG = {
   },
   Centrality: {
     parameter: 'centerPercentage',
-    levels: [10, 17.14, 24.29, 31.43, 38.57, 42.86, 46.43, 50], // percent - higher = more difficult (10% to 50%)
-    startLevel: 0 // Start at level 0 (centerPercentage = 10)
+    levels: [5, 10, 15, 20, 25, 30, 35, 40, 45], // percent - higher = more difficult (5% to 45%)
+    startLevel: 0 // Start at level 0 (centerPercentage = 5)
   },
   Bar: {
     parameter: 'heightRatio',
@@ -1185,7 +1189,7 @@ function createProgressOverlay(taskType, trialNum, totalTrials) {
     ">
       <div>Task: ${taskType} | Trial ${trialNum} of ${totalTrials}</div>
       <div style="font-size: 12px; opacity: 0.9; margin-top: 2px;">
-        Difficulty Level ${currentLevel + 1}/8 | ${parameterName}: ${difficultyDisplay}
+        Difficulty Level ${currentLevel + 1}/9 | ${parameterName}: ${difficultyDisplay}
       </div>
     </div>
   `;
@@ -1252,7 +1256,9 @@ function createProgressOverlay(taskType, trialNum, totalTrials) {
 
 // Balanced condition generation functions
 function getConditionsForTask(taskType) {
-  const positions = taskType === 'Bar' ? ['upper', 'lower'] : ['left_upper', 'left_lower', 'right_upper', 'right_lower'];
+  const positions = USE_SINGLE_POSITION ? 
+    (taskType === 'Bar' ? [TARGET_POSITION === 'left_upper' ? 'upper' : 'lower'] : [TARGET_POSITION]) :
+    (taskType === 'Bar' ? ['upper', 'lower'] : ['left_upper', 'left_lower', 'right_upper', 'right_lower']);
   
   switch(taskType) {
     case 'Motion':
