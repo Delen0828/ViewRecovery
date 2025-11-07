@@ -1588,15 +1588,15 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
         wrongAudio.play();
       }
       
-      // Update staircase difficulty based on response
-      updateDifficulty(taskType, correct);
-      
-      // Store trial data with difficulty information
+      // Store trial data with difficulty information (before updating for next trial)
       data.correct = correct;
       data.userChoice = userChoice;
       data.difficulty_level = staircaseState[taskType].level;
       data.difficulty_value = getCurrentDifficultyValue(taskType);
       data.staircase_parameter = STAIRCASE_CONFIG[taskType].parameter;
+      
+      // Update staircase difficulty based on response for next trial
+      updateDifficulty(taskType, correct);
     }
   });
   
@@ -1798,15 +1798,15 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
         wrongAudio.play();
       }
       
-      // Update staircase difficulty based on response
-      updateDifficulty(taskType, correct);
-      
-      // Store trial data with difficulty information
+      // Store trial data with difficulty information (before updating for next trial)
       data.correct = correct;
       data.userChoice = userChoice;
       data.difficulty_level = staircaseState[taskType].level;
       data.difficulty_value = getCurrentDifficultyValue(taskType);
       data.staircase_parameter = STAIRCASE_CONFIG[taskType].parameter;
+      
+      // Update staircase difficulty based on response for next trial
+      updateDifficulty(taskType, correct);
     }
   });
   
@@ -2031,15 +2031,15 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
         wrongAudio.play();
       }
       
-      // Update staircase difficulty based on response
-      updateDifficulty(taskType, correct);
-      
-      // Store trial data with difficulty information
+      // Store trial data with difficulty information (before updating for next trial)
       data.correct = correct;
       data.userChoice = userChoice;
       data.difficulty_level = staircaseState[taskType].level;
       data.difficulty_value = getCurrentDifficultyValue(taskType);
       data.staircase_parameter = STAIRCASE_CONFIG[taskType].parameter;
+      
+      // Update staircase difficulty based on response for next trial
+      updateDifficulty(taskType, correct);
     }
   });
   
@@ -2275,15 +2275,15 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
         wrongAudio.play();
       }
       
-      // Update staircase difficulty based on response
-      updateDifficulty(taskType, correct);
-      
-      // Store trial data with difficulty information
+      // Store trial data with difficulty information (before updating for next trial)
       data.correct = correct;
       data.userChoice = userChoice;
       data.difficulty_level = staircaseState[taskType].level;
       data.difficulty_value = getCurrentDifficultyValue(taskType);
       data.staircase_parameter = STAIRCASE_CONFIG[taskType].parameter;
+      
+      // Update staircase difficulty based on response for next trial
+      updateDifficulty(taskType, correct);
     }
   });
   
