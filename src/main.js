@@ -27,8 +27,173 @@ const SHOW_TASK_PROGRESS = true; // Global flag to enable/disable task progress 
 const USE_SINGLE_POSITION = true; // Global flag to target only one position instead of all four
 const TARGET_POSITION = 'left_upper'; // Which position to target when USE_SINGLE_POSITION is true
 
-// Simple task selection and configuration
-let selectedTask = null;
+// Task routing configuration
+const TASK_LINK_CONFIG = {
+  Motion: {
+    label: 'Motion Discrimination',
+    description: 'Identify dot movement direction'
+  },
+  Orientation: {
+    label: 'Orientation Discrimination',
+    description: 'Identify stripe orientation'
+  },
+  Centrality: {
+    label: 'Centrality Discrimination',
+    description: 'Identify grid center color'
+  },
+  Bar: {
+    label: 'Bar Comparison',
+    description: 'Compare bar heights'
+  }
+};
+
+function safeDecodeURIComponent(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function getCurrentTaskRouteSegment() {
+  return window.location.pathname.split('/').filter(Boolean)[0] || '';
+}
+
+function getTaskFromRouteSegment(segment) {
+  const normalizedSegment = safeDecodeURIComponent(segment).toLowerCase();
+  return Object.keys(TASK_LINK_CONFIG).find(task => task.toLowerCase() === normalizedSegment) || null;
+}
+
+function escapeHtml(value) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function renderTaskLinksPage() {
+  const root = document.getElementById('jspsych-target') || document.body;
+  const routeSegment = getCurrentTaskRouteSegment();
+  const invalidRouteMessage = routeSegment
+    ? `<div class="task-link-warning">Unknown task path "/${escapeHtml(safeDecodeURIComponent(routeSegment))}". Use one of the task links below.</div>`
+    : '';
+  const taskLinks = Object.entries(TASK_LINK_CONFIG).map(([task, config]) => {
+    const taskUrl = `${window.location.origin}/${task}`;
+    return `
+      <a class="task-link" href="/${task}">
+        <span class="task-link-label">${config.label}</span>
+        <span class="task-link-description">${config.description}</span>
+        <code>${taskUrl}</code>
+      </a>
+    `;
+  }).join('');
+
+  root.innerHTML = `
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #ccc;
+        font-family: Arial, sans-serif;
+      }
+      .task-link-page {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px;
+        box-sizing: border-box;
+      }
+      .task-link-container {
+        width: min(760px, 100%);
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+        padding: 32px;
+        color: #2c3e50;
+      }
+      .task-link-title {
+        font-size: 28px;
+        font-weight: bold;
+        margin-bottom: 10px;
+      }
+      .task-link-subtitle {
+        color: #5f6f7a;
+        font-size: 16px;
+        margin-bottom: 24px;
+      }
+      .task-link-warning {
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 6px;
+        color: #856404;
+        padding: 12px 14px;
+        margin-bottom: 18px;
+      }
+      .task-link-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+      .task-link {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        border: 2px solid #3498db;
+        border-radius: 8px;
+        padding: 16px;
+        color: inherit;
+        text-decoration: none;
+        transition: background 0.2s ease, color 0.2s ease;
+      }
+      .task-link:hover {
+        background: #3498db;
+        color: white;
+      }
+      .task-link-label {
+        font-size: 18px;
+        font-weight: bold;
+      }
+      .task-link-description {
+        font-size: 14px;
+        color: #667780;
+      }
+      .task-link:hover .task-link-description {
+        color: #eef7ff;
+      }
+      .task-link code {
+        margin-top: 6px;
+        color: inherit;
+        font-size: 13px;
+        white-space: normal;
+        word-break: break-all;
+      }
+      @media (max-width: 640px) {
+        .task-link-grid {
+          grid-template-columns: 1fr;
+        }
+        .task-link-container {
+          padding: 24px;
+        }
+      }
+    </style>
+    <main class="task-link-page">
+      <section class="task-link-container">
+        <div class="task-link-title">View Recovery Task Links</div>
+        <div class="task-link-subtitle">Open one direct task URL to start that survey.</div>
+        ${invalidRouteMessage}
+        <div class="task-link-grid">
+          ${taskLinks}
+        </div>
+      </section>
+    </main>
+  `;
+}
+
+// The task is selected by direct URL, for example /Motion.
+const selectedTask = getTaskFromRouteSegment(getCurrentTaskRouteSegment());
 // let allTrialParameters = []; // Store all trial parameters for export
 
 // Trial configuration based on testing checklist requirements
@@ -884,7 +1049,7 @@ const wrongAudio = new Audio('/audio/wrong.mp3');
 function saveDataToServer(filename, csvData) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', 'save_data.php', true);
+    xhr.open('POST', '/save_data.php', true);
     xhr.setRequestHeader('Content-Type', 'application/json');
     
     xhr.onreadystatechange = function() {
@@ -2318,6 +2483,15 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
   return trialSequence;
 }
 
+if (!selectedTask) {
+  renderTaskLinksPage();
+} else {
+  resetStaircaseState(selectedTask);
+  jsPsych.data.addProperties({
+    selected_task: selectedTask,
+    task_route: `/${selectedTask}`
+  });
+
 // Enter fullscreen mode at the very beginning
 timeline.push({
   type: jsPsychFullscreen,
@@ -2741,144 +2915,6 @@ timeline.push({
 // Clinic version uses the combination generation functions below
 
 // CLINIC VERSION - Single stimulus type with adaptive difficulty (stair casing)
-
-// Stimulus Selection Screen
-timeline.push({
-  type: jsPsychHtmlButtonResponse,
-  stimulus: `
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 0;
-        background-color: #ccc;
-        overflow: hidden;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-      }
-      .selection-container {
-        text-align: center;
-        color: black;
-        background: white;
-        padding: 40px;
-        border-radius: 15px;
-        box-shadow: 0 6px 12px rgba(0,0,0,0.3);
-        max-width: 600px;
-      }
-      .selection-title {
-        font-size: 28px;
-        margin-bottom: 15px;
-        color: #2c3e50;
-      }
-      .selection-subtitle {
-        font-size: 18px;
-        color: #7f8c8d;
-        margin-bottom: 30px;
-      }
-      .task-buttons {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 20px;
-        margin-bottom: 20px;
-      }
-      .task-button {
-        padding: 20px;
-        font-size: 18px;
-        border: 2px solid #3498db;
-        background: white;
-        border-radius: 10px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-      }
-      .task-button:hover {
-        background: #3498db;
-        color: white;
-        transform: scale(1.05);
-      }
-      .task-button.selected {
-        background: #2980b9;
-        color: white;
-        border-color: #2980b9;
-      }
-      .task-description {
-        font-size: 14px;
-        color: #666;
-        margin-top: 5px;
-      }
-      .continue-button {
-        margin-top: 20px;
-        padding: 15px 30px;
-        font-size: 18px;
-        background: #27ae60;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: background 0.3s;
-      }
-      .continue-button:disabled {
-        background: #95a5a6;
-        cursor: not-allowed;
-      }
-      .continue-button:not(:disabled):hover {
-        background: #229954;
-      }
-    </style>
-    <div class="selection-container">
-      <div class="selection-title">Select Your Task</div>
-      <div class="selection-subtitle">Please choose one visual discrimination task to complete</div>
-      <div class="task-buttons">
-        <button class="task-button" data-task="Motion">
-          <div>Motion Discrimination</div>
-          <div class="task-description">Identify dot movement direction</div>
-        </button>
-        <button class="task-button" data-task="Orientation">
-          <div>Orientation Discrimination</div>
-          <div class="task-description">Identify stripe orientation</div>
-        </button>
-        <button class="task-button" data-task="Centrality">
-          <div>Centrality Discrimination</div>
-          <div class="task-description">Identify grid center color</div>
-        </button>
-        <button class="task-button" data-task="Bar">
-          <div>Bar Comparison</div>
-          <div class="task-description">Compare bar heights</div>
-        </button>
-      </div>
-    </div>
-  `,
-  choices: ['Continue'],
-  button_html: (choice) => `<button class="jspsych-btn continue-button" id="continue-selection" disabled>${choice}</button>`,
-  on_load: function() {
-    const taskButtons = document.querySelectorAll('.task-button');
-    const continueButton = document.getElementById('continue-selection');
-    
-    taskButtons.forEach(button => {
-      button.addEventListener('click', function() {
-        // Remove selected class from all buttons
-        taskButtons.forEach(b => b.classList.remove('selected'));
-        // Add selected class to clicked button
-        this.classList.add('selected');
-        selectedTask = this.dataset.task;
-        continueButton.disabled = false;
-        
-        // Reset staircase state for the selected task
-        resetStaircaseState(selectedTask);
-        
-        // Store selected task in jsPsych data
-        jsPsych.data.addProperties({selected_task: selectedTask});
-        
-        // Task selected
-      });
-    });
-  },
-  on_finish: function(data) {
-    data.task_selection = selectedTask;
-    console.log(`Selection screen finished - Selected task: ${selectedTask}`);
-  }
-});
 
 // Single ready screen that only shows for the selected stimulus type
 const conditionalReadyScreen = {
@@ -3389,3 +3425,4 @@ timeline.push({
 });
 
 jsPsych.run(timeline);
+}

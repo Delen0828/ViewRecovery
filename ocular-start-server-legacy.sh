@@ -21,14 +21,15 @@ fi
 echo "Ensuring dist exists..."
 mkdir -p dist
 
-echo "Copying save_data.php..."
+echo "Copying PHP files..."
 cp save_data.php dist/
+cp router.php dist/
 
 echo "Starting tmux session: $SESSION..."
 tmux new-session -d -s $SESSION
 
 if command -v php >/dev/null 2>&1; then
-    SERVER_CMD="php -S 0.0.0.0:$PORT -t dist"
+    SERVER_CMD="php -S 0.0.0.0:$PORT -t dist dist/router.php"
     echo "Starting PHP server on 0.0.0.0:$PORT..."
 else
     SERVER_CMD="python3 -m http.server $PORT --directory dist"
