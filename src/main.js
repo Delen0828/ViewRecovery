@@ -6,6 +6,7 @@ import jsPsychFullscreen from "@jspsych/plugin-fullscreen";
 // import imageButtonResponse from '@jspsych/plugin-image-button-response';
 
 import './style.css';
+import { CENTRAL_FIXATION_TASK_CONFIG } from './experiment-config.js';
 const jsPsych = initJsPsych({
 
 });
@@ -19,6 +20,7 @@ const DURATION = 200; // 动画时长
 const PRE_STIMULUS_CH_DURATION = 1000;  // Part 1: Initial crosshair before stimulus
 const POST_STIMULUS_CH_DURATION = 500; // Part 3: Crosshair after stimulus  
 const FEEDBACK_CH_DURATION = 1000;      // Final: Colored feedback crosshair
+const CENTRAL_FIXATION_CATCH_TRIAL_PROPORTION = CENTRAL_FIXATION_TASK_CONFIG.catchTrialProportion;
 
 // Task progress tracking
 const SHOW_TASK_PROGRESS = true; // Global flag to enable/disable task progress display
@@ -223,6 +225,30 @@ const TRIAL_CONFIG = {
     breakEvery: 64  // Break after every 2 blocks (2 * 32 = 64)
   }
 };
+
+function getCentralFixationCatchTrialProportion() {
+  const proportion = Number(CENTRAL_FIXATION_CATCH_TRIAL_PROPORTION);
+  if (!Number.isFinite(proportion)) return 0;
+  return Math.max(0, Math.min(1, proportion));
+}
+
+function getCentralFixationCatchTrialCount(totalTrials) {
+  return Math.round(totalTrials * getCentralFixationCatchTrialProportion());
+}
+
+function getCentralFixationCatchTrialSlots(taskType, totalTrials) {
+  const catchTrialCount = getCentralFixationCatchTrialCount(totalTrials);
+  if (catchTrialCount <= 0) return new Set();
+
+  const trialNumbers = Array.from({ length: totalTrials }, (_, index) => index + 1);
+  const taskSeed = taskType
+    .split('')
+    .reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  const seed = taskSeed + Math.round(getCentralFixationCatchTrialProportion() * 100000);
+  const shuffledTrialNumbers = shuffleArrayDeterministic(trialNumbers, seed);
+
+  return new Set(shuffledTrialNumbers.slice(0, catchTrialCount));
+}
 
 // Staircase configuration - difficulty levels for adaptive testing
 const STAIRCASE_CONFIG = {
@@ -533,6 +559,31 @@ function drawCrosshair(svg, width, height, crosshairLen = crosshairLength, cross
     .attr('y1', centerY - crosshairLen / 2)
     .attr('x2', centerX)
     .attr('y2', centerY + crosshairLen / 2)
+    .attr('stroke', color)
+    .attr('stroke-width', crosshairStrokeWidth);
+}
+
+function drawXCrosshair(svg, width, height, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke, color = 'black') {
+  svg.selectAll('.crosshair').remove();
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const halfLen = crosshairLen / (2 * Math.sqrt(2));
+
+  svg.append('line')
+    .attr('class', 'crosshair')
+    .attr('x1', centerX - halfLen)
+    .attr('y1', centerY - halfLen)
+    .attr('x2', centerX + halfLen)
+    .attr('y2', centerY + halfLen)
+    .attr('stroke', color)
+    .attr('stroke-width', crosshairStrokeWidth);
+
+  svg.append('line')
+    .attr('class', 'crosshair')
+    .attr('x1', centerX - halfLen)
+    .attr('y1', centerY + halfLen)
+    .attr('x2', centerX + halfLen)
+    .attr('y2', centerY - halfLen)
     .attr('stroke', color)
     .attr('stroke-width', crosshairStrokeWidth);
 }
@@ -1044,6 +1095,26 @@ function initBarChartStimulus(angleArray,screenWidth,screenHeight, chinrestData 
 
 const correctAudio = new Audio('/audio/correct.mp3');
 const wrongAudio = new Audio('/audio/wrong.mp3');
+correctAudio.preload = 'auto';
+wrongAudio.preload = 'auto';
+
+function playFeedbackSound(isCorrect, trialCategory = '') {
+  const audio = isCorrect ? correctAudio : wrongAudio;
+  const label = isCorrect ? 'correct' : 'wrong';
+  const categoryText = trialCategory ? ` for ${trialCategory}` : '';
+
+  try {
+    audio.currentTime = 0;
+    const playPromise = audio.play();
+    if (playPromise && typeof playPromise.catch === 'function') {
+      playPromise.catch((error) => {
+        console.warn(`[Audio] Failed to play ${label} sound${categoryText}:`, error);
+      });
+    }
+  } catch (error) {
+    console.warn(`[Audio] Error while playing ${label} sound${categoryText}:`, error);
+  }
+}
 
 // Function to save data to server
 function saveDataToServer(filename, csvData) {
@@ -1097,6 +1168,36 @@ function shuffleArray(array) {
   return shuffled;
 }
 
+const SHARED_KEY_ICON_CSS = `
+  .key-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+    height: 40px;
+    padding: 0 10px;
+    margin: 0 4px;
+    box-sizing: border-box;
+    font-family: monospace;
+    font-size: 18px;
+    font-weight: bold;
+    color: #111;
+    border: 2px solid #9b9b9b;
+    border-radius: 6px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.6);
+    background: linear-gradient(145deg, #f2f2f2, #d9d9d9);
+  }
+  .key-icon-square {
+    width: 40px;
+    min-width: 40px;
+    padding: 0;
+  }
+  .key-icon-space {
+    width: 86px;
+    min-width: 86px;
+  }
+`;
+
 
 // Function to create a ready screen with countdown and spacebar continue
 function createReadyScreen(taskName = "next task") {
@@ -1140,24 +1241,13 @@ function createReadyScreen(taskName = "next task") {
             font-size: 18px;
             margin-bottom: 20px;
           }
-          .spacebar-key {
-            display: inline-block;
-            background: #f0f0f0;
-            border: 2px solid #ccc;
-            border-radius: 4px;
-            padding: 8px 20px;
-            margin: 0 4px;
-            font-family: monospace;
-            font-weight: bold;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            background: linear-gradient(145deg, #ffffff, #e6e6e6);
-          }
+          ${SHARED_KEY_ICON_CSS}
         </style>
         <div class="ready-container">
           <div class="ready-title">Ready to Start?</div>
           <div class="task-info">About to begin: ${taskName}</div>
           <div class="countdown" id="countdown">30</div>
-          <div class="start-instruction">Press <span class="spacebar-key">SPACE</span> when you're ready to continue.</div>
+          <div class="start-instruction">Press <span class="key-icon key-icon-space">SPACE</span> when you're ready to continue.</div>
         </div>
       `;
     },
@@ -1226,18 +1316,7 @@ function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, tot
           font-size: 18px;
           margin-bottom: 20px;
         }
-        .spacebar-key {
-          display: inline-block;
-          background: #f0f0f0;
-          border: 2px solid #ccc;
-          border-radius: 4px;
-          padding: 8px 20px;
-          margin: 0 4px;
-          font-family: monospace;
-          font-weight: bold;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-          background: linear-gradient(145deg, #ffffff, #e6e6e6);
-        }
+        ${SHARED_KEY_ICON_CSS}
       </style>
       <div class="ready-container">
         <div class="ready-title">Time for a Break!</div>
@@ -1245,7 +1324,7 @@ function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, tot
         ${taskType} Task<br>
         Completed ${trialsCompleted} of ${totalTrials} trials</div>
         <div class="countdown" id="countdown">30</div>
-        <div class="start-instruction">Press <span class="spacebar-key">SPACE</span> when you're ready to continue.</div>
+        <div class="start-instruction">Press <span class="key-icon key-icon-space">SPACE</span> when you're ready to continue.</div>
       </div>
     `,
     choices: [' '],
@@ -1358,6 +1437,205 @@ function createProgressOverlay(taskType, trialNum, totalTrials) {
       </div>
     </div>
   `;
+}
+
+const RESPONSE_PROMPT_CONFIG = {
+  Motion: {
+    question: 'What direction are the dots moving?',
+    fLabel: 'Up',
+    jLabel: 'Down'
+  },
+  Orientation: {
+    question: 'What orientation are the stripes?',
+    fLabel: 'Vertical',
+    jLabel: 'Horizontal'
+  },
+  Centrality: {
+    question: 'Are there more black cells or white cells?',
+    fLabel: 'Black',
+    jLabel: 'White'
+  },
+  Bar: {
+    question: 'The height of the bars are',
+    fLabel: 'Same',
+    jLabel: 'Different'
+  }
+};
+
+const TASK_INSTRUCTION_CONFIG = {
+  Motion: {
+    title: 'Motion Discrimination Task',
+    pageOneParagraphs: [
+      'You will see dots moving in your blind field, and they will move either up or down.',
+      'Using your dominant hand, press <span class="key-icon key-icon-square">F</span> if the dots move upward, and <span class="key-icon key-icon-square">J</span> if the dots move downward.',
+      'The program will wait for your response before moving to the next trial. If you are not sure about the direction, please make your best guess.'
+    ],
+    noStimulusText: 'On those trials, you will not see any moving dots.'
+  },
+  Orientation: {
+    title: 'Orientation Discrimination Task',
+    pageOneParagraphs: [
+      'You will see striped gratings in your blind field, and each one will be either vertical or horizontal.',
+      'Using your dominant hand, press <span class="key-icon key-icon-square">F</span> if the stripes are vertical, and <span class="key-icon key-icon-square">J</span> if the stripes are horizontal.',
+      'The program will wait for your response before moving to the next trial. If you are not sure about the orientation, please make your best guess.'
+    ],
+    noStimulusText: 'On those trials, you will not see any grating stimulus.'
+  },
+  Centrality: {
+    title: 'Centrality Discrimination Task',
+    pageOneParagraphs: [
+      'You will see a grid of black and white squares in your blind field, and you will judge whether there are more black or more white squares.',
+      'Using your dominant hand, press <span class="key-icon key-icon-square">F</span> if you think there are more black squares, and <span class="key-icon key-icon-square">J</span> if you think there are more white squares.',
+      'The program will wait for your response before moving to the next trial. If you are not sure, please make your best guess.'
+    ],
+    noStimulusText: 'On those trials, you will not see any grid stimulus.'
+  },
+  Bar: {
+    title: 'Bar Comparison Task',
+    pageOneParagraphs: [
+      'You will see two bars in your blind field, and you will judge whether their heights are the same or different.',
+      'Using your dominant hand, press <span class="key-icon key-icon-square">F</span> if the bars are the same height, and <span class="key-icon key-icon-square">J</span> if the bars are different heights.',
+      'The program will wait for your response before moving to the next trial. If you are not sure, please make your best guess.'
+    ],
+    noStimulusText: 'On those trials, you will not see any bar stimulus.'
+  }
+};
+
+function createTaskInstructionTrials(taskType) {
+  const instructionConfig = TASK_INSTRUCTION_CONFIG[taskType];
+  if (!instructionConfig) return [];
+
+  const breakEvery = TRIAL_CONFIG[taskType]?.breakEvery || 64;
+  const totalPages = 2;
+  const pages = [
+    instructionConfig.pageOneParagraphs,
+    [
+      'Please keep your eyes fixed on the cross in the center of the screen at all times.',
+      `Occasionally, the cross will change from "➕" to "✖️", and when that happens, press the space bar. ${instructionConfig.noStimulusText}`,
+      `There will be a short break after completing ${breakEvery} trials to help you rest your eyes. A 30-second countdown timer will appear, and you are also welcome to take a longer break if needed. When you are ready to continue, press the space bar to start the next block of trials after the countdown.`
+    ]
+  ];
+
+  return pages.map((pageParagraphs, index) => {
+    const currentPage = index + 1;
+    const paragraphsHtml = pageParagraphs.map(paragraph => `<p class="instruction-paragraph">${paragraph}</p>`).join('');
+
+    return {
+      type: htmlKeyboardResponse,
+      stimulus: `
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #ccc;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+          }
+          .instruction-wrapper {
+            width: min(980px, 92vw);
+            text-align: center;
+            color: black;
+            padding: 0 24px;
+            box-sizing: border-box;
+          }
+          .instruction-title {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: black;
+          }
+          .instruction-page {
+            font-size: 20px;
+            color: black;
+            margin-bottom: 30px;
+          }
+          .instruction-paragraph {
+            font-size: 20px;
+            line-height: 1.6;
+            margin: 0 0 20px 0;
+            color: black;
+          }
+          .instruction-paragraph:last-of-type {
+            margin-bottom: 0;
+          }
+          .instruction-continue {
+            margin-top: 30px;
+            font-size: 18px;
+            color: black;
+          }
+          ${SHARED_KEY_ICON_CSS}
+        </style>
+        <div class="instruction-wrapper">
+          <div class="instruction-title">${instructionConfig.title}</div>
+          <div class="instruction-page">Instructions ${currentPage} of ${totalPages}</div>
+          ${paragraphsHtml}
+          <div class="instruction-continue">Press <span class="key-icon key-icon-space">SPACE</span> to continue.</div>
+        </div>
+      `,
+      choices: [' '],
+      data: {
+        trial_category: 'task_instruction',
+        task_type: taskType,
+        instruction_page: currentPage
+      }
+    };
+  });
+}
+
+function createResponseQuestionStimulus(taskType, trialNum, totalTrials) {
+  const promptConfig = RESPONSE_PROMPT_CONFIG[taskType] || RESPONSE_PROMPT_CONFIG.Motion;
+
+  return `
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #ccc;
+        overflow: hidden;
+      }
+      .question-text {
+        position: absolute;
+        top: 40%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: black;
+        font-size: 18px;
+        z-index: 10;
+      }
+      .instruction-text {
+        position: absolute;
+        top: 60%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: black;
+        font-size: 16px;
+        z-index: 10;
+      }
+      ${SHARED_KEY_ICON_CSS}
+    </style>
+    <div class="question-text">${promptConfig.question}</div>
+    <div class="instruction-text">Press <span class="key-icon key-icon-square">F</span> for ${promptConfig.fLabel}, <span class="key-icon key-icon-square">J</span> for ${promptConfig.jLabel}, <span class="key-icon key-icon-space">SPACE</span> for ✖️</div>
+    <svg id="stimulus" width="100%" height="100%"></svg>
+    ${createProgressOverlay(taskType, trialNum, totalTrials)}
+  `;
+}
+
+function getUserChoiceFromTaskResponse(response, taskType) {
+  if (response === ' ') return 'X';
+  if (!response) return 'No response';
+
+  const promptConfig = RESPONSE_PROMPT_CONFIG[taskType] || RESPONSE_PROMPT_CONFIG.Motion;
+  const responseKey = response.toLowerCase();
+
+  if (responseKey === 'f') return promptConfig.fLabel;
+  if (responseKey === 'j') return promptConfig.jLabel;
+
+  return 'No response';
 }
 
 // // Generate base trial combinations for each stimulus type
@@ -1516,7 +1794,7 @@ function shuffleArrayDeterministic(array, seed) {
 }
 
 // Function to generate trial sequence with adaptive difficulty parameters
-function generateTrialSequence(taskType, trialNum, totalTrials = null) {
+function generateTrialSequence(taskType, trialNum, totalTrials = null, conditionTrialNum = trialNum) {
   // Use totalTrials from config if not provided
   if (!totalTrials) {
     totalTrials = TRIAL_CONFIG[taskType].totalTrials;
@@ -1527,7 +1805,7 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
   // NOTE: Staircase parameters are now calculated dynamically at trial runtime, not pre-generated
   
   // Get balanced condition for this trial number
-  const condition = getConditionFromTrialNumber(taskType, trialNum);
+  const condition = getConditionFromTrialNumber(taskType, conditionTrialNum);
   
   let trialSequence = [];
   
@@ -1577,6 +1855,181 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
       break;
   }
   
+  return trialSequence;
+}
+
+function generateCentralFixationCatchTrialSequence(taskType = selectedTask, trialNum = 1, totalTrials = 1) {
+  const trialSequence = [];
+
+  // Part 1: Pre-stimulus fixation cross
+  trialSequence.push({
+    type: htmlKeyboardResponse,
+    stimulus: function() {
+      return `
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #ccc;
+            overflow: hidden;
+          }
+        </style>
+        <svg id="stimulus" width="100%" height="100%"></svg>
+        ${createProgressOverlay(taskType, trialNum, totalTrials)}
+      `;
+    },
+    choices: "NO_KEYS",
+    trial_duration: PRE_STIMULUS_CH_DURATION,
+    data: {
+      trial_category: 'fixation_catch_pre',
+      task_type: taskType,
+      overall_trial_number: trialNum
+    },
+    on_load: function() {
+      const svg = d3.select("#stimulus");
+      svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+      drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
+    }
+  });
+
+  // Part 2: Central fixation orientation change during the stimulus display window.
+  trialSequence.push({
+    type: htmlKeyboardResponse,
+    stimulus: function() {
+      return `
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #ccc;
+            overflow: hidden;
+          }
+        </style>
+        <svg id="stimulus" width="100%" height="100%"></svg>
+        ${createProgressOverlay(taskType, trialNum, totalTrials)}
+      `;
+    },
+    choices: "NO_KEYS",
+    trial_duration: DURATION,
+    data: {
+      trial_category: 'fixation_catch_stimulus',
+      task_type: taskType,
+      overall_trial_number: trialNum,
+      fixation_catch_trial: true,
+      fixation_cross_orientation: 'X',
+      fixation_stimulus_duration_ms: DURATION,
+      peripheral_stimulus_presented: false
+    },
+    on_load: function() {
+      const svg = d3.select("#stimulus");
+      svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+      drawXCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
+    }
+  });
+
+  // Part 3: Post-stimulus fixation cross
+  trialSequence.push({
+    type: htmlKeyboardResponse,
+    stimulus: function() {
+      return `
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #ccc;
+            overflow: hidden;
+          }
+        </style>
+        <svg id="stimulus" width="100%" height="100%"></svg>
+        ${createProgressOverlay(taskType, trialNum, totalTrials)}
+      `;
+    },
+    choices: "NO_KEYS",
+    trial_duration: POST_STIMULUS_CH_DURATION,
+    data: {
+      trial_category: 'fixation_catch_post',
+      task_type: taskType,
+      overall_trial_number: trialNum
+    },
+    on_load: function() {
+      const svg = d3.select("#stimulus");
+      svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+      drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
+    }
+  });
+
+  // Part 4: Response waits indefinitely. The fixation returns to + so the answer is not visible.
+  trialSequence.push({
+    type: htmlKeyboardResponse,
+    stimulus: function() {
+      return createResponseQuestionStimulus(taskType, trialNum, totalTrials);
+    },
+    choices: ['F', 'J', ' '],
+    data: {
+      trial_category: 'fixation_catch_response',
+      task_type: taskType,
+      overall_trial_number: trialNum,
+      fixation_catch_trial: true,
+      correct_direction: 'X',
+      fixation_cross_orientation: '+',
+      fixation_response_key: 'Space',
+      fixation_response_window_ms: null,
+      fixation_response_window: 'unlimited',
+      peripheral_stimulus_presented: false,
+      staircase_updated: false
+    },
+    on_load: function() {
+      const svg = d3.select("#stimulus");
+      svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+      drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
+    },
+    on_finish: function(data) {
+      const userChoice = getUserChoiceFromTaskResponse(data.response, taskType);
+      const correct = userChoice === data.correct_direction;
+      data.correct = correct;
+      data.userChoice = userChoice;
+      data.fixation_response_detected = userChoice === 'X';
+      data.catch_trial_proportion = getCentralFixationCatchTrialProportion();
+      playFeedbackSound(correct, 'fixation_catch_response');
+    }
+  });
+
+  // Part 5: Feedback crosshair for the independent fixation task
+  trialSequence.push({
+    type: htmlKeyboardResponse,
+    stimulus: `
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          margin: 0;
+          padding: 0;
+          background-color: #ccc;
+          overflow: hidden;
+        }
+      </style>
+      <svg id="stimulus" width="100%" height="100%"></svg>
+    `,
+    choices: "NO_KEYS",
+    trial_duration: FEEDBACK_CH_DURATION,
+    data: {
+      trial_category: 'fixation_catch_feedback',
+      task_type: taskType,
+      overall_trial_number: trialNum
+    },
+    on_load: function() {
+      const svg = d3.select("#stimulus");
+      svg.attr("width", screenWidth).attr("height", screenHeight).attr("viewBox", `0 0 ${screenWidth} ${screenHeight}`);
+
+      const previousTrial = jsPsych.data.get().last(1).values()[0];
+      const crosshairColor = previousTrial && previousTrial.correct ? 'green' : 'red';
+
+      drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke, crosshairColor);
+    }
+  });
+
   return trialSequence;
 }
 
@@ -1677,53 +2130,9 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
   trialSequence.push({
     type: htmlKeyboardResponse,
     stimulus: function() {
-      return `
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #ccc;
-            overflow: hidden;
-          }
-          .question-text {
-            position: absolute;
-            top: 40%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: black;
-            font-size: 18px;
-            z-index: 10;
-          }
-          .instruction-text {
-            position: absolute;
-            top: 60%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: black;
-            font-size: 16px;
-            z-index: 10;
-          }
-          .keycap {
-            display: inline-block;
-            background: #f0f0f0;
-            border: 2px solid #ccc;
-            border-radius: 4px;
-            padding: 4px 8px;
-            margin: 0 2px;
-            font-family: monospace;
-            font-weight: bold;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            background: linear-gradient(145deg, #ffffff, #e6e6e6);
-          }
-        </style>
-        <div class="question-text">What direction are the dots moving?</div>
-        <div class="instruction-text">Press <span class="keycap">F</span> for Up ⬆️, <span class="keycap">J</span> for Down ⬇️</div>
-        <svg id="stimulus" width="100%" height="100%"></svg>
-        ${createProgressOverlay(taskType, trialNum, totalTrials)}
-      `;
+      return createResponseQuestionStimulus(taskType, trialNum, totalTrials);
     },
-    choices: ['F', 'J'],
+    choices: ['F', 'J', ' '],
     data: {
       correct_direction: signalDirection[1] > 0 ? 'Down' : 'Up',
       task_type: taskType,
@@ -1740,18 +2149,11 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
     },
     on_finish: function(data) {
-      const userChoice = data.response.toLowerCase() === 'f' ? 'Up' : 'Down';
+      const userChoice = getUserChoiceFromTaskResponse(data.response, taskType);
       const correct = userChoice === data.correct_direction;
       
       console.log(`Motion trial: ${correct ? 'CORRECT' : 'INCORRECT'} (Answer: ${data.correct_direction})`);
-      
-      if (correct) {
-        correctAudio.currentTime = 0;
-        correctAudio.play();
-      } else {
-        wrongAudio.currentTime = 0;
-        wrongAudio.play();
-      }
+      playFeedbackSound(correct, 'motion_response');
       
       // Store trial data with difficulty information (before updating for next trial)
       data.correct = correct;
@@ -1891,53 +2293,9 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
   trialSequence.push({
     type: htmlKeyboardResponse,
     stimulus: function() {
-      return `
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #ccc;
-            overflow: hidden;
-          }
-          .question-text {
-            position: absolute;
-            top: 40%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: black;
-            font-size: 18px;
-            z-index: 10;
-          }
-          .instruction-text {
-            position: absolute;
-            top: 60%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: black;
-            font-size: 16px;
-            z-index: 10;
-          }
-          .keycap {
-            display: inline-block;
-            background: #f0f0f0;
-            border: 2px solid #ccc;
-            border-radius: 4px;
-            padding: 4px 8px;
-            margin: 0 2px;
-            font-family: monospace;
-            font-weight: bold;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            background: linear-gradient(145deg, #ffffff, #e6e6e6);
-          }
-        </style>
-        <div class="question-text">What orientation are the stripes?</div>
-        <div class="instruction-text">Press <span class="keycap">F</span> for Vertical ↕️, <span class="keycap">J</span> for Horizontal ↔️</div>
-        <svg id="stimulus" width="100%" height="100%"></svg>
-        ${createProgressOverlay(taskType, trialNum, totalTrials)}
-      `;
+      return createResponseQuestionStimulus(taskType, trialNum, totalTrials);
     },
-    choices: ['F', 'J'],
+    choices: ['F', 'J', ' '],
     data: {
       correct_direction: orientation === 'vertical' ? 'Vertical' : 'Horizontal',
       task_type: taskType,
@@ -1950,18 +2308,11 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
     },
     on_finish: function(data) {
-      const userChoice = data.response.toLowerCase() === 'f' ? 'Vertical' : 'Horizontal';
+      const userChoice = getUserChoiceFromTaskResponse(data.response, taskType);
       const correct = userChoice === data.correct_direction;
       
       console.log(`Orientation trial: ${correct ? 'CORRECT' : 'INCORRECT'} (Answer: ${data.correct_direction})`);
-      
-      if (correct) {
-        correctAudio.currentTime = 0;
-        correctAudio.play();
-      } else {
-        wrongAudio.currentTime = 0;
-        wrongAudio.play();
-      }
+      playFeedbackSound(correct, 'orientation_response');
       
       // Store trial data with difficulty information (before updating for next trial)
       data.correct = correct;
@@ -2113,53 +2464,9 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
   trialSequence.push({
     type: htmlKeyboardResponse,
     stimulus: function() {
-      return `
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #ccc;
-            overflow: hidden;
-          }
-          .question-text {
-            position: absolute;
-            top: 40%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: black;
-            font-size: 18px;
-            z-index: 10;
-          }
-          .instruction-text {
-            position: absolute;
-            top: 60%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: black;
-            font-size: 16px;
-            z-index: 10;
-          }
-          .keycap {
-            display: inline-block;
-            background: #f0f0f0;
-            border: 2px solid #ccc;
-            border-radius: 4px;
-            padding: 4px 8px;
-            margin: 0 2px;
-            font-family: monospace;
-            font-weight: bold;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            background: linear-gradient(145deg, #ffffff, #e6e6e6);
-          }
-        </style>
-        <div class="question-text">Are there more black cells or white cells?</div>
-        <div class="instruction-text">Press <span class="keycap">F</span> for Black ⬛, <span class="keycap">J</span> for White ⬜</div>
-        <svg id="stimulus" width="100%" height="100%"></svg>
-        ${createProgressOverlay(taskType, trialNum, totalTrials)}
-      `;
+      return createResponseQuestionStimulus(taskType, trialNum, totalTrials);
     },
-    choices: ['F', 'J'],
+    choices: ['F', 'J', ' '],
     data: function() {
       // Dynamic calculation for response data
       const currentDifficultyValue = getCurrentDifficultyValue(taskType);
@@ -2183,18 +2490,11 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
     },
     on_finish: function(data) {
-      const userChoice = data.response.toLowerCase() === 'f' ? 'Black' : 'White';
+      const userChoice = getUserChoiceFromTaskResponse(data.response, taskType);
       const correct = userChoice === data.correct_direction;
       
       console.log(`Centrality trial: ${correct ? 'CORRECT' : 'INCORRECT'} (Answer: ${data.correct_direction})`);
-      
-      if (correct) {
-        correctAudio.currentTime = 0;
-        correctAudio.play();
-      } else {
-        wrongAudio.currentTime = 0;
-        wrongAudio.play();
-      }
+      playFeedbackSound(correct, 'centrality_response');
       
       // Store trial data with difficulty information (before updating for next trial)
       data.correct = correct;
@@ -2352,53 +2652,9 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
   trialSequence.push({
     type: htmlKeyboardResponse,
     stimulus: function() {
-      return `
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #ccc;
-            overflow: hidden;
-          }
-          .question-text {
-            position: absolute;
-            top: 40%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: black;
-            font-size: 18px;
-            z-index: 10;
-          }
-          .instruction-text {
-            position: absolute;
-            top: 60%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: black;
-            font-size: 16px;
-            z-index: 10;
-          }
-          .keycap {
-            display: inline-block;
-            background: #f0f0f0;
-            border: 2px solid #ccc;
-            border-radius: 4px;
-            padding: 4px 8px;
-            margin: 0 2px;
-            font-family: monospace;
-            font-weight: bold;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            background: linear-gradient(145deg, #ffffff, #e6e6e6);
-          }
-        </style>
-        <div class="question-text">The height of the bars are</div>
-        <div class="instruction-text">Press <span class="keycap">F</span> for Same ≡, <span class="keycap">J</span> for Different ≠</div>
-        <svg id="stimulus" width="100%" height="100%"></svg>
-        ${createProgressOverlay(taskType, trialNum, totalTrials)}
-      `;
+      return createResponseQuestionStimulus(taskType, trialNum, totalTrials);
     },
-    choices: ['F', 'J'],
+    choices: ['F', 'J', ' '],
     data: function() {
       // Dynamic calculation for response data
       const currentDifficultyValue = getCurrentDifficultyValue(taskType);
@@ -2427,18 +2683,11 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
     },
     on_finish: function(data) {
-      const userChoice = data.response.toLowerCase() === 'f' ? 'Same' : 'Different';
+      const userChoice = getUserChoiceFromTaskResponse(data.response, taskType);
       const correct = userChoice === data.correct_direction;
       
       console.log(`Bar trial: ${correct ? 'CORRECT' : 'INCORRECT'} (Answer: ${data.correct_direction})`);
-      
-      if (correct) {
-        correctAudio.currentTime = 0;
-        correctAudio.play();
-      } else {
-        wrongAudio.currentTime = 0;
-        wrongAudio.play();
-      }
+      playFeedbackSound(correct, 'bar_response');
       
       // Store trial data with difficulty information (before updating for next trial)
       data.correct = correct;
@@ -2489,7 +2738,8 @@ if (!selectedTask) {
   resetStaircaseState(selectedTask);
   jsPsych.data.addProperties({
     selected_task: selectedTask,
-    task_route: `/${selectedTask}`
+    task_route: `/${selectedTask}`,
+    central_fixation_catch_trial_proportion: getCentralFixationCatchTrialProportion()
   });
 
 // Enter fullscreen mode at the very beginning
@@ -2497,12 +2747,39 @@ timeline.push({
   type: jsPsychFullscreen,
   fullscreen_mode: true,
   message: `
-    <div style="max-width: 600px; margin: auto; text-align: center;">
-      <h2 style="color: #333;">Welcome to the Experiment</h2>
-      <p style="font-size: 18px; color: #666; margin: 20px 0;">
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: #ccc !important;
+        font-family: Arial, sans-serif;
+        color: black;
+      }
+      .fullscreen-message {
+        text-align: center;
+        color: black;
+        padding: 24px 36px;
+      }
+      .fullscreen-title {
+        font-size: 32px;
+        font-weight: bold;
+        margin: 0 0 18px 0;
+      }
+      .fullscreen-text {
+        font-size: 20px;
+        margin: 0 0 16px 0;
+        line-height: 1.6;
+      }
+      .fullscreen-text:last-of-type {
+        margin-bottom: 0;
+      }
+    </style>
+    <div class="fullscreen-message">
+      <h2 class="fullscreen-title">Welcome to the Experiment</h2>
+      <p class="fullscreen-text">
         This experiment requires fullscreen mode for optimal viewing and accurate measurements.
       </p>
-      <p style="font-size: 16px; color: #888;">
+      <p class="fullscreen-text">
         Click the button below to enter fullscreen mode and begin.
       </p>
     </div>
@@ -2512,7 +2789,30 @@ timeline.push({
 
 timeline.push({
   type: jsPsychHtmlButtonResponse,
-  stimulus: "Press continue to start the experiment.",
+  stimulus: `
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #ccc;
+        overflow: hidden;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+      }
+      .startup-message {
+        text-align: center;
+        color: black;
+        font-size: 32px;
+        font-weight: bold;
+        line-height: 1.4;
+        padding: 0 24px;
+      }
+    </style>
+    <div class="startup-message">Press continue to start the experiment.</div>
+  `,
   choices: ['Continue'],
   button_html: (choice) => `<div class="my-btn-container"><button class="jspsych-btn">${choice}</button></div>`
 });
@@ -2536,32 +2836,37 @@ timeline.push({
       .user-id-container {
         text-align: center;
         color: black;
-        background: white;
-        padding: 30px;
-        border-radius: 10px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        padding: 0 24px;
+        width: 100%;
+        box-sizing: border-box;
       }
       .user-id-title {
-        font-size: 24px;
-        margin-bottom: 20px;
+        font-size: 32px;
+        margin-bottom: 18px;
+        font-weight: bold;
       }
       .user-id-input {
-        font-size: 18px;
-        padding: 10px;
-        margin: 10px;
-        border: 2px solid #ccc;
-        border-radius: 5px;
-        width: 200px;
+        font-size: 20px;
+        padding: 12px 14px;
+        margin: 12px 0 8px 0;
+        border: 2px solid #8f8f8f;
+        border-radius: 6px;
+        width: min(280px, 85vw);
+        background: #e4e4e4;
+        color: black;
         text-align: center;
       }
+      .user-id-input::placeholder {
+        color: #5a5a5a;
+      }
       .user-id-instruction {
-        font-size: 16px;
-        margin: 15px 0;
-        color: #666;
+        font-size: 20px;
+        margin: 0 0 12px 0;
+        color: black;
       }
       .error-message {
-        color: red;
-        font-size: 14px;
+        color: #8b0000;
+        font-size: 16px;
         margin-top: 10px;
         display: none;
       }
@@ -2648,22 +2953,20 @@ timeline.push({
       .calculator-container {
         text-align: center;
         color: black;
-        background: white;
-        padding: 20px;
-        border-radius: 10px;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-        max-width: 850px;
-        width: 95%;
+        padding: 24px 28px;
+        width: 100%;
+        box-sizing: border-box;
       }
       .calculator-title {
-        font-size: 22px;
-        margin-bottom: 5px;
-        color: #2c3e50;
+        font-size: 32px;
+        margin-bottom: 8px;
+        color: black;
+        font-weight: bold;
       }
       .calculator-subtitle {
-        font-size: 14px;
-        color: #7f8c8d;
-        margin-bottom: 15px;
+        font-size: 20px;
+        color: black;
+        margin-bottom: 18px;
       }
       .input-grid {
         display: grid;
@@ -2672,15 +2975,14 @@ timeline.push({
         margin: 15px 0;
       }
       .input-section {
-        background: #f8f9fa;
+        background: #bdbdbd;
         padding: 12px;
-        border-radius: 6px;
-        border-left: 3px solid #3498db;
+        border-radius: 8px;
       }
       .section-title {
-        font-size: 14px;
+        font-size: 18px;
         font-weight: bold;
-        color: #2c3e50;
+        color: black;
         margin-bottom: 8px;
       }
       .input-group {
@@ -2689,30 +2991,31 @@ timeline.push({
       }
       .input-label {
         display: block;
-        font-size: 12px;
-        color: #34495e;
+        font-size: 14px;
+        color: black;
         margin-bottom: 3px;
         font-weight: 500;
       }
       .calculator-input {
         width: 100%;
-        padding: 6px;
-        border: 1px solid #bdc3c7;
+        padding: 8px;
+        border: none;
         border-radius: 4px;
-        font-size: 14px;
+        font-size: 16px;
         text-align: center;
         box-sizing: border-box;
+        background: #e0e0e0;
+        color: black;
       }
       .calculator-input:focus {
-        border-color: #3498db;
-        outline: none;
+        outline: 2px solid #555;
       }
       .calculator-input.invalid {
-        border-color: #e74c3c;
+        outline: 2px solid #e74c3c;
       }
       .unit-label {
         font-size: 12px;
-        color: #95a5a6;
+        color: #3f3f3f;
         margin-top: 3px;
       }
       .error-message {
@@ -2722,31 +3025,29 @@ timeline.push({
         display: none;
       }
       .preview-section {
-        background: #e8f4fd;
+        background: #c4c4c4;
         padding: 10px;
         border-radius: 6px;
         margin: 10px 0;
-        border-left: 3px solid #3498db;
       }
       .preview-title {
-        font-size: 14px;
+        font-size: 16px;
         font-weight: bold;
-        color: #2c3e50;
+        color: black;
         margin-bottom: 6px;
       }
       .preview-text {
-        font-size: 12px;
-        color: #34495e;
+        font-size: 14px;
+        color: black;
         margin: 3px 0;
       }
       .instructions {
-        background: #fff3cd;
-        border: 1px solid #ffeaa7;
+        background: #c8c8c8;
         padding: 8px;
         border-radius: 4px;
         margin: 10px 0;
-        font-size: 12px;
-        color: #856404;
+        font-size: 14px;
+        color: black;
         text-align: center;
       }
     </style>
@@ -2804,7 +3105,7 @@ timeline.push({
     </div>
   `,
   choices: ['Continue with Experiment'],
-  button_html: (choice) => `<div class="my-btn-container"><button class="jspsych-btn" id="continue-calc-btn" style="margin-top: 20px; padding: 12px 24px; font-size: 16px;">${choice}</button></div>`,
+  button_html: (choice) => `<div class="my-btn-container"><button class="jspsych-btn" id="continue-calc-btn">${choice}</button></div>`,
   on_load: function() {
     const continueBtn = document.getElementById('continue-calc-btn');
     const inputs = {
@@ -2969,22 +3270,16 @@ const conditionalReadyScreen = {
           font-size: 18px;
           margin-bottom: 20px;
         }
-        .spacebar-key {
-          display: inline-block;
-          background: #f0f0f0;
-          border: 2px solid #ccc;
-          border-radius: 4px;
-          padding: 8px 20px;
-          margin: 0 4px;
-          font-family: monospace;
-          font-weight: bold;
-        }
+        ${SHARED_KEY_ICON_CSS}
       </style>
       <div class="ready-container">
         <div class="ready-title">Ready for ${taskName}?</div>
-        <div class="task-info">The task will begin after a brief countdown.</div>
+        <div class="task-info">
+          The task will begin after a brief countdown.<br>
+          If the central fixation changes from ➕ to ✖️, press the spacebar immediately.
+        </div>
         <div class="countdown" id="countdown">30</div>
-        <div class="start-instruction">You can also press the <span class="spacebar-key">SPACEBAR</span> to skip the countdown.</div>
+        <div class="start-instruction">You can also press the <span class="key-icon key-icon-space">SPACE</span> to skip the countdown.</div>
       </div>
     `;
   },
@@ -3024,9 +3319,17 @@ function generateSelectedTaskTrials() {
     const config = TRIAL_CONFIG[selectedTask];
     const totalTrials = config.totalTrials;
     const breakEvery = config.breakEvery;
+    const catchTrialSlots = getCentralFixationCatchTrialSlots(selectedTask, totalTrials);
+    let peripheralTrialCounter = 0;
     
     // Dynamically generating trials
     
+    // Add two-page instructions for the selected task
+    const instructionTrials = createTaskInstructionTrials(selectedTask);
+    for (const instructionTrial of instructionTrials) {
+      trials.push(instructionTrial);
+    }
+
     // Add the ready screen
     trials.push(conditionalReadyScreen);
     
@@ -3050,8 +3353,11 @@ function generateSelectedTaskTrials() {
         console.log(`🛑 Added break ${breakCounter}/${totalBreaks} after trial ${i}`);
       }
       
-      // Generate the trial sequence with correct trial number (1-based) and total trials
-      const trialSequence = generateTrialSequence(selectedTask, i + 1, totalTrials);
+      const overallTrialNumber = i + 1;
+      const isFixationCatchTrial = catchTrialSlots.has(overallTrialNumber);
+      const trialSequence = isFixationCatchTrial
+        ? generateCentralFixationCatchTrialSequence(selectedTask, overallTrialNumber, totalTrials)
+        : generateTrialSequence(selectedTask, overallTrialNumber, totalTrials, ++peripheralTrialCounter);
       
       // Add each trial from the sequence
       for (const trial of trialSequence) {
@@ -3059,7 +3365,7 @@ function generateSelectedTaskTrials() {
       }
     }
     
-    console.log(`✅ Generated ready screen, ${totalTrials} trial sequences, and ${breakCounter} breaks for ${selectedTask}`);
+    console.log(`✅ Generated ready screen, ${peripheralTrialCounter} peripheral trial sequences, ${catchTrialSlots.size} fixation catch trial sequences, and ${breakCounter} breaks for ${selectedTask}`);
     
     // Export trial parameters after generation
     // exportTrialParameters();
@@ -3149,6 +3455,13 @@ timeline.push({
     );
     const barCorrect = barTrials.filter(trial => trial.correct === true).length;
     const barAccuracy = barTrials.length > 0 ? (barCorrect / barTrials.length * 100).toFixed(1) : 0;
+
+    // Calculate accuracy for central fixation catch trials
+    const fixationCatchTrials = responseTrials.filter(trial =>
+      trial.trial_category === 'fixation_catch_response'
+    );
+    const fixationCatchCorrect = fixationCatchTrials.filter(trial => trial.correct === true).length;
+    const fixationCatchAccuracy = fixationCatchTrials.length > 0 ? (fixationCatchCorrect / fixationCatchTrials.length * 100).toFixed(1) : 0;
     
     return `
       <style>
@@ -3273,6 +3586,10 @@ timeline.push({
               <div class="accuracy-label">Bar Chart Trials</div>
               <div class="accuracy-value">${barAccuracy}%</div>
             </div>
+            <div class="accuracy-item">
+              <div class="accuracy-label">Fixation Catch Trials</div>
+              <div class="accuracy-value">${fixationCatchAccuracy}%</div>
+            </div>
           </div>
           
           <div class="summary-stats">
@@ -3280,6 +3597,7 @@ timeline.push({
             <div class="summary-text"><strong>Grating Trials:</strong> ${gratingCorrect}/${gratingTrials.length} correct</div>
             <div class="summary-text"><strong>Grid Trials:</strong> ${gridCorrect}/${gridTrials.length} correct</div>
             <div class="summary-text"><strong>Bar Chart Trials:</strong> ${barCorrect}/${barTrials.length} correct</div>
+            <div class="summary-text"><strong>Fixation Catch Trials:</strong> ${fixationCatchCorrect}/${fixationCatchTrials.length} detected</div>
           </div>
         </div>
         
