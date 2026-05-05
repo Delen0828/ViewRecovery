@@ -1490,7 +1490,7 @@ function createReadyScreen(taskName = "next task") {
   };
 }
 
-// Helper function to create break/pause screen with 30-second countdown
+// Helper function to create break/pause screen with 30-second visual countdown
 function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, totalTrials, options = {}) {
   const isManualPause = options.mode === 'manual_pause';
   const titleText = isManualPause ? 'Paused' : 'Time for a Break!';
@@ -1550,7 +1550,7 @@ function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, tot
       </div>
     `,
     choices: [' '],
-    trial_duration: 30000, // 30 seconds auto-advance
+    trial_duration: null,
     on_load: function() {
       let timeLeft = 30;
       const countdownElement = document.getElementById('countdown');
@@ -1735,7 +1735,7 @@ function createTaskInstructionTrials(taskType) {
       'Please keep your eyes fixed on the cross in the center of the screen at all times.',
       `Occasionally, the cross will change from "➕" to "✖️", and when that happens, press <span class="key-icon key-icon-space">SPACE</span>. ${instructionConfig.noStimulusText}`,
       'You can press <span class="key-icon key-icon-square">B</span> at any time during numbered trials to take a manual pause and replay that trial.',
-      `There will be a short break after completing ${breakEvery} trials to help you rest your eyes. A 30-second countdown timer will appear, and you are also welcome to take a longer break if needed. When you are ready to continue, press <span class="key-icon key-icon-space">SPACE</span> to start the next block of trials after the countdown.`
+      `There will be a short break after completing ${breakEvery} trials to help you rest your eyes. A 30-second countdown timer will appear. You can press <span class="key-icon key-icon-space">SPACE</span> to continue early, or wait until it reaches 0 and press <span class="key-icon key-icon-space">SPACE</span> when you are ready. You are also welcome to take a longer break if needed.`
     ]
   ];
 
