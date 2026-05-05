@@ -11,6 +11,7 @@ npm run build
 echo "Copying PHP files to dist..."
 cp save_data.php dist/
 cp router.php dist/
+cp data_portal.php dist/
 
 # Start PHP server in dist directory
 echo "Starting PHP server on 0.0.0.0:8001..."

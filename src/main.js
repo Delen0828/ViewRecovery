@@ -7,8 +7,132 @@ import jsPsychFullscreen from "@jspsych/plugin-fullscreen";
 
 import './style.css';
 import { CENTRAL_FIXATION_TASK_CONFIG } from './experiment-config.js';
-const jsPsych = initJsPsych({
+const FULLSCREEN_PROMPT_ID = 'fullscreen-return-prompt';
+const FULLSCREEN_STATUS_ID = 'fullscreen-return-status';
+let fullscreenPromptVisible = false;
+let fullscreenMonitoringEnabled = true;
 
+function requestBrowserFullscreen() {
+  const root = document.documentElement;
+  const requestFullscreenMethod = root.requestFullscreen
+    || root.webkitRequestFullscreen
+    || root.mozRequestFullScreen
+    || root.msRequestFullscreen;
+
+  if (!requestFullscreenMethod) {
+    return Promise.reject(new Error('Fullscreen API is not supported in this browser.'));
+  }
+
+  const requestResult = requestFullscreenMethod.call(root);
+  if (requestResult && typeof requestResult.then === 'function') {
+    return requestResult;
+  }
+
+  return Promise.resolve();
+}
+
+function ensureFullscreenPrompt() {
+  let promptElement = document.getElementById(FULLSCREEN_PROMPT_ID);
+  if (promptElement) {
+    return promptElement;
+  }
+
+  promptElement = document.createElement('div');
+  promptElement.id = FULLSCREEN_PROMPT_ID;
+  promptElement.style.cssText = `
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    background: rgba(0, 0, 0, 0.78);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+  `;
+
+  promptElement.innerHTML = `
+    <div style="max-width: 680px; width: 100%; background: #ffffff; border-radius: 12px; padding: 28px; text-align: center; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);">
+      <h2 style="margin: 0 0 14px 0; font-size: 32px; color: #1f2933;">Fullscreen Required</h2>
+      <p style="margin: 0 0 18px 0; font-size: 20px; color: #2d3748; line-height: 1.5;">
+        You exited fullscreen mode. Please return to fullscreen to continue the experiment.
+      </p>
+      <button id="fullscreen-return-button" style="padding: 12px 28px; font-size: 20px; font-weight: 600; border: none; border-radius: 8px; background: #2c7be5; color: #fff; cursor: pointer;">
+        Return to Fullscreen
+      </button>
+      <div id="${FULLSCREEN_STATUS_ID}" style="margin-top: 12px; min-height: 22px; color: #9a3412; font-size: 15px;"></div>
+    </div>
+  `;
+
+  document.body.appendChild(promptElement);
+
+  const returnButton = document.getElementById('fullscreen-return-button');
+  if (returnButton) {
+    returnButton.addEventListener('click', () => {
+      const statusElement = document.getElementById(FULLSCREEN_STATUS_ID);
+      if (statusElement) {
+        statusElement.textContent = '';
+      }
+
+      requestBrowserFullscreen().catch(() => {
+        if (statusElement) {
+          statusElement.textContent = 'Fullscreen is blocked. Please allow fullscreen and try again.';
+        }
+      });
+    });
+  }
+
+  return promptElement;
+}
+
+function showFullscreenPrompt() {
+  if (!fullscreenMonitoringEnabled) {
+    return;
+  }
+
+  const promptElement = ensureFullscreenPrompt();
+  promptElement.style.display = 'flex';
+  fullscreenPromptVisible = true;
+}
+
+function hideFullscreenPrompt() {
+  const promptElement = document.getElementById(FULLSCREEN_PROMPT_ID);
+  if (promptElement) {
+    promptElement.style.display = 'none';
+  }
+
+  const statusElement = document.getElementById(FULLSCREEN_STATUS_ID);
+  if (statusElement) {
+    statusElement.textContent = '';
+  }
+
+  fullscreenPromptVisible = false;
+}
+
+function handleInteractionDataUpdate(record) {
+  if (!selectedTask || !fullscreenMonitoringEnabled || !record || !record.event) {
+    return;
+  }
+
+  if (record.event === 'fullscreenexit') {
+    showFullscreenPrompt();
+    jsPsych.pauseExperiment();
+  } else if (record.event === 'fullscreenenter') {
+    if (fullscreenPromptVisible) {
+      hideFullscreenPrompt();
+    }
+    jsPsych.resumeExperiment();
+  }
+}
+
+function handleExperimentFinish() {
+  fullscreenMonitoringEnabled = false;
+  hideFullscreenPrompt();
+}
+
+const jsPsych = initJsPsych({
+  on_interaction_data_update: handleInteractionDataUpdate,
+  on_finish: handleExperimentFinish
 });
 const timeline = [];
 const screenWidth = window.innerWidth;
@@ -291,6 +415,97 @@ let staircaseState = {
   Centrality: { level: 0, consecutiveCorrect: 0, consecutiveIncorrect: 0, responses: [] },
   Bar: { level: 0, consecutiveCorrect: 0, consecutiveIncorrect: 0, responses: [] }
 };
+
+// Manual pause state (press B during numbered trials)
+const manualPauseState = {
+  keyboardListener: null,
+  listenerRegistered: false,
+  isTrialAttemptActive: false,
+  pauseRequested: false,
+  forceEndCurrentTrial: false,
+  activeTaskType: null,
+  activeTrialNumber: null,
+  activeTotalTrials: null,
+  attemptDataCountSnapshot: 0,
+  attemptStaircaseSnapshot: null
+};
+
+function cloneStaircaseState() {
+  return JSON.parse(JSON.stringify(staircaseState));
+}
+
+function truncateDataToSnapshot(snapshotCount) {
+  const allTrialData = jsPsych.data.get().values();
+  if (Array.isArray(allTrialData) && allTrialData.length > snapshotCount) {
+    allTrialData.length = snapshotCount;
+  }
+}
+
+function ensureManualPauseKeyboardListener() {
+  if (manualPauseState.listenerRegistered) return;
+
+  manualPauseState.keyboardListener = jsPsych.pluginAPI.getKeyboardResponse({
+    callback_function: function() {
+      if (!manualPauseState.isTrialAttemptActive || manualPauseState.pauseRequested) {
+        return;
+      }
+
+      manualPauseState.pauseRequested = true;
+      manualPauseState.forceEndCurrentTrial = true;
+      // Immediately disarm so B is ignored on the pause page itself.
+      manualPauseState.isTrialAttemptActive = false;
+
+      // End current trial now, then abort this trial-sequence timeline so we can show pause screen.
+      jsPsych.finishTrial({
+        manual_pause_interrupted: true,
+        manual_pause_trial_number: manualPauseState.activeTrialNumber
+      });
+      jsPsych.abortCurrentTimeline();
+    },
+    valid_responses: ['b'],
+    rt_method: 'performance',
+    persist: true,
+    allow_held_key: false
+  });
+
+  manualPauseState.listenerRegistered = true;
+}
+
+function beginManualPauseTrialAttempt(taskType, trialNum, totalTrials) {
+  ensureManualPauseKeyboardListener();
+  manualPauseState.isTrialAttemptActive = true;
+  manualPauseState.pauseRequested = false;
+  manualPauseState.forceEndCurrentTrial = false;
+  manualPauseState.activeTaskType = taskType;
+  manualPauseState.activeTrialNumber = trialNum;
+  manualPauseState.activeTotalTrials = totalTrials;
+  manualPauseState.attemptDataCountSnapshot = jsPsych.data.get().count();
+  manualPauseState.attemptStaircaseSnapshot = cloneStaircaseState();
+}
+
+function endManualPauseTrialAttempt() {
+  manualPauseState.isTrialAttemptActive = false;
+}
+
+function rollbackManualPauseTrialAttempt() {
+  truncateDataToSnapshot(manualPauseState.attemptDataCountSnapshot);
+  if (manualPauseState.attemptStaircaseSnapshot) {
+    staircaseState = cloneStaircaseStateFromSnapshot(manualPauseState.attemptStaircaseSnapshot);
+  }
+  manualPauseState.forceEndCurrentTrial = false;
+}
+
+function cloneStaircaseStateFromSnapshot(snapshot) {
+  return JSON.parse(JSON.stringify(snapshot));
+}
+
+function isManualPauseForcedEnd(data) {
+  return Boolean(
+    manualPauseState.forceEndCurrentTrial ||
+    (data && data.manual_pause_interrupted === true) ||
+    (data && (data.response === null || typeof data.response === 'undefined') && manualPauseState.pauseRequested)
+  );
+}
 
 // Default parameters for each stimulus type (used as base before applying staircase adjustments)
 const STIMULUS_PARAMS = {
@@ -1275,8 +1490,17 @@ function createReadyScreen(taskName = "next task") {
   };
 }
 
-// Helper function to create break screen with 30-second countdown (matching initial countdown style)
-function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, totalTrials) {
+// Helper function to create break/pause screen with 30-second countdown
+function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, totalTrials, options = {}) {
+  const isManualPause = options.mode === 'manual_pause';
+  const titleText = isManualPause ? 'Paused' : 'Time for a Break!';
+  const taskInfoHtml = isManualPause
+    ? `Manual break requested (<span class="key-icon key-icon-square">B</span>)<br>${taskType} Task<br>Trial ${options.trialNum} of ${totalTrials}`
+    : `Break ${breakNum} of ${totalBreaks}<br>${taskType} Task<br>Completed ${trialsCompleted} of ${totalTrials} trials`;
+  const startInstructionHtml = isManualPause
+    ? `Press <span class="key-icon key-icon-space">SPACE</span> when you're ready to replay this trial.`
+    : `Press <span class="key-icon key-icon-space">SPACE</span> when you're ready to continue.`;
+
   return {
     type: htmlKeyboardResponse,
     stimulus: `
@@ -1319,12 +1543,10 @@ function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, tot
         ${SHARED_KEY_ICON_CSS}
       </style>
       <div class="ready-container">
-        <div class="ready-title">Time for a Break!</div>
-        <div class="task-info">Break ${breakNum} of ${totalBreaks}<br>
-        ${taskType} Task<br>
-        Completed ${trialsCompleted} of ${totalTrials} trials</div>
+        <div class="ready-title">${titleText}</div>
+        <div class="task-info">${taskInfoHtml}</div>
         <div class="countdown" id="countdown">30</div>
-        <div class="start-instruction">Press <span class="key-icon key-icon-space">SPACE</span> when you're ready to continue.</div>
+        <div class="start-instruction">${startInstructionHtml}</div>
       </div>
     `,
     choices: [' '],
@@ -1511,8 +1733,9 @@ function createTaskInstructionTrials(taskType) {
     instructionConfig.pageOneParagraphs,
     [
       'Please keep your eyes fixed on the cross in the center of the screen at all times.',
-      `Occasionally, the cross will change from "➕" to "✖️", and when that happens, press the space bar. ${instructionConfig.noStimulusText}`,
-      `There will be a short break after completing ${breakEvery} trials to help you rest your eyes. A 30-second countdown timer will appear, and you are also welcome to take a longer break if needed. When you are ready to continue, press the space bar to start the next block of trials after the countdown.`
+      `Occasionally, the cross will change from "➕" to "✖️", and when that happens, press <span class="key-icon key-icon-space">SPACE</span>. ${instructionConfig.noStimulusText}`,
+      'You can press <span class="key-icon key-icon-square">B</span> at any time during numbered trials to take a manual pause and replay that trial.',
+      `There will be a short break after completing ${breakEvery} trials to help you rest your eyes. A 30-second countdown timer will appear, and you are also welcome to take a longer break if needed. When you are ready to continue, press <span class="key-icon key-icon-space">SPACE</span> to start the next block of trials after the countdown.`
     ]
   ];
 
@@ -1619,7 +1842,7 @@ function createResponseQuestionStimulus(taskType, trialNum, totalTrials) {
       ${SHARED_KEY_ICON_CSS}
     </style>
     <div class="question-text">${promptConfig.question}</div>
-    <div class="instruction-text">Press <span class="key-icon key-icon-square">F</span> for ${promptConfig.fLabel}, <span class="key-icon key-icon-square">J</span> for ${promptConfig.jLabel}, <span class="key-icon key-icon-space">SPACE</span> for ✖️</div>
+    <div class="instruction-text">Press <span class="key-icon key-icon-square">F</span> for ${promptConfig.fLabel}, <span class="key-icon key-icon-square">J</span> for ${promptConfig.jLabel}, <span class="key-icon key-icon-space">SPACE</span> for ✖️, <span class="key-icon key-icon-square">B</span> for break</div>
     <svg id="stimulus" width="100%" height="100%"></svg>
     ${createProgressOverlay(taskType, trialNum, totalTrials)}
   `;
@@ -1987,6 +2210,9 @@ function generateCentralFixationCatchTrialSequence(taskType = selectedTask, tria
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
     },
     on_finish: function(data) {
+      if (isManualPauseForcedEnd(data)) {
+        return;
+      }
       const userChoice = getUserChoiceFromTaskResponse(data.response, taskType);
       const correct = userChoice === data.correct_direction;
       data.correct = correct;
@@ -2149,6 +2375,9 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
     },
     on_finish: function(data) {
+      if (isManualPauseForcedEnd(data)) {
+        return;
+      }
       const userChoice = getUserChoiceFromTaskResponse(data.response, taskType);
       const correct = userChoice === data.correct_direction;
       
@@ -2308,6 +2537,9 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
     },
     on_finish: function(data) {
+      if (isManualPauseForcedEnd(data)) {
+        return;
+      }
       const userChoice = getUserChoiceFromTaskResponse(data.response, taskType);
       const correct = userChoice === data.correct_direction;
       
@@ -2490,6 +2722,9 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
     },
     on_finish: function(data) {
+      if (isManualPauseForcedEnd(data)) {
+        return;
+      }
       const userChoice = getUserChoiceFromTaskResponse(data.response, taskType);
       const correct = userChoice === data.correct_direction;
       
@@ -2683,6 +2918,9 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
       drawCrosshair(svg, screenWidth, screenHeight, crosshairLength, crosshairStroke);
     },
     on_finish: function(data) {
+      if (isManualPauseForcedEnd(data)) {
+        return;
+      }
       const userChoice = getUserChoiceFromTaskResponse(data.response, taskType);
       const correct = userChoice === data.correct_direction;
       
@@ -3276,7 +3514,7 @@ const conditionalReadyScreen = {
         <div class="ready-title">Ready for ${taskName}?</div>
         <div class="task-info">
           The task will begin after a brief countdown.<br>
-          If the central fixation changes from ➕ to ✖️, press the spacebar immediately.
+          If the central fixation changes from ➕ to ✖️, press <span class="key-icon key-icon-space">SPACE</span> immediately.
         </div>
         <div class="countdown" id="countdown">30</div>
         <div class="start-instruction">You can also press the <span class="key-icon key-icon-space">SPACE</span> to skip the countdown.</div>
@@ -3307,6 +3545,46 @@ const conditionalReadyScreen = {
     }, 1000);
   }
 };
+
+function createPauseReplayTrialNode(taskType, trialNum, totalTrials, trialSequence) {
+  const pauseScreen = createBreakScreen(
+    taskType,
+    0,
+    0,
+    trialNum - 1,
+    totalTrials,
+    { mode: 'manual_pause', trialNum }
+  );
+
+  return {
+    timeline: [
+      {
+        timeline: trialSequence,
+        on_timeline_start: function() {
+          beginManualPauseTrialAttempt(taskType, trialNum, totalTrials);
+        },
+        on_timeline_finish: function() {
+          endManualPauseTrialAttempt();
+        }
+      },
+      {
+        timeline: [pauseScreen],
+        conditional_function: function() {
+          return manualPauseState.pauseRequested;
+        }
+      }
+    ],
+    loop_function: function() {
+      if (manualPauseState.pauseRequested) {
+        rollbackManualPauseTrialAttempt();
+        manualPauseState.pauseRequested = false;
+        return true;
+      }
+      manualPauseState.forceEndCurrentTrial = false;
+      return false;
+    }
+  };
+}
 
 // Function to generate all trials for selected task
 function generateSelectedTaskTrials() {
@@ -3359,10 +3637,7 @@ function generateSelectedTaskTrials() {
         ? generateCentralFixationCatchTrialSequence(selectedTask, overallTrialNumber, totalTrials)
         : generateTrialSequence(selectedTask, overallTrialNumber, totalTrials, ++peripheralTrialCounter);
       
-      // Add each trial from the sequence
-      for (const trial of trialSequence) {
-        trials.push(trial);
-      }
+      trials.push(createPauseReplayTrialNode(selectedTask, overallTrialNumber, totalTrials, trialSequence));
     }
     
     console.log(`✅ Generated ready screen, ${peripheralTrialCounter} peripheral trial sequences, ${catchTrialSlots.size} fixation catch trial sequences, and ${breakCounter} breaks for ${selectedTask}`);

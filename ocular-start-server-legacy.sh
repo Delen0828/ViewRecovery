@@ -24,6 +24,7 @@ mkdir -p dist
 echo "Copying PHP files..."
 cp save_data.php dist/
 cp router.php dist/
+cp data_portal.php dist/
 
 echo "Starting tmux session: $SESSION..."
 tmux new-session -d -s $SESSION
