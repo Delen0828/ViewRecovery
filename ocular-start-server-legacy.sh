@@ -12,6 +12,21 @@ tmux kill-session -t $SESSION 2>/dev/null
 echo "Building Node project..."
 # 用 npx，确保本地 node_modules vite 可用
 cd "$APP_DIR" || exit 1
+
+# Back up server-saved data before Vite rebuilds dist.
+if [ -d "dist/data" ]; then
+    CURRENT_TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
+    BACKUP_DIR="data/$CURRENT_TIMESTAMP"
+    if mkdir -p "$BACKUP_DIR" && cp -a dist/data/. "$BACKUP_DIR/"; then
+        echo "Backed up dist/data to $BACKUP_DIR"
+    else
+        echo "[Error] Failed to back up dist/data; aborting before build."
+        exit 1
+    fi
+else
+    echo "No dist/data directory found; skipping data backup."
+fi
+
 npx vite build
 if [ $? -ne 0 ]; then
     echo "[Error] Vite build failed, aborting"
