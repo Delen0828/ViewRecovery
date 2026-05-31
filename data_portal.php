@@ -8,42 +8,43 @@ function data_portal_handle_request(string $path): void
     $config = data_portal_config();
     data_portal_start_session($config['session_name']);
 
+    if ($path === '/data-portal' || $path === '/data-portal/') {
+        data_portal_redirect_to_app();
+    }
+
+    if ($path === '/data-portal/api/session') {
+        data_portal_send_session_state();
+    }
+
     if ($path === '/data-portal/login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         data_portal_process_login($config);
-        return;
     }
 
     if ($path === '/data-portal/logout' && $_SERVER['REQUEST_METHOD'] === 'POST') {
-        data_portal_require_valid_csrf();
-        $_SESSION = [];
-        if (ini_get('session.use_cookies')) {
-            $params = session_get_cookie_params();
-            setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'], $params['secure'], $params['httponly']);
-        }
-        session_destroy();
-        header('Location: /data-portal', true, 302);
-        return;
+        data_portal_process_logout();
     }
 
     if ($path === '/data-portal/api/files') {
         data_portal_require_auth();
         data_portal_send_file_index($config['data_dir']);
-        return;
     }
 
     if ($path === '/data-portal/download') {
         data_portal_require_auth();
         data_portal_download_file($config['data_dir']);
-        return;
     }
 
-    data_portal_render_page();
+    if (strpos($path, '/data-portal/api/') === 0) {
+        data_portal_send_json(['error' => 'Not found'], 404);
+    }
+
+    data_portal_redirect_to_app();
 }
 
 function data_portal_config(): array
 {
     $defaultPasswordHash = '$2y$12$QcA4yw1pW53AmQw.bZDL0OhXkrWFAKZy5OWjj4Ghf.N5Q2BAdfgr6';
-    $dataDir = __DIR__ . '/data';
+    $dataDir = data_portal_default_data_dir();
 
     return [
         'username' => getenv('DATA_PORTAL_USER') ?: 'admin',
@@ -53,6 +54,25 @@ function data_portal_config(): array
         'max_login_attempts' => data_portal_positive_int(getenv('DATA_PORTAL_MAX_ATTEMPTS'), 5),
         'attempt_window_seconds' => data_portal_positive_int(getenv('DATA_PORTAL_ATTEMPT_WINDOW_SEC'), 900),
     ];
+}
+
+function data_portal_default_data_dir(): string
+{
+    $configured = getenv('EXPERIMENT_DATA_DIR');
+    if (is_string($configured) && trim($configured) !== '') {
+        return $configured;
+    }
+
+    $portalConfigured = getenv('DATA_PORTAL_DATA_DIR');
+    if (is_string($portalConfigured) && trim($portalConfigured) !== '') {
+        return $portalConfigured;
+    }
+
+    if (basename(__DIR__) === 'dist') {
+        return dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data';
+    }
+
+    return __DIR__ . DIRECTORY_SEPARATOR . 'data';
 }
 
 function data_portal_positive_int($value, int $default): int
@@ -247,9 +267,11 @@ function data_portal_process_login(array $config): void
     $blockState = data_portal_is_login_blocked($ip, $config['max_login_attempts'], $config['attempt_window_seconds']);
 
     if ($blockState['blocked']) {
-        http_response_code(429);
-        data_portal_render_page('Too many failed login attempts. Retry in ' . (int) $blockState['retry_after'] . ' seconds.');
-        return;
+        data_portal_login_error(
+            'Too many failed login attempts. Retry in ' . (int) $blockState['retry_after'] . ' seconds.',
+            429,
+            ['retry_after' => (int) $blockState['retry_after']]
+        );
     }
 
     $submittedUser = trim((string) ($_POST['username'] ?? ''));
@@ -262,14 +284,33 @@ function data_portal_process_login(array $config): void
         session_regenerate_id(true);
         $_SESSION['authenticated'] = true;
         $_SESSION['auth_time'] = time();
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
         data_portal_clear_login_failures($ip, $config['attempt_window_seconds']);
-        header('Location: /data-portal', true, 302);
-        return;
+        data_portal_login_success();
     }
 
     data_portal_record_login_failure($ip, $config['attempt_window_seconds']);
-    http_response_code(401);
-    data_portal_render_page('Invalid username or password.');
+    data_portal_login_error('Invalid username or password.', 401);
+}
+
+function data_portal_process_logout(): void
+{
+    data_portal_require_valid_csrf();
+
+    $wantsJson = data_portal_wants_json();
+    $_SESSION = [];
+    if (ini_get('session.use_cookies')) {
+        $params = session_get_cookie_params();
+        setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'], $params['secure'], $params['httponly']);
+    }
+    session_destroy();
+
+    if ($wantsJson) {
+        data_portal_send_json(['success' => true, 'redirect' => '/data-portal/index.html']);
+    }
+
+    header('Location: /data-portal/index.html', true, 303);
+    exit();
 }
 
 function data_portal_require_valid_csrf(): void
@@ -278,9 +319,7 @@ function data_portal_require_valid_csrf(): void
     $sessionToken = (string) ($_SESSION['csrf_token'] ?? '');
 
     if ($posted === '' || $sessionToken === '' || !hash_equals($sessionToken, $posted)) {
-        http_response_code(400);
-        echo 'Invalid CSRF token';
-        exit();
+        data_portal_abort_request(400, 'Invalid CSRF token');
     }
 }
 
@@ -296,11 +335,74 @@ function data_portal_require_auth(): void
     }
 }
 
+function data_portal_wants_json(): bool
+{
+    $accept = (string) ($_SERVER['HTTP_ACCEPT'] ?? '');
+    $requestedWith = strtolower((string) ($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''));
+
+    return stripos($accept, 'application/json') !== false || $requestedWith === 'xmlhttprequest';
+}
+
+function data_portal_login_success(): void
+{
+    if (data_portal_wants_json()) {
+        data_portal_send_json([
+            'success' => true,
+            'redirect' => '/data-portal/index.html',
+            'csrf_token' => (string) ($_SESSION['csrf_token'] ?? ''),
+        ]);
+    }
+
+    header('Location: /data-portal/index.html', true, 303);
+    exit();
+}
+
+function data_portal_login_error(string $message, int $statusCode, array $extra = []): void
+{
+    if (data_portal_wants_json()) {
+        data_portal_send_json(array_merge(['success' => false, 'error' => $message], $extra), $statusCode);
+    }
+
+    $_SESSION['login_error'] = $message;
+    header('Location: /data-portal/index.html', true, 303);
+    exit();
+}
+
+function data_portal_abort_request(int $statusCode, string $message): void
+{
+    if (data_portal_wants_json()) {
+        data_portal_send_json(['success' => false, 'error' => $message], $statusCode);
+    }
+
+    http_response_code($statusCode);
+    header('Content-Type: text/plain; charset=UTF-8');
+    echo $message;
+    exit();
+}
+
+function data_portal_send_session_state(): void
+{
+    $loginError = (string) ($_SESSION['login_error'] ?? '');
+    unset($_SESSION['login_error']);
+
+    data_portal_send_json([
+        'authenticated' => data_portal_is_authenticated(),
+        'csrf_token' => (string) ($_SESSION['csrf_token'] ?? ''),
+        'login_error' => $loginError,
+    ]);
+}
+
 function data_portal_send_json(array $payload, int $statusCode = 200): void
 {
     http_response_code($statusCode);
     header('Content-Type: application/json; charset=UTF-8');
-    echo json_encode($payload);
+    echo json_encode($payload, JSON_UNESCAPED_SLASHES);
+    exit();
+}
+
+function data_portal_redirect_to_app(): void
+{
+    header('Location: /data-portal/index.html', true, 302);
     exit();
 }
 
@@ -425,124 +527,4 @@ function data_portal_download_file(string $dataDir): void
 
     readfile($targetPath);
     exit();
-}
-
-function data_portal_render_page(string $errorMessage = ''): void
-{
-    $authenticated = data_portal_is_authenticated();
-    $csrfToken = htmlspecialchars((string) ($_SESSION['csrf_token'] ?? ''), ENT_QUOTES, 'UTF-8');
-    $nonce = base64_encode(random_bytes(18));
-
-    header("Content-Security-Policy: default-src 'self'; script-src 'nonce-{$nonce}'; style-src 'nonce-{$nonce}'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
-    header('Content-Type: text/html; charset=UTF-8');
-
-    $safeError = htmlspecialchars($errorMessage, ENT_QUOTES, 'UTF-8');
-
-    echo '<!doctype html>';
-    echo '<html lang="en">';
-    echo '<head>';
-    echo '<meta charset="UTF-8">';
-    echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
-    echo '<title>Data Portal</title>';
-    echo "<style nonce=\"{$nonce}\">";
-    echo 'body{margin:0;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:linear-gradient(135deg,#ecfeff,#f8fafc);color:#0f172a;}';
-    echo '.shell{max-width:1080px;margin:40px auto;padding:24px;}';
-    echo '.card{background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;padding:20px;box-shadow:0 10px 30px rgba(15,23,42,0.06);}';
-    echo 'h1{margin:0 0 16px;font-size:1.6rem;}';
-    echo 'form{display:grid;gap:12px;}';
-    echo 'label{font-weight:600;font-size:0.93rem;}';
-    echo 'input{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:10px;font-size:0.95rem;box-sizing:border-box;}';
-    echo 'button{background:#0f766e;border:none;color:#fff;padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer;}';
-    echo 'button.secondary{background:#334155;}';
-    echo '.row{display:flex;gap:12px;flex-wrap:wrap;align-items:end;}';
-    echo '.grow{flex:1 1 220px;}';
-    echo '.muted{color:#475569;font-size:0.9rem;}';
-    echo '.error{margin-bottom:12px;color:#b91c1c;background:#fee2e2;padding:10px;border-radius:8px;}';
-    echo 'table{width:100%;border-collapse:collapse;margin-top:14px;font-size:0.92rem;}';
-    echo 'th,td{text-align:left;border-bottom:1px solid #e2e8f0;padding:10px 8px;}';
-    echo 'thead th{font-size:0.83rem;color:#334155;text-transform:uppercase;letter-spacing:.03em;}';
-    echo 'a{color:#0f766e;text-decoration:none;font-weight:600;}';
-    echo '.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:end;}';
-    echo '.toolbar .grow{min-width:170px;}';
-    echo '@media (max-width:720px){.shell{margin:18px auto;padding:14px;}.card{padding:14px;}table{font-size:0.86rem;}}';
-    echo '</style>';
-    echo '</head>';
-    echo '<body>';
-    echo '<div class="shell">';
-    echo '<div class="card">';
-
-    if (!$authenticated) {
-        echo '<h1>Data Portal Login</h1>';
-        echo '<p class="muted">Access to experiment files in <code>dist/data</code>.</p>';
-        if ($safeError !== '') {
-            echo '<div class="error">' . $safeError . '</div>';
-        }
-        echo '<form method="post" action="/data-portal/login" autocomplete="off">';
-        echo '<input type="hidden" name="csrf_token" value="' . $csrfToken . '">';
-        echo '<div><label for="username">Username</label><input id="username" name="username" required></div>';
-        echo '<div><label for="password">Password</label><input id="password" type="password" name="password" required></div>';
-        echo '<button type="submit">Sign In</button>';
-        echo '</form>';
-    } else {
-        echo '<div class="row" style="justify-content:space-between;align-items:center;">';
-        echo '<div><h1>Data Files</h1><p class="muted">Search by filename and filter by created date.</p></div>';
-        echo '<form method="post" action="/data-portal/logout" style="display:block;">';
-        echo '<input type="hidden" name="csrf_token" value="' . $csrfToken . '">';
-        echo '<button type="submit" class="secondary">Log Out</button>';
-        echo '</form></div>';
-
-        echo '<div class="toolbar">';
-        echo '<div class="grow"><label for="q">Filename search</label><input id="q" type="text" placeholder="e.g. user_123"></div>';
-        echo '<div class="grow"><label for="date_from">Created from</label><input id="date_from" type="date"></div>';
-        echo '<div class="grow"><label for="date_to">Created to</label><input id="date_to" type="date"></div>';
-        echo '<div><button id="refresh" type="button">Refresh</button></div>';
-        echo '</div>';
-
-        echo '<p class="muted" id="status">Loading files...</p>';
-        echo '<div style="overflow:auto;">';
-        echo '<table>';
-        echo '<thead><tr><th>File</th><th>Size</th><th>Created</th><th>Modified</th><th>Download</th></tr></thead>';
-        echo '<tbody id="rows"></tbody>';
-        echo '</table>';
-        echo '</div>';
-
-        echo "<script nonce=\"{$nonce}\">";
-        echo '(function(){';
-        echo 'const rows=document.getElementById("rows");';
-        echo 'const status=document.getElementById("status");';
-        echo 'const q=document.getElementById("q");';
-        echo 'const dateFrom=document.getElementById("date_from");';
-        echo 'const dateTo=document.getElementById("date_to");';
-        echo 'const refresh=document.getElementById("refresh");';
-        echo 'function fmtBytes(v){if(v<1024)return v+" B";const u=["KB","MB","GB"];let i=-1;let n=v;do{n/=1024;i++;}while(n>=1024&&i<u.length-1);return n.toFixed(1)+" "+u[i];}';
-        echo 'function fmtDate(ts){return new Date(ts*1000).toLocaleString();}';
-        echo 'async function load(){';
-        echo 'status.textContent="Loading...";';
-        echo 'const params=new URLSearchParams();';
-        echo 'if(q.value.trim())params.set("q",q.value.trim());';
-        echo 'if(dateFrom.value)params.set("date_from",dateFrom.value);';
-        echo 'if(dateTo.value)params.set("date_to",dateTo.value);';
-        echo 'const url="/data-portal/api/files"+(params.toString()?"?"+params.toString():"");';
-        echo 'let res;';
-        echo 'try{res=await fetch(url,{credentials:"same-origin"});}catch(e){status.textContent="Failed to load data.";return;}';
-        echo 'if(res.status===401){window.location.href="/data-portal";return;}';
-        echo 'if(!res.ok){status.textContent="Error loading files.";return;}';
-        echo 'const data=await res.json();';
-        echo 'rows.innerHTML="";';
-        echo 'if(!data.files||!data.files.length){rows.innerHTML="<tr><td colspan=\"5\">No files found.</td></tr>";}';
-        echo 'else{for(const file of data.files){const tr=document.createElement("tr");const safeName=file.name.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\"/g,"&quot;").replace(/\'/g,"&#39;");tr.innerHTML=`<td>${safeName}</td><td>${fmtBytes(file.size_bytes)}</td><td>${fmtDate(file.created_at)}</td><td>${fmtDate(file.modified_at)}</td><td><a href="${file.download_url}">Download</a></td>`;rows.appendChild(tr);}}';
-        echo 'status.textContent=`${data.total||0} file(s)`;';
-        echo '}';
-        echo 'refresh.addEventListener("click",load);';
-        echo '[q,dateFrom,dateTo].forEach((el)=>el.addEventListener("change",load));';
-        echo 'let timer; q.addEventListener("input",function(){clearTimeout(timer);timer=setTimeout(load,220);});';
-        echo 'load();';
-        echo '})();';
-        echo '</script>';
-    }
-
-    echo '</div>';
-    echo '</div>';
-    echo '</body>';
-    echo '</html>';
 }

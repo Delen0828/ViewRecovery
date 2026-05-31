@@ -3,7 +3,7 @@
 echo "Deleting pm2 instance"
 pm2 delete php-server-nontrack
 
-# Back up server-saved data before Vite rebuilds dist.
+# Preserve legacy server-saved data before Vite rebuilds dist.
 if [ -d "dist/data" ]; then
     CURRENT_TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
     BACKUP_DIR="data/$CURRENT_TIMESTAMP"
@@ -26,6 +26,7 @@ echo "Copying PHP files to dist..."
 cp save_data.php dist/
 cp router.php dist/
 cp data_portal.php dist/
+cp -R data-portal dist/
 
 # Start PHP server in dist directory
 echo "Starting PHP server on 0.0.0.0:8001..."

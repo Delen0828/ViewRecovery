@@ -13,6 +13,81 @@ header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: POST');
 header('Access-Control-Allow-Headers: Content-Type');
 
+function experiment_data_directory(): string
+{
+    $configured = getenv('EXPERIMENT_DATA_DIR');
+    if (is_string($configured) && trim($configured) !== '') {
+        return $configured;
+    }
+
+    $portalConfigured = getenv('DATA_PORTAL_DATA_DIR');
+    if (is_string($portalConfigured) && trim($portalConfigured) !== '') {
+        return $portalConfigured;
+    }
+
+    if (basename(__DIR__) === 'dist') {
+        return dirname(__DIR__) . DIRECTORY_SEPARATOR . 'data';
+    }
+
+    return __DIR__ . DIRECTORY_SEPARATOR . 'data';
+}
+
+function ensure_experiment_data_directory(string $data_dir): void
+{
+    if (!is_dir($data_dir) && !mkdir($data_dir, 0755, true)) {
+        throw new Exception('Failed to create data directory');
+    }
+}
+
+function write_unique_data_file(string $data_dir, string $filename, string $data): array
+{
+    $path_info = pathinfo($filename);
+    $base_name = $path_info['filename'];
+    $extension = $path_info['extension'] ?? 'csv';
+    $counter = 0;
+
+    do {
+        $candidate = $counter === 0 ? $filename : $base_name . '_' . $counter . '.' . $extension;
+        $file_path = $data_dir . DIRECTORY_SEPARATOR . $candidate;
+        $fp = @fopen($file_path, 'xb');
+
+        if ($fp === false) {
+            if (file_exists($file_path)) {
+                $counter++;
+                continue;
+            }
+
+            throw new Exception('Failed to create data file');
+        }
+
+        $bytes_written = 0;
+        $length = strlen($data);
+
+        try {
+            while ($bytes_written < $length) {
+                $written = fwrite($fp, substr($data, $bytes_written));
+                if ($written === false || $written === 0) {
+                    throw new Exception('Failed to write data to file');
+                }
+                $bytes_written += $written;
+            }
+
+            fflush($fp);
+        } catch (Exception $e) {
+            fclose($fp);
+            @unlink($file_path);
+            throw $e;
+        }
+
+        fclose($fp);
+
+        return [
+            'filename' => $candidate,
+            'bytes_written' => $bytes_written,
+        ];
+    } while (true);
+}
+
 // Handle preflight requests
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -43,40 +118,12 @@ try {
         throw new Exception('Invalid filename format');
     }
     
-    // Ensure data directory exists
-    $data_dir = __DIR__ . '/data';
-    if (!file_exists($data_dir)) {
-        if (!mkdir($data_dir, 0755, true)) {
-            throw new Exception('Failed to create data directory');
-        }
-    }
-    
-    // Full file path
-    $file_path = $data_dir . '/' . $filename;
-    
-    // Check if file already exists (prevent overwriting)
-    if (file_exists($file_path)) {
-        // Add a unique suffix if file exists
-        $path_info = pathinfo($filename);
-        $base_name = $path_info['filename'];
-        $extension = $path_info['extension'];
-        $counter = 1;
-        
-        do {
-            $new_filename = $base_name . '_' . $counter . '.' . $extension;
-            $file_path = $data_dir . '/' . $new_filename;
-            $counter++;
-        } while (file_exists($file_path));
-        
-        $filename = $new_filename;
-    }
-    
-    // Write the data to file
-    $bytes_written = file_put_contents($file_path, $data);
-    
-    if ($bytes_written === false) {
-        throw new Exception('Failed to write data to file');
-    }
+    // Store data outside dist when this script is copied into the build output.
+    $data_dir = experiment_data_directory();
+    ensure_experiment_data_directory($data_dir);
+    $write_result = write_unique_data_file($data_dir, $filename, $data);
+    $filename = $write_result['filename'];
+    $bytes_written = $write_result['bytes_written'];
     
     // Log the save operation (optional)
     $log_entry = date('Y-m-d H:i:s') . " - Saved file: $filename (" . strlen($data) . " bytes)\n";
@@ -100,6 +147,10 @@ try {
     
     // Log the error
     $error_log = date('Y-m-d H:i:s') . " - Error: " . $e->getMessage() . "\n";
-    @file_put_contents(__DIR__ . '/data/error_log.txt', $error_log, FILE_APPEND | LOCK_EX);
+    $error_data_dir = experiment_data_directory();
+    if (!is_dir($error_data_dir)) {
+        @mkdir($error_data_dir, 0755, true);
+    }
+    @file_put_contents($error_data_dir . '/error_log.txt', $error_log, FILE_APPEND | LOCK_EX);
 }
 ?>

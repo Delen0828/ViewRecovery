@@ -13,7 +13,7 @@ echo "Building Node project..."
 # 用 npx，确保本地 node_modules vite 可用
 cd "$APP_DIR" || exit 1
 
-# Back up server-saved data before Vite rebuilds dist.
+# Preserve legacy server-saved data before Vite rebuilds dist.
 if [ -d "dist/data" ]; then
     CURRENT_TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
     BACKUP_DIR="data/$CURRENT_TIMESTAMP"
@@ -40,6 +40,7 @@ echo "Copying PHP files..."
 cp save_data.php dist/
 cp router.php dist/
 cp data_portal.php dist/
+cp -R data-portal dist/
 
 echo "Starting tmux session: $SESSION..."
 tmux new-session -d -s $SESSION
