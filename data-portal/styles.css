@@ -57,6 +57,13 @@ h1 {
   line-height: 1.2;
 }
 
+h2 {
+  margin: 0 0 12px;
+  color: #253249;
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
 .muted {
   margin: 0;
   color: #5f6d80;
@@ -100,6 +107,11 @@ input {
   color: #172033;
 }
 
+input[type="checkbox"] {
+  width: auto;
+  min-height: 0;
+}
+
 input:focus {
   border-color: #0b6b61;
   box-shadow: 0 0 0 3px rgba(11, 107, 97, 0.14);
@@ -127,6 +139,39 @@ button.secondary {
 
 button.secondary:hover {
   background: #202b3d;
+}
+
+.button-link {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #0b6b61;
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 750;
+}
+
+.button-link:hover {
+  background: #07564e;
+  color: #fff;
+  text-decoration: none;
+}
+
+.button-link.secondary {
+  background: #344054;
+}
+
+.button-link.secondary:hover {
+  background: #202b3d;
+}
+
+.button-link.disabled {
+  background: #d0d5dd;
+  color: #667085;
+  pointer-events: none;
 }
 
 button:disabled {
@@ -217,6 +262,162 @@ tbody tr:last-child td {
   word-break: break-word;
 }
 
+.file-context {
+  margin: 0 0 18px;
+  color: #253249;
+  font-size: 0.94rem;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.portal-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: -6px 0 18px;
+  font-size: 0.94rem;
+}
+
+.action-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chart-wrap {
+  min-height: 360px;
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.axis text {
+  fill: #475467;
+  font-size: 0.78rem;
+}
+
+.axis path,
+.axis line {
+  stroke: #98a2b3;
+}
+
+.grid-lines line {
+  stroke: #e6ebf2;
+}
+
+.grid-lines path {
+  display: none;
+}
+
+.line-path {
+  fill: none;
+  stroke: #0b6b61;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.chart-point circle {
+  fill: #0b6b61;
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.axis-label {
+  fill: #253249;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.user-dashboard {
+  display: grid;
+  grid-template-columns: minmax(190px, 240px) minmax(0, 1fr);
+  gap: 22px;
+  margin-top: 18px;
+}
+
+.user-list-panel {
+  border-right: 1px solid #dfe5ee;
+  padding-right: 18px;
+}
+
+.user-list {
+  display: grid;
+  gap: 8px;
+}
+
+.user-button {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-height: 0;
+  border: 1px solid #dfe5ee;
+  padding: 10px 12px;
+  background: #fff;
+  color: #253249;
+  text-align: left;
+}
+
+.user-button:hover,
+.user-button.active {
+  border-color: #0b6b61;
+  background: #eef7f5;
+  color: #172033;
+}
+
+.user-name {
+  font-weight: 800;
+}
+
+.user-meta {
+  color: #667085;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.visualization-panel {
+  min-width: 0;
+}
+
+.task-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin: 4px 0 16px;
+}
+
+.checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #253249;
+  font-size: 0.88rem;
+  font-weight: 750;
+}
+
+.task-swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+}
+
+.task-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.trend-point circle {
+  stroke: #fff;
+  stroke-width: 2;
+}
+
 .empty-cell {
   color: #667085;
   padding: 24px 12px;
@@ -239,5 +440,16 @@ tbody tr:last-child td {
 
   .toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .user-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .user-list-panel {
+    border-right: 0;
+    border-bottom: 1px solid #dfe5ee;
+    padding-right: 0;
+    padding-bottom: 16px;
   }
 }
