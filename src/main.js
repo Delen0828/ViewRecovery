@@ -1664,32 +1664,62 @@ function createProgressOverlay(taskType, trialNum, totalTrials) {
 const RESPONSE_PROMPT_CONFIG = {
   Motion: {
     question: 'What direction are the dots moving?',
-    fLabel: 'Up',
-    jLabel: 'Down'
+    primaryKey: 'ArrowUp',
+    primaryKeyLabel: '↑',
+    primaryLabel: 'Up',
+    secondaryKey: 'ArrowDown',
+    secondaryKeyLabel: '↓',
+    secondaryLabel: 'Down'
   },
   Orientation: {
     question: 'What orientation are the stripes?',
-    fLabel: 'Vertical',
-    jLabel: 'Horizontal'
+    primaryKey: 'ArrowLeft',
+    primaryKeyLabel: '←',
+    primaryLabel: 'Vertical',
+    secondaryKey: 'ArrowRight',
+    secondaryKeyLabel: '→',
+    secondaryLabel: 'Horizontal'
   },
   Centrality: {
     question: 'Are there more black cells or white cells?',
-    fLabel: 'Black',
-    jLabel: 'White'
+    primaryKey: 'ArrowLeft',
+    primaryKeyLabel: '←',
+    primaryLabel: 'Black',
+    secondaryKey: 'ArrowRight',
+    secondaryKeyLabel: '→',
+    secondaryLabel: 'White'
   },
   Bar: {
     question: 'The height of the bars are',
-    fLabel: 'Same',
-    jLabel: 'Different'
+    primaryKey: 'ArrowLeft',
+    primaryKeyLabel: '←',
+    primaryLabel: 'Same',
+    secondaryKey: 'ArrowRight',
+    secondaryKeyLabel: '→',
+    secondaryLabel: 'Different'
   }
 };
+
+function getResponsePromptConfig(taskType) {
+  return RESPONSE_PROMPT_CONFIG[taskType] || RESPONSE_PROMPT_CONFIG.Motion;
+}
+
+function getTaskResponseChoices(taskType) {
+  const promptConfig = getResponsePromptConfig(taskType);
+  return [promptConfig.primaryKey, promptConfig.secondaryKey, ' '];
+}
+
+function createKeyIcon(label, extraClass = '') {
+  const className = extraClass ? `key-icon ${extraClass}` : 'key-icon';
+  return `<span class="${className}">${label}</span>`;
+}
 
 const TASK_INSTRUCTION_CONFIG = {
   Motion: {
     title: 'Motion Discrimination Task',
     pageOneParagraphs: [
       'You will see dots moving in your blind field, and they will move either up or down.',
-      'Using your dominant hand, press <span class="key-icon key-icon-square">F</span> if the dots move upward, and <span class="key-icon key-icon-square">J</span> if the dots move downward.',
+      `Using your dominant hand, press ${createKeyIcon('↑')} if the dots move upward, and ${createKeyIcon('↓')} if the dots move downward.`,
       'The program will wait for your response before moving to the next trial. If you are not sure about the direction, please make your best guess.'
     ],
     noStimulusText: 'On those trials, you will not see any moving dots.'
@@ -1698,7 +1728,7 @@ const TASK_INSTRUCTION_CONFIG = {
     title: 'Orientation Discrimination Task',
     pageOneParagraphs: [
       'You will see striped gratings in your blind field, and each one will be either vertical or horizontal.',
-      'Using your dominant hand, press <span class="key-icon key-icon-square">F</span> if the stripes are vertical, and <span class="key-icon key-icon-square">J</span> if the stripes are horizontal.',
+      `Using your dominant hand, press ${createKeyIcon('←')} if the stripes are vertical, and ${createKeyIcon('→')} if the stripes are horizontal.`,
       'The program will wait for your response before moving to the next trial. If you are not sure about the orientation, please make your best guess.'
     ],
     noStimulusText: 'On those trials, you will not see any grating stimulus.'
@@ -1707,7 +1737,7 @@ const TASK_INSTRUCTION_CONFIG = {
     title: 'Centrality Discrimination Task',
     pageOneParagraphs: [
       'You will see a grid of black and white squares in your blind field, and you will judge whether there are more black or more white squares.',
-      'Using your dominant hand, press <span class="key-icon key-icon-square">F</span> if you think there are more black squares, and <span class="key-icon key-icon-square">J</span> if you think there are more white squares.',
+      `Using your dominant hand, press ${createKeyIcon('←')} if you think there are more black squares, and ${createKeyIcon('→')} if you think there are more white squares.`,
       'The program will wait for your response before moving to the next trial. If you are not sure, please make your best guess.'
     ],
     noStimulusText: 'On those trials, you will not see any grid stimulus.'
@@ -1716,7 +1746,7 @@ const TASK_INSTRUCTION_CONFIG = {
     title: 'Bar Comparison Task',
     pageOneParagraphs: [
       'You will see two bars in your blind field, and you will judge whether their heights are the same or different.',
-      'Using your dominant hand, press <span class="key-icon key-icon-square">F</span> if the bars are the same height, and <span class="key-icon key-icon-square">J</span> if the bars are different heights.',
+      `Using your dominant hand, press ${createKeyIcon('←')} if the bars are the same height, and ${createKeyIcon('→')} if the bars are different heights.`,
       'The program will wait for your response before moving to the next trial. If you are not sure, please make your best guess.'
     ],
     noStimulusText: 'On those trials, you will not see any bar stimulus.'
@@ -1810,7 +1840,7 @@ function createTaskInstructionTrials(taskType) {
 }
 
 function createResponseQuestionStimulus(taskType, trialNum, totalTrials) {
-  const promptConfig = RESPONSE_PROMPT_CONFIG[taskType] || RESPONSE_PROMPT_CONFIG.Motion;
+  const promptConfig = getResponsePromptConfig(taskType);
 
   return `
     <style>
@@ -1842,7 +1872,7 @@ function createResponseQuestionStimulus(taskType, trialNum, totalTrials) {
       ${SHARED_KEY_ICON_CSS}
     </style>
     <div class="question-text">${promptConfig.question}</div>
-    <div class="instruction-text">Press <span class="key-icon key-icon-square">F</span> for ${promptConfig.fLabel}, <span class="key-icon key-icon-square">J</span> for ${promptConfig.jLabel}, <span class="key-icon key-icon-space">SPACE</span> for ✖️, <span class="key-icon key-icon-square">B</span> for break</div>
+    <div class="instruction-text">Press ${createKeyIcon(promptConfig.primaryKeyLabel)} for ${promptConfig.primaryLabel}, ${createKeyIcon(promptConfig.secondaryKeyLabel)} for ${promptConfig.secondaryLabel}, ${createKeyIcon('SPACE', 'key-icon-space')} for ✖️, ${createKeyIcon('B', 'key-icon-square')} for break</div>
     <svg id="stimulus" width="100%" height="100%"></svg>
     ${createProgressOverlay(taskType, trialNum, totalTrials)}
   `;
@@ -1852,11 +1882,13 @@ function getUserChoiceFromTaskResponse(response, taskType) {
   if (response === ' ') return 'X';
   if (!response) return 'No response';
 
-  const promptConfig = RESPONSE_PROMPT_CONFIG[taskType] || RESPONSE_PROMPT_CONFIG.Motion;
+  const promptConfig = getResponsePromptConfig(taskType);
   const responseKey = response.toLowerCase();
+  const primaryKey = promptConfig.primaryKey.toLowerCase();
+  const secondaryKey = promptConfig.secondaryKey.toLowerCase();
 
-  if (responseKey === 'f') return promptConfig.fLabel;
-  if (responseKey === 'j') return promptConfig.jLabel;
+  if (responseKey === primaryKey) return promptConfig.primaryLabel;
+  if (responseKey === secondaryKey) return promptConfig.secondaryLabel;
 
   return 'No response';
 }
@@ -2190,7 +2222,7 @@ function generateCentralFixationCatchTrialSequence(taskType = selectedTask, tria
     stimulus: function() {
       return createResponseQuestionStimulus(taskType, trialNum, totalTrials);
     },
-    choices: ['F', 'J', ' '],
+    choices: getTaskResponseChoices(taskType),
     data: {
       trial_category: 'fixation_catch_response',
       task_type: taskType,
@@ -2358,7 +2390,7 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
     stimulus: function() {
       return createResponseQuestionStimulus(taskType, trialNum, totalTrials);
     },
-    choices: ['F', 'J', ' '],
+    choices: getTaskResponseChoices(taskType),
     data: {
       correct_direction: signalDirection[1] > 0 ? 'Down' : 'Up',
       task_type: taskType,
@@ -2524,7 +2556,7 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
     stimulus: function() {
       return createResponseQuestionStimulus(taskType, trialNum, totalTrials);
     },
-    choices: ['F', 'J', ' '],
+    choices: getTaskResponseChoices(taskType),
     data: {
       correct_direction: orientation === 'vertical' ? 'Vertical' : 'Horizontal',
       task_type: taskType,
@@ -2698,7 +2730,7 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
     stimulus: function() {
       return createResponseQuestionStimulus(taskType, trialNum, totalTrials);
     },
-    choices: ['F', 'J', ' '],
+    choices: getTaskResponseChoices(taskType),
     data: function() {
       // Dynamic calculation for response data
       const currentDifficultyValue = getCurrentDifficultyValue(taskType);
@@ -2889,7 +2921,7 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
     stimulus: function() {
       return createResponseQuestionStimulus(taskType, trialNum, totalTrials);
     },
-    choices: ['F', 'J', ' '],
+    choices: getTaskResponseChoices(taskType),
     data: function() {
       // Dynamic calculation for response data
       const currentDifficultyValue = getCurrentDifficultyValue(taskType);
