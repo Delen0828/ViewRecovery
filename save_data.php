@@ -114,7 +114,7 @@ try {
     $filename = $post_data['filename'];
     
     // Validate filename format (basic security check)
-    if (!preg_match('/^user_\d+_[\d\-T]+\.csv$/', $filename)) {
+    if (!preg_match('/^user_[A-Za-z0-9]+_[\d\-T]+\.csv$/', $filename)) {
         throw new Exception('Invalid filename format');
     }
     

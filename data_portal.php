@@ -26,12 +26,12 @@ function data_portal_handle_request(string $path): void
 
     if ($path === '/data-portal/api/files') {
         data_portal_require_auth();
-        data_portal_send_file_index($config['data_dir']);
+        data_portal_send_file_index($config['data_dir'], data_portal_current_access_scope());
     }
 
     if ($path === '/data-portal/download') {
         data_portal_require_auth();
-        data_portal_download_file($config['data_dir']);
+        data_portal_download_file($config['data_dir'], data_portal_current_access_scope());
     }
 
     if (strpos($path, '/data-portal/api/') === 0) {
@@ -47,8 +47,9 @@ function data_portal_config(): array
     $dataDir = data_portal_default_data_dir();
 
     return [
-        'username' => getenv('DATA_PORTAL_USER') ?: 'admin',
-        'password_hash' => getenv('DATA_PORTAL_PASS_HASH') ?: $defaultPasswordHash,
+        'admin_username' => getenv('DATA_PORTAL_USER') ?: 'admin',
+        'admin_password_hash' => getenv('DATA_PORTAL_PASS_HASH') ?: $defaultPasswordHash,
+        'participant_password_hash' => getenv('DATA_PORTAL_PARTICIPANT_PASS_HASH') ?: '',
         'data_dir' => is_dir($dataDir) ? realpath($dataDir) ?: $dataDir : $dataDir,
         'session_name' => getenv('DATA_PORTAL_SESSION_NAME') ?: 'data_portal_session',
         'max_login_attempts' => data_portal_positive_int(getenv('DATA_PORTAL_MAX_ATTEMPTS'), 5),
@@ -277,14 +278,18 @@ function data_portal_process_login(array $config): void
     $submittedUser = trim((string) ($_POST['username'] ?? ''));
     $submittedPassword = (string) ($_POST['password'] ?? '');
 
-    $usernameValid = hash_equals($config['username'], $submittedUser);
-    $passwordValid = password_verify($submittedPassword, $config['password_hash']);
+    $isAdminUsername = hash_equals($config['admin_username'], $submittedUser);
+    $passwordValid = password_verify($submittedPassword, $config['admin_password_hash']);
 
-    if ($usernameValid && $passwordValid) {
-        session_regenerate_id(true);
-        $_SESSION['authenticated'] = true;
-        $_SESSION['auth_time'] = time();
-        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    if ($isAdminUsername && $passwordValid) {
+        data_portal_set_authenticated_session('admin', $submittedUser);
+        data_portal_clear_login_failures($ip, $config['attempt_window_seconds']);
+        data_portal_login_success();
+    }
+
+    $participantId = $isAdminUsername ? '' : data_portal_normalize_participant_id($submittedUser);
+    if ($participantId !== '' && data_portal_participant_password_valid($submittedPassword, $config)) {
+        data_portal_set_authenticated_session('user', $participantId, $participantId);
         data_portal_clear_login_failures($ip, $config['attempt_window_seconds']);
         data_portal_login_success();
     }
@@ -328,6 +333,75 @@ function data_portal_is_authenticated(): bool
     return !empty($_SESSION['authenticated']) && $_SESSION['authenticated'] === true;
 }
 
+function data_portal_set_authenticated_session(string $role, string $username, string $userId = ''): void
+{
+    session_regenerate_id(true);
+    $_SESSION['authenticated'] = true;
+    $_SESSION['auth_time'] = time();
+    $_SESSION['role'] = $role;
+    $_SESSION['username'] = $username;
+    $_SESSION['user_id'] = $userId;
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+function data_portal_normalize_participant_id(string $value): string
+{
+    $trimmed = trim($value);
+    if (preg_match('/^[A-Za-z0-9]{1,32}$/', $trimmed) !== 1) {
+        return '';
+    }
+
+    return $trimmed;
+}
+
+function data_portal_participant_password_valid(string $submittedPassword, array $config): bool
+{
+    $hash = (string) ($config['participant_password_hash'] ?? '');
+    if ($hash === '') {
+        return true;
+    }
+
+    return password_verify($submittedPassword, $hash);
+}
+
+function data_portal_authenticated_role(): string
+{
+    if (!data_portal_is_authenticated()) {
+        return '';
+    }
+
+    $role = (string) ($_SESSION['role'] ?? 'admin');
+    return $role === 'user' ? 'user' : 'admin';
+}
+
+function data_portal_authenticated_user_id(): string
+{
+    if (data_portal_authenticated_role() !== 'user') {
+        return '';
+    }
+
+    return data_portal_normalize_participant_id((string) ($_SESSION['user_id'] ?? ''));
+}
+
+function data_portal_current_access_scope(): array
+{
+    $role = data_portal_authenticated_role();
+    if ($role === 'admin') {
+        return ['role' => 'admin', 'user_id' => ''];
+    }
+
+    if ($role === 'user') {
+        return ['role' => 'user', 'user_id' => data_portal_authenticated_user_id()];
+    }
+
+    return ['role' => '', 'user_id' => ''];
+}
+
+function data_portal_user_label(string $userId): string
+{
+    return $userId === '' ? '' : 'User ' . $userId;
+}
+
 function data_portal_require_auth(): void
 {
     if (!data_portal_is_authenticated()) {
@@ -350,6 +424,8 @@ function data_portal_login_success(): void
             'success' => true,
             'redirect' => '/data-portal/index.html',
             'csrf_token' => (string) ($_SESSION['csrf_token'] ?? ''),
+            'role' => data_portal_authenticated_role(),
+            'user_id' => data_portal_authenticated_user_id(),
         ]);
     }
 
@@ -384,11 +460,16 @@ function data_portal_send_session_state(): void
 {
     $loginError = (string) ($_SESSION['login_error'] ?? '');
     unset($_SESSION['login_error']);
+    $role = data_portal_authenticated_role();
+    $userId = data_portal_authenticated_user_id();
 
     data_portal_send_json([
         'authenticated' => data_portal_is_authenticated(),
         'csrf_token' => (string) ($_SESSION['csrf_token'] ?? ''),
         'login_error' => $loginError,
+        'role' => $role,
+        'user_id' => $userId,
+        'user_label' => $role === 'user' ? data_portal_user_label($userId) : ($role === 'admin' ? 'Admin' : ''),
     ]);
 }
 
@@ -406,7 +487,7 @@ function data_portal_redirect_to_app(): void
     exit();
 }
 
-function data_portal_send_file_index(string $dataDir): void
+function data_portal_send_file_index(string $dataDir, array $scope): void
 {
     $search = trim((string) ($_GET['q'] ?? ''));
     $dateFrom = trim((string) ($_GET['date_from'] ?? ''));
@@ -447,6 +528,10 @@ function data_portal_send_file_index(string $dataDir): void
             $createdAt = $fileInfo->getCTime();
             $modifiedAt = $fileInfo->getMTime();
 
+            if (!data_portal_file_allowed_for_scope($relativePath, $scope)) {
+                continue;
+            }
+
             if ($search !== '' && stripos($relativePath, $search) === false) {
                 continue;
             }
@@ -480,7 +565,26 @@ function data_portal_send_file_index(string $dataDir): void
     ]);
 }
 
-function data_portal_download_file(string $dataDir): void
+function data_portal_file_allowed_for_scope(string $relativePath, array $scope): bool
+{
+    if (($scope['role'] ?? '') === 'admin') {
+        return true;
+    }
+
+    if (($scope['role'] ?? '') !== 'user') {
+        return false;
+    }
+
+    $userId = data_portal_normalize_participant_id((string) ($scope['user_id'] ?? ''));
+    if ($userId === '') {
+        return false;
+    }
+
+    $baseName = basename(str_replace('\\', '/', $relativePath));
+    return preg_match('/^user_' . preg_quote($userId, '/') . '_.+\.csv$/i', $baseName) === 1;
+}
+
+function data_portal_download_file(string $dataDir, array $scope): void
 {
     $requested = trim((string) ($_GET['file'] ?? ''));
     if ($requested === '' || strpos($requested, "\0") !== false) {
@@ -505,6 +609,13 @@ function data_portal_download_file(string $dataDir): void
 
     $prefix = rtrim($resolvedDataDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
     if (substr($targetPath, 0, strlen($prefix)) !== $prefix) {
+        http_response_code(403);
+        echo 'Forbidden.';
+        exit();
+    }
+
+    $relativePath = str_replace('\\', '/', substr($targetPath, strlen($prefix)));
+    if (!data_portal_file_allowed_for_scope($relativePath, $scope)) {
         http_response_code(403);
         echo 'Forbidden.';
         exit();

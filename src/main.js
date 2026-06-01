@@ -3143,9 +3143,9 @@ timeline.push({
     </style>
     <div class="user-id-container">
       <div class="user-id-title">Enter Your User ID</div>
-      <div class="user-id-instruction">Please enter your participant ID (numbers only)</div>
-      <input type="text" id="user-id-input" class="user-id-input" placeholder="e.g., 123" maxlength="10">
-      <div id="error-message" class="error-message">Please enter a valid ID (numbers only)</div>
+      <div class="user-id-instruction">Please enter your participant ID</div>
+      <input type="text" id="user-id-input" class="user-id-input" placeholder="e.g., A123" maxlength="10">
+      <div id="error-message" class="error-message">Letters and numbers only</div>
     </div>
   `,
   choices: ['Continue'],
@@ -3159,13 +3159,15 @@ timeline.push({
     continueBtn.disabled = true;
     continueBtn.style.opacity = '0.5';
     
+    const participantIdPattern = /^[A-Za-z0-9]+$/;
+
     // Store user ID value in a variable that persists
     let currentUserId = '';
     
     // Validate input on each keystroke
     userIdInput.addEventListener('input', function() {
-      const value = this.value.trim();
-      const isValid = /^\d+$/.test(value) && value.length > 0;
+      const value = this.value;
+      const isValid = participantIdPattern.test(value);
       currentUserId = value; // Store the current value
       
       if (isValid) {
@@ -3175,6 +3177,8 @@ timeline.push({
       } else {
         if (value.length > 0) {
           errorMessage.style.display = 'block';
+        } else {
+          errorMessage.style.display = 'none';
         }
         continueBtn.disabled = true;
         continueBtn.style.opacity = '0.5';
@@ -3183,7 +3187,7 @@ timeline.push({
     
     // Store the user ID when continue button is clicked
     continueBtn.addEventListener('click', function() {
-      if (currentUserId && /^\d+$/.test(currentUserId)) {
+      if (participantIdPattern.test(currentUserId)) {
         // Store user ID in jsPsych data for all subsequent trials
         jsPsych.data.addProperties({
           user_id: currentUserId
@@ -3727,48 +3731,23 @@ timeline.push(createReadyScreen('Motion Discrimination Task'));
 timeline.push({
   type: jsPsychHtmlButtonResponse,
   stimulus: function() {
-    // Calculate accuracy for each trial type
     const allData = jsPsych.data.get();
-    
-    // Filter response trials only (those with 'correct' property)
-    const responseTrials = allData.filter({correct: true}).trials.concat(
-      allData.filter({correct: false}).trials
+    const responseTrials = allData.values().filter(trial =>
+      typeof trial.correct === 'boolean'
+      && trial.trial_category !== 'fixation_catch_response'
     );
-    
-    // Calculate accuracy for Motion trials (signalDirection data)
-    const motionTrials = responseTrials.filter(trial => 
-      trial.correct_direction === 'Up' || trial.correct_direction === 'Down'
+    const currentTaskTrials = responseTrials.filter(trial =>
+      !selectedTask || trial.task_type === selectedTask || trial.selected_task === selectedTask
     );
-    const motionCorrect = motionTrials.filter(trial => trial.correct === true).length;
-    const motionAccuracy = motionTrials.length > 0 ? (motionCorrect / motionTrials.length * 100).toFixed(1) : 0;
-    
-    // Calculate accuracy for Grating trials (orientation data)
-    const gratingTrials = responseTrials.filter(trial => 
-      trial.correct_direction === 'Vertical' || trial.correct_direction === 'Horizontal'
-    );
-    const gratingCorrect = gratingTrials.filter(trial => trial.correct === true).length;
-    const gratingAccuracy = gratingTrials.length > 0 ? (gratingCorrect / gratingTrials.length * 100).toFixed(1) : 0;
-    
-    // Calculate accuracy for Grid trials (Black/White data)
-    const gridTrials = responseTrials.filter(trial => 
-      trial.correct_direction === 'Black' || trial.correct_direction === 'White'
-    );
-    const gridCorrect = gridTrials.filter(trial => trial.correct === true).length;
-    const gridAccuracy = gridTrials.length > 0 ? (gridCorrect / gridTrials.length * 100).toFixed(1) : 0;
-    
-    // Calculate accuracy for Bar Chart trials (Same/Different data)
-    const barTrials = responseTrials.filter(trial => 
-      trial.correct_direction === 'Same' || trial.correct_direction === 'Different'
-    );
-    const barCorrect = barTrials.filter(trial => trial.correct === true).length;
-    const barAccuracy = barTrials.length > 0 ? (barCorrect / barTrials.length * 100).toFixed(1) : 0;
-
-    // Calculate accuracy for central fixation catch trials
-    const fixationCatchTrials = responseTrials.filter(trial =>
-      trial.trial_category === 'fixation_catch_response'
-    );
-    const fixationCatchCorrect = fixationCatchTrials.filter(trial => trial.correct === true).length;
-    const fixationCatchAccuracy = fixationCatchTrials.length > 0 ? (fixationCatchCorrect / fixationCatchTrials.length * 100).toFixed(1) : 0;
+    const currentTaskCorrect = currentTaskTrials.filter(trial => trial.correct === true).length;
+    const currentTaskIncorrect = currentTaskTrials.length - currentTaskCorrect;
+    const currentTaskAccuracy = currentTaskTrials.length > 0
+      ? (currentTaskCorrect / currentTaskTrials.length * 100).toFixed(1)
+      : '0.0';
+    const taskLabel = TASK_LINK_CONFIG[selectedTask]?.label || selectedTask || 'Current Task';
+    const resultNote = currentTaskTrials.length > 0
+      ? `Based on ${currentTaskTrials.length} scored response${currentTaskTrials.length === 1 ? '' : 's'} from this task.`
+      : 'No scored responses were found for this task.';
     
     return `
       <style>
@@ -3777,154 +3756,225 @@ timeline.push({
           margin: 0;
           padding: 0;
           background-color: #ccc;
-          overflow: hidden;
+          overflow: auto;
           display: flex;
           justify-content: center;
           align-items: center;
-          height: 100vh;
-        }
-        .results-container {
-          text-align: center;
+          min-height: 100vh;
           color: black;
-          background: white;
-          padding: 40px;
-          border-radius: 15px;
-          box-shadow: 0 6px 12px rgba(0,0,0,0.3);
-          max-width: 600px;
         }
-        .results-title {
-          font-size: 28px;
-          margin-bottom: 30px;
-          color: #2c3e50;
+        #jspsych-html-button-response-stimulus {
+          width: 100%;
         }
-        .accuracy-section {
-          margin: 25px 0;
+        .results-page {
+          width: min(1120px, calc(100vw - 96px));
+          margin: 0 auto;
+          padding: 48px 0 24px;
+          text-align: left;
+          color: black;
+          box-sizing: border-box;
         }
-        .accuracy-title {
+        .results-page h1 {
+          margin: 0 0 10px;
+          color: black;
+          font-size: 36px;
+          line-height: 1.15;
+        }
+        .results-task {
+          margin: 0;
+          color: #333;
           font-size: 22px;
-          margin-bottom: 20px;
-          color: #34495e;
-          border-bottom: 2px solid #ecf0f1;
-          padding-bottom: 10px;
+          line-height: 1.4;
         }
-        .accuracy-grid {
+        .results-summary {
           display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 15px;
-          margin: 20px 0;
-        }
-        .accuracy-item {
-          background: #f8f9fa;
-          padding: 15px;
-          border-radius: 8px;
-          border-left: 4px solid #3498db;
+          grid-template-columns: minmax(260px, 0.9fr) minmax(360px, 1.1fr);
+          align-items: end;
+          gap: 64px;
+          margin: 50px 0 36px;
+          padding: 34px 0;
+          border-top: 2px solid #8f8f8f;
+          border-bottom: 2px solid #8f8f8f;
         }
         .accuracy-label {
-          font-size: 16px;
-          color: #7f8c8d;
-          margin-bottom: 5px;
+          display: block;
+          margin-bottom: 10px;
+          color: #333;
+          font-size: 18px;
+          font-weight: 700;
+          letter-spacing: 0;
         }
         .accuracy-value {
-          font-size: 24px;
-          font-weight: bold;
-          color: #2c3e50;
+          display: block;
+          color: black;
+          font-size: 88px;
+          font-weight: 700;
+          line-height: 0.95;
         }
-        .download-section {
-          margin-top: 30px;
-          padding-top: 20px;
-          border-top: 2px solid #ecf0f1;
+        .accuracy-value span {
+          font-size: 36px;
+          font-weight: 700;
         }
-        .download-instruction {
-          font-size: 16px;
-          margin-bottom: 20px;
-          color: #7f8c8d;
+        .results-stats {
+          display: grid;
+          grid-template-columns: max-content 1fr;
+          gap: 10px 28px;
+          margin: 0;
+          font-size: 20px;
+          line-height: 1.35;
         }
-        .summary-stats {
-          background: #e8f4fd;
-          padding: 15px;
-          border-radius: 8px;
-          margin: 20px 0;
-          border-left: 4px solid #3498db;
+        .results-stats dt {
+          color: #444;
+          font-weight: 700;
         }
-        .summary-text {
-          font-size: 14px;
-          color: #2c3e50;
-          margin: 5px 0;
+        .results-stats dd {
+          margin: 0;
+          color: black;
+        }
+        .results-note {
+          margin: 0 0 28px;
+          color: #333;
+          font-size: 18px;
         }
         .server-status {
-          background: #fff3cd;
-          border: 1px solid #ffeaa7;
-          padding: 10px;
-          border-radius: 6px;
-          margin: 10px 0;
-          font-size: 14px;
-          color: #856404;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 24px;
+          margin: 0;
+          padding: 16px 0;
+          border-top: 1px solid #8f8f8f;
+          border-bottom: 1px solid #8f8f8f;
+          color: black;
+          font-size: 17px;
+          line-height: 1.4;
         }
         .server-status.success {
-          background: #d4edda;
-          border-color: #c3e6cb;
-          color: #155724;
+          color: #14532d;
         }
         .server-status.error {
-          background: #f8d7da;
-          border-color: #f5c6cb;
-          color: #721c24;
+          color: #7f1d1d;
+        }
+        .server-status.info {
+          color: #1e3a8a;
+        }
+        .status-badge {
+          flex: 0 0 auto;
+          min-width: 88px;
+          border: 1px solid currentColor;
+          border-radius: 999px;
+          padding: 4px 12px;
+          text-align: center;
+          font-size: 14px;
+          font-weight: 700;
+        }
+        .download-instruction {
+          margin: 16px 0 0;
+          color: #333;
+          font-size: 17px;
+        }
+        #jspsych-html-button-response-btngroup {
+          width: min(1120px, calc(100vw - 96px));
+          margin: 34px auto 0 !important;
+          display: flex;
+          justify-content: flex-start;
+          gap: 24px;
+        }
+        #jspsych-html-button-response-btngroup .jspsych-html-button-response-button {
+          margin: 0 !important;
+        }
+        .result-download-btn,
+        .result-finish-btn {
+          margin: 0;
+          min-width: 220px;
+          padding: 14px 28px;
+          border-radius: 10px;
+          font-size: 20px;
+          font-weight: 600;
+          background: #cfcfcf;
+          color: black;
+          border: 1px solid #8f8f8f;
+        }
+        .result-download-btn:hover,
+        .result-finish-btn:hover {
+          background: #bdbdbd;
+        }
+        @media (max-width: 760px) {
+          .results-page,
+          #jspsych-html-button-response-btngroup {
+            width: calc(100vw - 48px);
+          }
+          .results-page {
+            padding-top: 32px;
+          }
+          .results-page h1 {
+            font-size: 30px;
+          }
+          .results-task {
+            font-size: 19px;
+          }
+          .results-summary {
+            grid-template-columns: 1fr;
+            gap: 28px;
+            margin: 32px 0 26px;
+          }
+          .accuracy-value {
+            font-size: 68px;
+          }
+          .results-stats {
+            font-size: 18px;
+          }
+          .server-status {
+            align-items: flex-start;
+            flex-direction: column;
+            gap: 10px;
+          }
+          #jspsych-html-button-response-btngroup {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .result-download-btn,
+          .result-finish-btn {
+            width: 100%;
+          }
         }
       </style>
-      <div class="results-container">
-        <div class="results-title">🎉 Experiment Complete!</div>
-        
-        <div class="accuracy-section">
-          <div class="accuracy-title">Your Performance Results</div>
-          <div class="accuracy-grid">
-            <div class="accuracy-item">
-              <div class="accuracy-label">Motion Trials</div>
-              <div class="accuracy-value">${motionAccuracy}%</div>
-            </div>
-            <div class="accuracy-item">
-              <div class="accuracy-label">Grating Trials</div>
-              <div class="accuracy-value">${gratingAccuracy}%</div>
-            </div>
-            <div class="accuracy-item">
-              <div class="accuracy-label">Grid Trials</div>
-              <div class="accuracy-value">${gridAccuracy}%</div>
-            </div>
-            <div class="accuracy-item">
-              <div class="accuracy-label">Bar Chart Trials</div>
-              <div class="accuracy-value">${barAccuracy}%</div>
-            </div>
-            <div class="accuracy-item">
-              <div class="accuracy-label">Fixation Catch Trials</div>
-              <div class="accuracy-value">${fixationCatchAccuracy}%</div>
-            </div>
-          </div>
-          
-          <div class="summary-stats">
-            <div class="summary-text"><strong>Motion Trials:</strong> ${motionCorrect}/${motionTrials.length} correct</div>
-            <div class="summary-text"><strong>Grating Trials:</strong> ${gratingCorrect}/${gratingTrials.length} correct</div>
-            <div class="summary-text"><strong>Grid Trials:</strong> ${gridCorrect}/${gridTrials.length} correct</div>
-            <div class="summary-text"><strong>Bar Chart Trials:</strong> ${barCorrect}/${barTrials.length} correct</div>
-            <div class="summary-text"><strong>Fixation Catch Trials:</strong> ${fixationCatchCorrect}/${fixationCatchTrials.length} detected</div>
-          </div>
-        </div>
-        
-        <div class="download-section">
-          <div class="download-instruction">Your data has been automatically saved to the server</div>
-          <div id="server-save-status" class="server-status">
+      <main class="results-page">
+        <h1>Experiment Complete</h1>
+        <p class="results-task">${escapeHtml(taskLabel)}</p>
+
+        <section class="results-summary" aria-label="Current task performance">
+          <p>
+            <span class="accuracy-label">Accuracy</span>
+            <strong class="accuracy-value">${currentTaskAccuracy}<span>%</span></strong>
+          </p>
+          <dl class="results-stats">
+            <dt>Correct</dt>
+            <dd>${currentTaskCorrect}</dd>
+            <dt>Incorrect</dt>
+            <dd>${currentTaskIncorrect}</dd>
+            <dt>Total scored</dt>
+            <dd>${currentTaskTrials.length}</dd>
+          </dl>
+        </section>
+
+        <p class="results-note">${escapeHtml(resultNote)}</p>
+        <section class="download-section" aria-label="Data export">
+          <p id="server-save-status" class="server-status" aria-live="polite">
             <span id="save-status-text">Saving data to server...</span>
-            <span id="save-status-icon">⏳</span>
-          </div>
-          <div class="download-instruction" style="margin-top: 15px;">You can also download your detailed results as a CSV file</div>
-        </div>
-      </div>
+            <span id="save-status-icon" class="status-badge">Saving</span>
+          </p>
+          <p class="download-instruction">You can also download the detailed results as a CSV file.</p>
+        </section>
+      </main>
     `;
   },
   choices: ['Download CSV', 'Finish'],
   button_html: (choice) => {
     if (choice === 'Download CSV') {
-      return `<button class="jspsych-btn" id="download-btn" style="background-color: #27ae60; color: white; margin: 10px; padding: 12px 24px; font-size: 16px;">${choice}</button>`;
+      return `<button class="jspsych-btn result-download-btn" id="download-btn">${choice}</button>`;
     } else {
-      return `<button class="jspsych-btn" id="finish-btn" style="background-color: #95a5a6; color: white; margin: 10px; padding: 12px 24px; font-size: 16px;">${choice}</button>`;
+      return `<button class="jspsych-btn result-finish-btn" id="finish-btn">${choice}</button>`;
     }
   },
   on_load: function() {
@@ -3951,24 +4001,21 @@ timeline.push({
     
     if (isDevelopment) {
       // Skip server save in development mode
-      saveStatusText.textContent = 'Development mode - server save disabled';
-      saveStatusIcon.textContent = 'ℹ️';
-      serverStatus.classList.add('success');
-      serverStatus.style.background = '#e7f3ff';
-      serverStatus.style.borderColor = '#b3d9ff';
-      serverStatus.style.color = '#0066cc';
+      saveStatusText.textContent = 'Development mode: server save disabled';
+      saveStatusIcon.textContent = 'Local';
+      serverStatus.classList.add('info');
     } else {
       // Automatically save data to server
       saveDataToServer(filename, csvData)
         .then(response => {
-          saveStatusText.textContent = `Data saved successfully: ${response.filename}`;
-          saveStatusIcon.textContent = '✅';
+          saveStatusText.textContent = `Data saved to server: ${response.filename || filename}`;
+          saveStatusIcon.textContent = 'Saved';
           serverStatus.classList.add('success');
           console.log('Server save successful:', response);
         })
         .catch(error => {
           saveStatusText.textContent = `Server save failed: ${error.message}`;
-          saveStatusIcon.textContent = '❌';
+          saveStatusIcon.textContent = 'Error';
           serverStatus.classList.add('error');
           console.error('Server save error:', error);
         });
@@ -3987,10 +4034,10 @@ timeline.push({
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
         
         // Update button to show download completed
-        downloadBtn.textContent = '✓ Downloaded';
-        downloadBtn.style.backgroundColor = '#2ecc71';
+        downloadBtn.textContent = 'Downloaded';
         downloadBtn.disabled = true;
         
         // Add success message
@@ -4001,18 +4048,16 @@ timeline.push({
             const successMessage = document.createElement('div');
             successMessage.id = 'download-success-message';
             successMessage.style.cssText = `
-              background-color: #d4edda;
-              border: 1px solid #c3e6cb;
-              color: #155724;
-              padding: 12px 20px;
-              border-radius: 8px;
-              margin-top: 20px;
+              border-top: 1px solid #8f8f8f;
+              color: #14532d;
+              padding-top: 14px;
+              margin-top: 18px;
               font-size: 16px;
-              font-weight: 500;
-              text-align: center;
+              font-weight: 600;
+              text-align: left;
               animation: fadeIn 0.5s ease-in;
             `;
-            successMessage.innerHTML = '✅ Download successful! Your CSV file has been saved to your Downloads folder.';
+            successMessage.textContent = 'Download complete. Your CSV file has been saved to your Downloads folder.';
             
             // Add CSS animation
             if (!document.getElementById('download-success-animation')) {
@@ -4037,13 +4082,13 @@ timeline.push({
     if (data.response === 1) { // Finish button clicked
       // Show thank you message
       document.body.innerHTML = `
-        <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #ccc; font-family: Arial, sans-serif;">
-          <div style="text-align: center; background: white; padding: 40px; border-radius: 15px; box-shadow: 0 6px 12px rgba(0,0,0,0.3);">
-            <h2 style="color: #2c3e50; margin-bottom: 20px;">Thank You!</h2>
-            <p style="font-size: 18px; color: #7f8c8d;">Your participation in this experiment is greatly appreciated.</p>
-            <p style="font-size: 16px; color: #95a5a6; margin-top: 20px;">You may now close this window.</p>
-          </div>
-        </div>
+        <main style="display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #ccc; font-family: Arial, sans-serif; color: black; padding: 32px; box-sizing: border-box;">
+          <section style="width: min(900px, 100%); text-align: center;">
+            <h2 style="color: black; font-size: 36px; margin: 0 0 18px;">Thank You</h2>
+            <p style="font-size: 22px; margin: 0 0 12px;">Your participation in this experiment is greatly appreciated.</p>
+            <p style="font-size: 18px; margin: 0; color: #333;">You may now close this window.</p>
+          </section>
+        </main>
       `;
     }
   }

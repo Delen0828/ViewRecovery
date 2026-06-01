@@ -37,6 +37,11 @@
   const state = {
     authenticated: false,
     csrfToken: '',
+    account: {
+      role: '',
+      userId: '',
+      label: ''
+    },
     loginError: '',
     fileError: '',
     loadingFiles: false,
@@ -91,6 +96,9 @@
       const data = await response.json();
       state.authenticated = Boolean(data.authenticated);
       state.csrfToken = data.csrf_token || '';
+      state.account.role = data.role || '';
+      state.account.userId = data.user_id || '';
+      state.account.label = data.user_label || '';
       state.loginError = data.login_error || '';
 
       if (state.authenticated) {
@@ -237,7 +245,8 @@
           return { file, rows: [], error };
         }
       }));
-      const records = results.flatMap((result) => extractResponseRecords(result.file, result.rows));
+      const scopedUserId = isUserLogin() ? state.account.userId : '';
+      const records = results.flatMap((result) => extractResponseRecords(result.file, result.rows, scopedUserId));
       const users = buildUserSummaries(records);
       const selectedUserStillExists = users.some((user) => user.id === state.users.selectedUserId);
 
@@ -275,7 +284,7 @@
   function renderLogin() {
     portal.html('');
     const card = portal.append('section').attr('class', 'card');
-    appendHeader(card, 'Data Portal Login', 'Access saved experiment files.');
+    appendHeader(card, 'Data Portal Login', 'Admins use their password. Users can enter their participant ID.');
 
     if (state.loginError) {
       card.append('p').attr('class', 'message error').text(state.loginError);
@@ -295,7 +304,7 @@
     appendInput(form, {
       id: 'username',
       name: 'username',
-      label: 'Username',
+      label: 'Admin username or User ID',
       required: true
     });
 
@@ -304,7 +313,7 @@
       name: 'password',
       label: 'Password',
       type: 'password',
-      required: true
+      placeholder: 'Required for admins'
     });
 
     const status = form.append('p').attr('class', 'muted').attr('role', 'status');
@@ -343,7 +352,7 @@
   function renderFiles() {
     portal.html('');
     const card = portal.append('section').attr('class', 'card');
-    appendHeader(card, 'Data Files', 'Search by filename and filter by created date.', true);
+    appendHeader(card, 'Data Files', isAdminLogin() ? 'Search by filename and filter by created date.' : 'Search your saved experiment files.', true);
     const nav = card.append('p').attr('class', 'portal-nav');
     nav.append('a').attr('href', '/data-portal/users.html').text('User Trends');
     renderToolbar(card);
@@ -413,7 +422,7 @@
   function renderUsers() {
     portal.html('');
     const card = portal.append('section').attr('class', 'card');
-    appendHeader(card, 'User Trends', 'Accuracy over time by task.', true);
+    appendHeader(card, 'User Trends', isAdminLogin() ? 'Accuracy over time by task.' : 'Your accuracy over time by task.', true);
 
     const nav = card.append('p').attr('class', 'portal-nav');
     nav.append('a').attr('href', '/data-portal/index.html').text('Data Files');
@@ -454,7 +463,7 @@
   }
 
   function renderUserList(panel) {
-    panel.append('h2').text('Users');
+    panel.append('h2').text(isAdminLogin() ? 'Users' : 'User');
     const list = panel.append('div').attr('class', 'user-list');
     const button = list
       .selectAll('button')
@@ -523,6 +532,9 @@
     const copy = header.append('div');
     copy.append('h1').text(title);
     copy.append('p').attr('class', 'muted').text(subtitle);
+    if (withLogout && state.account.label) {
+      copy.append('p').attr('class', 'muted').text(`Signed in as ${state.account.label}.`);
+    }
 
     if (!withLogout) {
       return;
@@ -550,6 +562,9 @@
         });
       } finally {
         state.authenticated = false;
+        state.account.role = '';
+        state.account.userId = '';
+        state.account.label = '';
         state.files = [];
         await loadSession();
       }
@@ -866,7 +881,7 @@
     return String(row.task_type || row.selected_task).trim();
   }
 
-  function extractResponseRecords(file, rows) {
+  function extractResponseRecords(file, rows, scopedUserId = '') {
     const sessionDate = parseSessionDate(file);
     const sessionKey = formatDateKey(sessionDate);
 
@@ -878,7 +893,7 @@
           return null;
         }
 
-        const userId = getUserId(row, file.name);
+        const userId = scopedUserId || getUserId(row, file.name);
         return {
           userId,
           userLabel: formatUserLabel(userId),
@@ -1012,6 +1027,14 @@
     }
 
     return String(userId).toLowerCase().startsWith('user') ? String(userId) : `User ${userId}`;
+  }
+
+  function isAdminLogin() {
+    return state.account.role === 'admin';
+  }
+
+  function isUserLogin() {
+    return state.account.role === 'user' && Boolean(state.account.userId);
   }
 
   function parseSessionDate(file) {
