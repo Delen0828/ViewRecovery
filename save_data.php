@@ -2,7 +2,10 @@
 /**
  * jsPsych Data Saving Script
  * Saves experiment data to CSV files on the server
- * Filename format: user_[USER_ID]_[TIMESTAMP].csv
+ * Filename formats:
+ * - final_complete_user_[USER_ID]_[TASK]_[RUN_TIMESTAMP].csv
+ * - session_chunk_complete_user_[USER_ID]_[TASK]_session[NN]_[RUN_TIMESTAMP].csv
+ * - pause_checkpoint_user_[USER_ID]_[TASK]_[RUN_TIMESTAMP].csv
  */
 
 // Set content type for JSON response
@@ -88,6 +91,55 @@ function write_unique_data_file(string $data_dir, string $filename, string $data
     } while (true);
 }
 
+function write_overwritable_data_file(string $data_dir, string $filename, string $data): array
+{
+    $file_path = $data_dir . DIRECTORY_SEPARATOR . $filename;
+    $fp = @fopen($file_path, 'c+b');
+
+    if ($fp === false) {
+        throw new Exception('Failed to create data file');
+    }
+
+    $bytes_written = 0;
+    $length = strlen($data);
+    $locked = false;
+
+    try {
+        if (!flock($fp, LOCK_EX)) {
+            throw new Exception('Failed to lock data file');
+        }
+        $locked = true;
+
+        if (!ftruncate($fp, 0) || !rewind($fp)) {
+            throw new Exception('Failed to prepare data file for writing');
+        }
+
+        while ($bytes_written < $length) {
+            $written = fwrite($fp, substr($data, $bytes_written));
+            if ($written === false || $written === 0) {
+                throw new Exception('Failed to write data to file');
+            }
+            $bytes_written += $written;
+        }
+
+        fflush($fp);
+        flock($fp, LOCK_UN);
+    } catch (Exception $e) {
+        if ($locked) {
+            flock($fp, LOCK_UN);
+        }
+        fclose($fp);
+        throw $e;
+    }
+
+    fclose($fp);
+
+    return [
+        'filename' => $filename,
+        'bytes_written' => $bytes_written,
+    ];
+}
+
 // Handle preflight requests
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
@@ -114,14 +166,23 @@ try {
     $filename = $post_data['filename'];
     
     // Validate filename format (basic security check)
-    if (!preg_match('/^user_[A-Za-z0-9]+_[\d\-T]+\.csv$/', $filename)) {
+    $is_pause_checkpoint_file = preg_match('/^(?:pause_checkpoint|pause_progress)_user_[A-Za-z0-9]+_[A-Za-z]+_\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.csv$/', $filename) === 1;
+    $valid_filename = preg_match('/^final_complete_user_[A-Za-z0-9]+_[A-Za-z]+_\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.csv$/', $filename) === 1
+        || preg_match('/^(?:session_chunk_complete|session_complete)_user_[A-Za-z0-9]+_[A-Za-z]+_session\d{2}_\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.csv$/', $filename) === 1
+        || $is_pause_checkpoint_file
+        || preg_match('/^user_[A-Za-z0-9]+_[\d\-T]+\.csv$/', $filename) === 1;
+
+    if (!$valid_filename) {
         throw new Exception('Invalid filename format');
     }
     
     // Store data outside dist when this script is copied into the build output.
     $data_dir = experiment_data_directory();
     ensure_experiment_data_directory($data_dir);
-    $write_result = write_unique_data_file($data_dir, $filename, $data);
+    $overwrite_requested = !empty($post_data['overwrite']);
+    $write_result = ($overwrite_requested && $is_pause_checkpoint_file)
+        ? write_overwritable_data_file($data_dir, $filename, $data)
+        : write_unique_data_file($data_dir, $filename, $data);
     $filename = $write_result['filename'];
     $bytes_written = $write_result['bytes_written'];
     

@@ -137,6 +137,17 @@ const jsPsych = initJsPsych({
 const timeline = [];
 const screenWidth = window.innerWidth;
 const screenHeight = window.innerHeight;
+const DEFAULT_STIMULUS_POSITION_OFFSET_DEGREES = {
+  x: 5,
+  y: 5
+};
+let latestCalculatorData = null;
+const stimulusPositionSettings = {
+  xOffsetDeg: DEFAULT_STIMULUS_POSITION_OFFSET_DEGREES.x,
+  yOffsetDeg: DEFAULT_STIMULUS_POSITION_OFFSET_DEGREES.y,
+  xOffsetPx: null,
+  yOffsetPx: null
+};
 
 // const ColorAnimationTime = 500;
 // Individual crosshair stage durations
@@ -320,6 +331,17 @@ function renderTaskLinksPage() {
 
 // The task is selected by direct URL, for example /Motion.
 const selectedTask = getTaskFromRouteSegment(getCurrentTaskRouteSegment());
+const experimentRunTimestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+const DATA_SAVE_PREFIX = {
+  finalComplete: 'final_complete',
+  sessionComplete: 'session_chunk_complete',
+  pauseProgress: 'pause_checkpoint'
+};
+const dataSaveState = {
+  savedSessionChunks: new Set(),
+  pauseProgressCount: 0,
+  pauseSaveQueue: Promise.resolve()
+};
 // let allTrialParameters = []; // Store all trial parameters for export
 
 // Trial configuration based on testing checklist requirements
@@ -596,11 +618,26 @@ function updateDifficulty(taskType, isCorrect) {
 }
 
 
+function getLatestCalculatorData() {
+    if (latestCalculatorData) {
+        return latestCalculatorData;
+    }
+
+    const allData = jsPsych.data.get();
+    const rows = allData.values();
+    for (let i = rows.length - 1; i >= 0; i--) {
+        if (rows[i] && rows[i].calculator_data) {
+            return rows[i].calculator_data;
+        }
+    }
+
+    return null;
+}
+
 // deg2Pixel function: Convert visual angles to pixel offsets using calculator data
 function deg2Pixel(angleDeg, chinrestData = null, fallbackParams = {}) {
     // Try to get calculator data from jsPsych first
-    const allData = jsPsych.data.get();
-    const calculatorData = allData.values().find(trial => trial.calculator_data)?.calculator_data;
+    const calculatorData = getLatestCalculatorData();
     
     if (calculatorData) {
         // Use calculator data for precise conversion
@@ -625,6 +662,129 @@ function deg2Pixel(angleDeg, chinrestData = null, fallbackParams = {}) {
         
         return physicalOffsetCm * pixelsPerCm;
     }
+}
+
+function deg2PixelForAxis(angleDeg, axis = 'x', chinrestData = null, fallbackParams = {}) {
+    const normalizedAngle = Number(angleDeg);
+    if (!Number.isFinite(normalizedAngle)) {
+        return 0;
+    }
+
+    const calculatorData = getLatestCalculatorData();
+    if (calculatorData) {
+        const viewingDistanceCm = Number(calculatorData.viewingDistanceCm);
+        const pixelsPerCm = axis === 'y'
+            ? Number(calculatorData.pixelsPerCmY)
+            : Number(calculatorData.pixelsPerCmX);
+
+        if (Number.isFinite(viewingDistanceCm) && Number.isFinite(pixelsPerCm)) {
+            const physicalOffsetCm = viewingDistanceCm * Math.tan(normalizedAngle * Math.PI / 180);
+            return physicalOffsetCm * pixelsPerCm;
+        }
+
+        if (Number.isFinite(Number(calculatorData.pixelsPerDegree))) {
+            return normalizedAngle * Number(calculatorData.pixelsPerDegree);
+        }
+    }
+
+    return deg2Pixel(normalizedAngle, chinrestData, fallbackParams);
+}
+
+function getStimulusOffsetSettings(chinrestData = null) {
+    const xOffsetDeg = Number.isFinite(Number(stimulusPositionSettings.xOffsetDeg))
+        ? Number(stimulusPositionSettings.xOffsetDeg)
+        : DEFAULT_STIMULUS_POSITION_OFFSET_DEGREES.x;
+    const yOffsetDeg = Number.isFinite(Number(stimulusPositionSettings.yOffsetDeg))
+        ? Number(stimulusPositionSettings.yOffsetDeg)
+        : DEFAULT_STIMULUS_POSITION_OFFSET_DEGREES.y;
+
+    return {
+        xOffsetDeg,
+        yOffsetDeg,
+        xOffsetPx: deg2PixelForAxis(xOffsetDeg, 'x', chinrestData),
+        yOffsetPx: deg2PixelForAxis(yOffsetDeg, 'y', chinrestData)
+    };
+}
+
+function setStimulusOffsetSettings(xOffsetDeg, yOffsetDeg, chinrestData = null) {
+    const normalizedXOffsetDeg = Number(xOffsetDeg);
+    const normalizedYOffsetDeg = Number(yOffsetDeg);
+    stimulusPositionSettings.xOffsetDeg = Number.isFinite(normalizedXOffsetDeg)
+        ? normalizedXOffsetDeg
+        : DEFAULT_STIMULUS_POSITION_OFFSET_DEGREES.x;
+    stimulusPositionSettings.yOffsetDeg = Number.isFinite(normalizedYOffsetDeg)
+        ? normalizedYOffsetDeg
+        : DEFAULT_STIMULUS_POSITION_OFFSET_DEGREES.y;
+
+    const settings = getStimulusOffsetSettings(chinrestData);
+    stimulusPositionSettings.xOffsetPx = settings.xOffsetPx;
+    stimulusPositionSettings.yOffsetPx = settings.yOffsetPx;
+    return settings;
+}
+
+function getTargetBarPosition() {
+    return TARGET_POSITION.includes('upper') ? 'upper' : 'lower';
+}
+
+function getStimulusPositionsForTask(taskType) {
+    if (USE_SINGLE_POSITION) {
+        return taskType === 'Bar' ? [getTargetBarPosition()] : [TARGET_POSITION];
+    }
+
+    return taskType === 'Bar'
+        ? ['upper', 'lower']
+        : ['left_upper', 'left_lower', 'right_upper', 'right_lower'];
+}
+
+function getStimulusCenterForPositionFromPixels(position, width, height, xOffsetPx, yOffsetPx) {
+    switch(position) {
+        case 'left_upper':
+            return { x: width / 2 - xOffsetPx, y: height / 2 - yOffsetPx };
+        case 'left_lower':
+            return { x: width / 2 - xOffsetPx, y: height / 2 + yOffsetPx };
+        case 'right_upper':
+            return { x: width / 2 + xOffsetPx, y: height / 2 - yOffsetPx };
+        case 'right_lower':
+            return { x: width / 2 + xOffsetPx, y: height / 2 + yOffsetPx };
+        default:
+            return { x: width / 2 + xOffsetPx, y: height / 2 + yOffsetPx };
+    }
+}
+
+function getStimulusCenterForPosition(position, width, height, chinrestData = null) {
+    const settings = getStimulusOffsetSettings(chinrestData);
+    return getStimulusCenterForPositionFromPixels(
+        position,
+        width,
+        height,
+        settings.xOffsetPx,
+        settings.yOffsetPx
+    );
+}
+
+function getBarStimulusCentersFromPixels(position, width, height, xOffsetPx, yOffsetPx) {
+    const horizontalOffset = Math.abs(xOffsetPx);
+    const yCenter = position === 'lower'
+        ? height / 2 + yOffsetPx
+        : height / 2 - yOffsetPx;
+
+    return {
+        lostViewCenterX: width / 2 - horizontalOffset,
+        lostViewCenterY: yCenter,
+        goodViewCenterX: width / 2 + horizontalOffset,
+        goodViewCenterY: yCenter
+    };
+}
+
+function getBarStimulusCenters(position, width, height, chinrestData = null) {
+    const settings = getStimulusOffsetSettings(chinrestData);
+    return getBarStimulusCentersFromPixels(
+        position,
+        width,
+        height,
+        settings.xOffsetPx,
+        settings.yOffsetPx
+    );
 }
 
 function linspace(start, end, num) {
@@ -814,31 +974,11 @@ function initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData =
   // 设置SVG的viewBox以确保正确的缩放
   svg.attr("width", width).attr("height", height).attr("viewBox", `0 0 ${width} ${height}`);
   
-	// 根据位置参数设置动画中心位置
-	let animationCenterX, animationCenterY;
-	const offset = deg2Pixel(5, chinrestData); // 5 degree visual angle offset
-	
-	switch(position) {
-		case 'left_upper':
-			animationCenterX = width / 2 - offset;
-			animationCenterY = height / 2 - offset;
-			break;
-		case 'left_lower':
-			animationCenterX = width / 2 - offset;
-			animationCenterY = height / 2 + offset;
-			break;
-		case 'right_upper':
-			animationCenterX = width / 2 + offset;
-			animationCenterY = height / 2 - offset;
-			break;
-		case 'right_lower':
-			animationCenterX = width / 2 + offset;
-			animationCenterY = height / 2 + offset;
-			break;
-		default:
-			animationCenterX = width / 2 + offset;
-			animationCenterY = height / 2 + offset;
-	}
+  // 根据位置参数设置动画中心位置
+  let animationCenterX, animationCenterY;
+  const stimulusCenter = getStimulusCenterForPosition(position, width, height, chinrestData);
+  animationCenterX = stimulusCenter.x;
+  animationCenterY = stimulusCenter.y;
   const radius = deg2Pixel(5, chinrestData)/2;
   const dotRadius = 4;
   const numDots = 30; // All dots are now signal dots
@@ -978,29 +1118,9 @@ function initGratingStimulus(angleArray, screenWidth, screenHeight, chinrestData
   
   // 根据位置参数设置刺激中心位置
   let stimulusCenterX, stimulusCenterY;
-  const offset = deg2Pixel(5, chinrestData); // 5 degree visual angle offset
-  
-  switch(position) {
-    case 'left_upper':
-      stimulusCenterX = width / 2 - offset;
-      stimulusCenterY = height / 2 - offset;
-      break;
-    case 'left_lower':
-      stimulusCenterX = width / 2 - offset;
-      stimulusCenterY = height / 2 + offset;
-      break;
-    case 'right_upper':
-      stimulusCenterX = width / 2 + offset;
-      stimulusCenterY = height / 2 - offset;
-      break;
-    case 'right_lower':
-      stimulusCenterX = width / 2 + offset;
-      stimulusCenterY = height / 2 + offset;
-      break;
-    default:
-      stimulusCenterX = width / 2 + offset;
-      stimulusCenterY = height / 2 + offset;
-  }
+  const stimulusCenter = getStimulusCenterForPosition(position, width, height, chinrestData);
+  stimulusCenterX = stimulusCenter.x;
+  stimulusCenterY = stimulusCenter.y;
 
   function createStaticGrating(containerId, orientation = "vertical", spacing = 5) {
     // DEBUG: Log what grating parameters are actually being used
@@ -1082,29 +1202,9 @@ function initGridStimulus(angleArray,screenWidth,screenHeight, chinrestData = nu
   
   // 根据位置参数设置动画中心位置
   let animationCenterX, animationCenterY;
-  const offset = deg2Pixel(5, chinrestData); // 5 degree visual angle offset
-  
-  switch(position) {
-    case 'left_upper':
-      animationCenterX = width / 2 - offset;
-      animationCenterY = height / 2 - offset;
-      break;
-    case 'left_lower':
-      animationCenterX = width / 2 - offset;
-      animationCenterY = height / 2 + offset;
-      break;
-    case 'right_upper':
-      animationCenterX = width / 2 + offset;
-      animationCenterY = height / 2 - offset;
-      break;
-    case 'right_lower':
-      animationCenterX = width / 2 + offset;
-      animationCenterY = height / 2 + offset;
-      break;
-    default:
-      animationCenterX = width / 2 + offset;
-      animationCenterY = height / 2 + offset;
-  }
+  const stimulusCenter = getStimulusCenterForPosition(position, width, height, chinrestData);
+  animationCenterX = stimulusCenter.x;
+  animationCenterY = stimulusCenter.y;
 
   const gridSize = 10;
   const cellSize = 10;
@@ -1245,28 +1345,11 @@ function initBarChartStimulus(angleArray,screenWidth,screenHeight, chinrestData 
   
   // 根据位置参数设置动画中心位置
   let lostViewCenterX, lostViewCenterY, goodViewCenterX, goodViewCenterY;
-  const offset = deg2Pixel(5, chinrestData); // 5 degree visual angle offset
-  switch(position) {
-    case 'upper':
-      // 上位置：左柱在左视野，右柱在右视野
-      lostViewCenterX = width / 2 - offset;
-      lostViewCenterY = height / 2 - offset;
-      goodViewCenterX = width / 2 + offset;
-      goodViewCenterY = height / 2 - offset;
-      break;
-    case 'lower':
-      // 下位置：左柱在左视野，右柱在右视野
-      lostViewCenterX = width / 2 - offset;
-      lostViewCenterY = height / 2 + offset;
-      goodViewCenterX = width / 2 + offset;
-      goodViewCenterY = height / 2 + offset;
-      break;
-    default:
-      lostViewCenterX = width / 2 - offset;
-      lostViewCenterY = height / 2 - offset;
-      goodViewCenterX = width / 2 + offset;
-      goodViewCenterY = height / 2 - offset;
-  }
+  const barCenters = getBarStimulusCenters(position, width, height, chinrestData);
+  lostViewCenterX = barCenters.lostViewCenterX;
+  lostViewCenterY = barCenters.lostViewCenterY;
+  goodViewCenterX = barCenters.goodViewCenterX;
+  goodViewCenterY = barCenters.goodViewCenterY;
   
   
   // DEBUG: Log what bar heights are actually being used
@@ -1332,7 +1415,7 @@ function playFeedbackSound(isCorrect, trialCategory = '') {
 }
 
 // Function to save data to server
-function saveDataToServer(filename, csvData) {
+function saveDataToServer(filename, csvData, options = {}) {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/save_data.php', true);
@@ -1366,11 +1449,247 @@ function saveDataToServer(filename, csvData) {
     
     const postData = {
       filename: filename,
-      filedata: csvData
+      filedata: csvData,
+      overwrite: Boolean(options.overwrite)
     };
     
     xhr.send(JSON.stringify(postData));
   });
+}
+
+function isServerSaveDisabledForDevelopment() {
+  return window.location.port === '5173'
+    || (window.location.hostname === 'localhost' && window.location.port !== '8000');
+}
+
+function sanitizeFilenameSegment(value, fallback = 'unknown') {
+  const cleaned = String(value ?? '')
+    .trim()
+    .replace(/[^A-Za-z0-9]/g, '');
+
+  return cleaned || fallback;
+}
+
+function getCurrentUserIdForFilename() {
+  const rows = jsPsych.data.get().values();
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i] && rows[i].user_id) {
+      return sanitizeFilenameSegment(rows[i].user_id);
+    }
+  }
+
+  return 'unknown';
+}
+
+function formatPaddedIndex(value) {
+  return String(value).padStart(2, '0');
+}
+
+function buildDataFilename(prefix, options = {}) {
+  const parts = [
+    prefix,
+    'user',
+    getCurrentUserIdForFilename(),
+    sanitizeFilenameSegment(selectedTask || 'Task')
+  ];
+
+  if (Number.isInteger(options.sessionIndex)) {
+    parts.push(`session${formatPaddedIndex(options.sessionIndex)}`);
+  }
+
+  parts.push(experimentRunTimestamp);
+  return `${parts.join('_')}.csv`;
+}
+
+function csvEscape(value) {
+  if (value === null || typeof value === 'undefined') {
+    return '';
+  }
+
+  let normalizedValue = value;
+  if (typeof normalizedValue === 'object') {
+    normalizedValue = JSON.stringify(normalizedValue);
+  }
+
+  const stringValue = String(normalizedValue);
+  if (/[",\n\r]/.test(stringValue)) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+
+  return stringValue;
+}
+
+function rowsToCsv(rows) {
+  const columns = [];
+  const seenColumns = new Set();
+
+  rows.forEach((row) => {
+    Object.keys(row).forEach((column) => {
+      if (!seenColumns.has(column)) {
+        seenColumns.add(column);
+        columns.push(column);
+      }
+    });
+  });
+
+  if (!columns.length) {
+    return '';
+  }
+
+  const header = columns.map(csvEscape).join(',');
+  const body = rows.map((row) => columns.map((column) => csvEscape(row[column])).join(','));
+  return [header, ...body].join('\n');
+}
+
+function getSavableDataRows() {
+  return jsPsych.data.get().values()
+    .filter((row) => row && row.manual_pause_interrupted !== true)
+    .map((row) => ({ ...row }));
+}
+
+function addSaveMetadata(rows, prefix, options = {}) {
+  const saveCreatedAt = new Date().toISOString();
+  return rows.map((row) => ({
+    ...row,
+    save_file_prefix: prefix,
+    save_created_at: saveCreatedAt,
+    save_task: selectedTask || '',
+    save_session_chunk_index: Number.isInteger(options.sessionIndex) ? options.sessionIndex : '',
+    save_pause_index: Number.isInteger(options.pauseIndex) ? options.pauseIndex : ''
+  }));
+}
+
+function saveRowsWithPrefix(prefix, rows, options = {}) {
+  const filename = buildDataFilename(prefix, options);
+  const csvData = rowsToCsv(addSaveMetadata(rows, prefix, options));
+
+  if (!csvData) {
+    return Promise.resolve({
+      success: false,
+      skipped: true,
+      filename,
+      message: 'No data rows were available to save.'
+    });
+  }
+
+  if (isServerSaveDisabledForDevelopment()) {
+    console.log(`[Data Save] Development mode: would save ${filename}`);
+    return Promise.resolve({
+      success: true,
+      skipped: true,
+      development: true,
+      filename,
+      message: 'Development mode: server save disabled.'
+    });
+  }
+
+  return saveDataToServer(filename, csvData, { overwrite: Boolean(options.overwrite) });
+}
+
+function getSessionChunkCount(taskType) {
+  const config = TRIAL_CONFIG[taskType];
+  if (!config) return 0;
+  return Math.ceil(config.totalTrials / config.breakEvery);
+}
+
+function getSessionChunkIndexForTrial(taskType, trialNum) {
+  const breakEvery = TRIAL_CONFIG[taskType]?.breakEvery || 1;
+  return Math.floor((trialNum - 1) / breakEvery) + 1;
+}
+
+function getSessionChunkBounds(taskType, sessionIndex) {
+  const config = TRIAL_CONFIG[taskType];
+  if (!config) {
+    return { start: 1, end: 0 };
+  }
+
+  const start = ((sessionIndex - 1) * config.breakEvery) + 1;
+  const end = Math.min(sessionIndex * config.breakEvery, config.totalTrials);
+  return { start, end };
+}
+
+function getRowsForSessionChunk(taskType, sessionIndex) {
+  return getSavableDataRows().filter((row) =>
+    row.task_type === taskType
+    && Number(row.session_chunk_index) === sessionIndex
+  );
+}
+
+function setAutoSaveStatus(statusElement, message, className = '') {
+  if (!statusElement) return;
+
+  statusElement.textContent = message;
+  statusElement.classList.remove('success', 'error', 'info');
+  if (className) {
+    statusElement.classList.add(className);
+  }
+}
+
+function autoSaveSessionChunk(taskType, sessionIndex, statusElement = null) {
+  const key = `${taskType}:${sessionIndex}`;
+  if (dataSaveState.savedSessionChunks.has(key)) {
+    setAutoSaveStatus(statusElement, 'Your progress has been auto saved.', 'success');
+    return Promise.resolve({ success: true, skipped: true, alreadySaved: true });
+  }
+
+  const rows = getRowsForSessionChunk(taskType, sessionIndex);
+  if (!rows.length) {
+    setAutoSaveStatus(statusElement, 'No completed session data is available to auto save yet.', 'info');
+    return Promise.resolve({ success: false, skipped: true });
+  }
+
+  setAutoSaveStatus(statusElement, 'Saving your progress...', 'info');
+  return saveRowsWithPrefix(DATA_SAVE_PREFIX.sessionComplete, rows, { sessionIndex })
+    .then((response) => {
+      dataSaveState.savedSessionChunks.add(key);
+      setAutoSaveStatus(statusElement, 'Your progress has been auto saved.', 'success');
+      console.log('[Data Save] Session chunk saved:', response.filename || response);
+      return response;
+    })
+    .catch((error) => {
+      setAutoSaveStatus(statusElement, `Auto save failed: ${error.message}`, 'error');
+      console.error('[Data Save] Session chunk save failed:', error);
+      throw error;
+    });
+}
+
+function autoSavePauseProgress(taskType, trialNum, statusElement = null) {
+  dataSaveState.pauseProgressCount += 1;
+  const pauseIndex = dataSaveState.pauseProgressCount;
+  const snapshotCount = manualPauseState.attemptDataCountSnapshot;
+  const rows = jsPsych.data.get().values()
+    .slice(0, snapshotCount)
+    .filter((row) => row && row.manual_pause_interrupted !== true)
+    .map((row) => ({
+      ...row,
+      pause_requested_task: taskType,
+      pause_requested_trial_number: trialNum
+    }));
+
+  setAutoSaveStatus(statusElement, 'Saving your progress...', 'info');
+  const savePauseRows = () => saveRowsWithPrefix(DATA_SAVE_PREFIX.pauseProgress, rows, {
+    pauseIndex,
+    overwrite: true
+  });
+
+  const queuedSave = dataSaveState.pauseSaveQueue.catch(() => {}).then(savePauseRows);
+  dataSaveState.pauseSaveQueue = queuedSave;
+
+  return queuedSave
+    .then((response) => {
+      setAutoSaveStatus(statusElement, 'Your progress has been auto saved.', 'success');
+      console.log('[Data Save] Pause progress saved:', response.filename || response);
+      return response;
+    })
+    .catch((error) => {
+      setAutoSaveStatus(statusElement, `Auto save failed: ${error.message}`, 'error');
+      console.error('[Data Save] Pause progress save failed:', error);
+      throw error;
+    });
+}
+
+function saveFinalCompleteData() {
+  return saveRowsWithPrefix(DATA_SAVE_PREFIX.finalComplete, getSavableDataRows());
 }
 
 // Utility function to shuffle an array
@@ -1493,6 +1812,7 @@ function createReadyScreen(taskName = "next task") {
 // Helper function to create break/pause screen with 30-second visual countdown
 function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, totalTrials, options = {}) {
   const isManualPause = options.mode === 'manual_pause';
+  const shouldAutoSave = isManualPause || Number.isInteger(options.autoSaveSessionIndex);
   const titleText = isManualPause ? 'Paused' : 'Time for a Break!';
   const taskInfoHtml = isManualPause
     ? `Manual break requested (<span class="key-icon key-icon-square">B</span>)<br>${taskType} Task<br>Trial ${options.trialNum} of ${totalTrials}`
@@ -1500,6 +1820,9 @@ function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, tot
   const startInstructionHtml = isManualPause
     ? `Press <span class="key-icon key-icon-space">SPACE</span> when you're ready to replay this trial.`
     : `Press <span class="key-icon key-icon-space">SPACE</span> when you're ready to continue.`;
+  const autoSaveStatusHtml = shouldAutoSave
+    ? '<div id="break-auto-save-status" class="auto-save-status">Saving your progress...</div>'
+    : '';
 
   return {
     type: htmlKeyboardResponse,
@@ -1540,20 +1863,61 @@ function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, tot
           font-size: 18px;
           margin-bottom: 20px;
         }
+        .auto-save-status {
+          display: inline-block;
+          margin: 0 0 22px;
+          padding: 10px 14px;
+          border: 1px solid #6b7280;
+          border-radius: 6px;
+          color: #1f2933;
+          background: rgba(255, 255, 255, 0.4);
+          font-size: 18px;
+          font-weight: 600;
+        }
+        .auto-save-status.success {
+          border-color: #166534;
+          color: #14532d;
+        }
+        .auto-save-status.error {
+          border-color: #991b1b;
+          color: #7f1d1d;
+        }
+        .auto-save-status.info {
+          border-color: #1d4ed8;
+          color: #1e3a8a;
+        }
         ${SHARED_KEY_ICON_CSS}
       </style>
       <div class="ready-container">
         <div class="ready-title">${titleText}</div>
         <div class="task-info">${taskInfoHtml}</div>
+        ${autoSaveStatusHtml}
         <div class="countdown" id="countdown">30</div>
         <div class="start-instruction">${startInstructionHtml}</div>
       </div>
     `,
     choices: [' '],
     trial_duration: null,
+    data: {
+      trial_category: isManualPause ? 'manual_pause_screen' : 'scheduled_break',
+      task_type: taskType,
+      break_number: breakNum,
+      break_total: totalBreaks,
+      trials_completed: trialsCompleted,
+      total_trials: totalTrials,
+      auto_save_session_chunk_index: Number.isInteger(options.autoSaveSessionIndex) ? options.autoSaveSessionIndex : null,
+      manual_pause_trial_number: isManualPause ? options.trialNum : null
+    },
     on_load: function() {
       let timeLeft = 30;
       const countdownElement = document.getElementById('countdown');
+      const autoSaveStatus = document.getElementById('break-auto-save-status');
+
+      if (isManualPause) {
+        autoSavePauseProgress(taskType, options.trialNum, autoSaveStatus).catch(() => {});
+      } else if (Number.isInteger(options.autoSaveSessionIndex)) {
+        autoSaveSessionChunk(taskType, options.autoSaveSessionIndex, autoSaveStatus).catch(() => {});
+      }
       
       const timer = setInterval(() => {
         timeLeft--;
@@ -1764,8 +2128,8 @@ function createTaskInstructionTrials(taskType) {
     [
       'Please keep your eyes fixed on the cross in the center of the screen at all times.',
       `Occasionally, the cross will change from "➕" to "✖️", and when that happens, press <span class="key-icon key-icon-space">SPACE</span>. ${instructionConfig.noStimulusText}`,
-      'You can press <span class="key-icon key-icon-square">B</span> at any time during numbered trials to take a manual pause and replay that trial.',
-      `There will be a short break after completing ${breakEvery} trials to help you rest your eyes. A 30-second countdown timer will appear. You can press <span class="key-icon key-icon-space">SPACE</span> to continue early, or wait until it reaches 0 and press <span class="key-icon key-icon-space">SPACE</span> when you are ready. You are also welcome to take a longer break if needed.`
+      'You can press <span class="key-icon key-icon-square">B</span> at any time during numbered trials to take a manual pause and replay that trial. Your progress will be auto saved when the pause screen opens.',
+      `There will be a short break after completing ${breakEvery} trials to help you rest your eyes. Your progress will be auto saved during each break. A 30-second countdown timer will appear. You can press <span class="key-icon key-icon-space">SPACE</span> to continue early, or wait until it reaches 0 and press <span class="key-icon key-icon-space">SPACE</span> when you are ready. You are also welcome to take a longer break if needed.`
     ]
   ];
 
@@ -1954,9 +2318,7 @@ function getUserChoiceFromTaskResponse(response, taskType) {
 
 // Balanced condition generation functions
 function getConditionsForTask(taskType) {
-  const positions = USE_SINGLE_POSITION ? 
-    (taskType === 'Bar' ? [TARGET_POSITION === 'left_upper' ? 'upper' : 'lower'] : [TARGET_POSITION]) :
-    (taskType === 'Bar' ? ['upper', 'lower'] : ['left_upper', 'left_lower', 'right_upper', 'right_lower']);
+  const positions = getStimulusPositionsForTask(taskType);
   
   switch(taskType) {
     case 'Motion':
@@ -3456,19 +3818,20 @@ timeline.push({
     
     // Store the calculated parameters when continue is clicked
     continueBtn.addEventListener('click', function() {
-      const calculatorData = {
-        resolution: [parseFloat(inputs.resWidth.value), parseFloat(inputs.resHeight.value)],
-        screenSizeCm: [parseFloat(inputs.screenWidth.value), parseFloat(inputs.screenHeight.value)],
-        viewingDistanceCm: parseFloat(inputs.viewingDistance.value),
-        pixelsPerCmX: parseFloat(inputs.resWidth.value) / parseFloat(inputs.screenWidth.value),
-        pixelsPerCmY: parseFloat(inputs.resHeight.value) / parseFloat(inputs.screenHeight.value),
-        pixelsPerDegree: parseFloat(previews.ppd.textContent)
-      };
-      
-      // Store in jsPsych data
-      jsPsych.data.addProperties({
-        calculator_data: calculatorData
-      });
+	      const calculatorData = {
+	        resolution: [parseFloat(inputs.resWidth.value), parseFloat(inputs.resHeight.value)],
+	        screenSizeCm: [parseFloat(inputs.screenWidth.value), parseFloat(inputs.screenHeight.value)],
+	        viewingDistanceCm: parseFloat(inputs.viewingDistance.value),
+	        pixelsPerCmX: parseFloat(inputs.resWidth.value) / parseFloat(inputs.screenWidth.value),
+	        pixelsPerCmY: parseFloat(inputs.resHeight.value) / parseFloat(inputs.screenHeight.value),
+	        pixelsPerDegree: parseFloat(previews.ppd.textContent)
+	      };
+	      latestCalculatorData = calculatorData;
+
+	      // Store in jsPsych data
+	      jsPsych.data.addProperties({
+	        calculator_data: calculatorData
+	      });
     });
     
     // Initial calculation
@@ -3476,6 +3839,378 @@ timeline.push({
   },
   on_finish: function(data) {
     // Data is already stored in jsPsych via the button click event
+  }
+});
+
+// Stimulus position editor
+timeline.push({
+  type: jsPsychHtmlButtonResponse,
+  stimulus: function() {
+    const taskLabel = escapeHtml(TASK_LINK_CONFIG[selectedTask]?.label || selectedTask || 'Selected Task');
+    const xMinAttribute = selectedTask === 'Bar' ? 'min="0"' : '';
+    const barValidationNote = selectedTask === 'Bar'
+      ? '<p class="position-note">For bar comparison, x offset must be 0 or greater.</p>'
+      : '';
+
+    return `
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          margin: 0;
+          padding: 0;
+          background-color: #ccc;
+          overflow: auto;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          min-height: 100vh;
+          color: black;
+        }
+        .position-editor {
+          width: min(980px, calc(100vw - 48px));
+          margin: 0 auto;
+          padding: 28px 0;
+          box-sizing: border-box;
+          color: black;
+          text-align: center;
+        }
+        .position-title {
+          margin: 0 0 8px;
+          font-size: 32px;
+          font-weight: bold;
+          color: black;
+        }
+        .position-subtitle {
+          margin: 0 0 20px;
+          font-size: 20px;
+          color: #333;
+        }
+        .position-preview-wrap {
+          margin: 0 auto 18px;
+          width: min(860px, 100%);
+        }
+        .position-preview {
+          display: block;
+          width: 100%;
+          height: min(48vh, 430px);
+          min-height: 280px;
+          border: 2px solid #7f7f7f;
+          background: #d9d9d9;
+          box-sizing: border-box;
+        }
+        .position-controls {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(180px, 1fr));
+          gap: 18px;
+          width: min(620px, 100%);
+          margin: 0 auto 12px;
+        }
+        .position-field {
+          text-align: left;
+        }
+        .position-label {
+          display: block;
+          margin-bottom: 6px;
+          font-size: 17px;
+          font-weight: 700;
+          color: black;
+        }
+        .position-input {
+          width: 100%;
+          box-sizing: border-box;
+          border: 2px solid #8f8f8f;
+          border-radius: 6px;
+          background: #e4e4e4;
+          color: black;
+          font-size: 20px;
+          padding: 10px 12px;
+          text-align: center;
+        }
+        .position-input.invalid {
+          border-color: #991b1b;
+          outline: 2px solid #991b1b;
+        }
+        .position-readout {
+          margin: 6px 0;
+          font-size: 17px;
+          color: #222;
+        }
+        .position-note {
+          margin: 6px 0;
+          font-size: 16px;
+          color: #333;
+        }
+        .position-error {
+          min-height: 22px;
+          margin: 8px 0 0;
+          color: #7f1d1d;
+          font-size: 16px;
+          font-weight: 700;
+        }
+        @media (max-width: 680px) {
+          .position-controls {
+            grid-template-columns: 1fr;
+          }
+          .position-title {
+            font-size: 28px;
+          }
+          .position-subtitle {
+            font-size: 18px;
+          }
+        }
+      </style>
+      <main class="position-editor">
+        <h1 class="position-title">Stimulus Position</h1>
+        <p class="position-subtitle">${taskLabel}</p>
+        <div class="position-preview-wrap">
+          <svg id="stimulus-position-preview" class="position-preview" role="img" aria-label="Stimulus position preview"></svg>
+        </div>
+        <div class="position-controls">
+          <label class="position-field">
+            <span class="position-label">X offset</span>
+            <input type="number" id="stimulus-x-offset" class="position-input" step="0.1" value="${stimulusPositionSettings.xOffsetDeg}" ${xMinAttribute}>
+          </label>
+          <label class="position-field">
+            <span class="position-label">Y offset</span>
+            <input type="number" id="stimulus-y-offset" class="position-input" step="0.1" value="${stimulusPositionSettings.yOffsetDeg}">
+          </label>
+        </div>
+        <p class="position-readout">Pixel offset: <span id="stimulus-position-readout">--</span></p>
+        ${barValidationNote}
+        <div id="stimulus-position-error" class="position-error" aria-live="polite"></div>
+      </main>
+    `;
+  },
+  choices: ['Continue with Position'],
+  button_html: (choice) => `<div class="my-btn-container"><button class="jspsych-btn" id="continue-position-btn">${choice}</button></div>`,
+  data: {
+    trial_category: 'stimulus_position_editor',
+    task_type: selectedTask
+  },
+  on_load: function() {
+    const svg = document.getElementById('stimulus-position-preview');
+    const xInput = document.getElementById('stimulus-x-offset');
+    const yInput = document.getElementById('stimulus-y-offset');
+    const readout = document.getElementById('stimulus-position-readout');
+    const errorMessage = document.getElementById('stimulus-position-error');
+    const continueBtn = document.getElementById('continue-position-btn');
+    const svgNamespace = 'http://www.w3.org/2000/svg';
+
+    function appendSvgElement(name, attributes = {}, text = '') {
+      const element = document.createElementNS(svgNamespace, name);
+      Object.entries(attributes).forEach(([key, value]) => {
+        element.setAttribute(key, String(value));
+      });
+      if (text) {
+        element.textContent = text;
+      }
+      svg.appendChild(element);
+      return element;
+    }
+
+    function validateInputs() {
+      const xOffsetDeg = Number(xInput.value);
+      const yOffsetDeg = Number(yInput.value);
+      const xValid = Number.isFinite(xOffsetDeg) && (selectedTask !== 'Bar' || xOffsetDeg >= 0);
+      const yValid = Number.isFinite(yOffsetDeg);
+
+      xInput.classList.toggle('invalid', !xValid);
+      yInput.classList.toggle('invalid', !yValid);
+
+      return {
+        valid: xValid && yValid,
+        xOffsetDeg,
+        yOffsetDeg
+      };
+    }
+
+    function getPreviewCenters(xOffsetPx, yOffsetPx) {
+      const positions = getStimulusPositionsForTask(selectedTask);
+      const centers = [];
+
+      if (selectedTask === 'Bar') {
+        positions.forEach((position) => {
+          const barCenters = getBarStimulusCentersFromPixels(position, screenWidth, screenHeight, xOffsetPx, yOffsetPx);
+          centers.push({
+            x: barCenters.lostViewCenterX,
+            y: barCenters.lostViewCenterY,
+            label: `${position} left bar`
+          });
+          centers.push({
+            x: barCenters.goodViewCenterX,
+            y: barCenters.goodViewCenterY,
+            label: `${position} right bar`
+          });
+        });
+        return centers;
+      }
+
+      positions.forEach((position) => {
+        const center = getStimulusCenterForPositionFromPixels(position, screenWidth, screenHeight, xOffsetPx, yOffsetPx);
+        centers.push({
+          x: center.x,
+          y: center.y,
+          label: position.replace('_', ' ')
+        });
+      });
+
+      return centers;
+    }
+
+    function drawPreview() {
+      const inputState = validateInputs();
+      svg.innerHTML = '';
+      svg.setAttribute('viewBox', `0 0 ${screenWidth} ${screenHeight}`);
+      svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+
+      appendSvgElement('rect', {
+        x: 0,
+        y: 0,
+        width: screenWidth,
+        height: screenHeight,
+        fill: '#d9d9d9'
+      });
+      appendSvgElement('line', {
+        x1: screenWidth / 2,
+        y1: 0,
+        x2: screenWidth / 2,
+        y2: screenHeight,
+        stroke: '#6f6f6f',
+        'stroke-width': 2,
+        'vector-effect': 'non-scaling-stroke'
+      });
+      appendSvgElement('line', {
+        x1: 0,
+        y1: screenHeight / 2,
+        x2: screenWidth,
+        y2: screenHeight / 2,
+        stroke: '#6f6f6f',
+        'stroke-width': 2,
+        'vector-effect': 'non-scaling-stroke'
+      });
+      appendSvgElement('circle', {
+        cx: screenWidth / 2,
+        cy: screenHeight / 2,
+        r: Math.max(6, Math.min(screenWidth, screenHeight) * 0.008),
+        fill: '#111'
+      });
+      appendSvgElement('text', {
+        x: 18,
+        y: 32,
+        fill: '#222',
+        'font-size': Math.max(18, Math.min(screenWidth, screenHeight) * 0.026)
+      }, 'Left Upper');
+      appendSvgElement('text', {
+        x: screenWidth - 18,
+        y: 32,
+        fill: '#222',
+        'font-size': Math.max(18, Math.min(screenWidth, screenHeight) * 0.026),
+        'text-anchor': 'end'
+      }, 'Right Upper');
+      appendSvgElement('text', {
+        x: 18,
+        y: screenHeight - 18,
+        fill: '#222',
+        'font-size': Math.max(18, Math.min(screenWidth, screenHeight) * 0.026)
+      }, 'Left Lower');
+      appendSvgElement('text', {
+        x: screenWidth - 18,
+        y: screenHeight - 18,
+        fill: '#222',
+        'font-size': Math.max(18, Math.min(screenWidth, screenHeight) * 0.026),
+        'text-anchor': 'end'
+      }, 'Right Lower');
+
+      if (!inputState.valid) {
+        readout.textContent = '--';
+        errorMessage.textContent = selectedTask === 'Bar' && Number(inputState.xOffsetDeg) < 0
+          ? 'For the bar comparison task, x offset must be 0 or greater.'
+          : 'Enter valid numeric x and y offsets.';
+        continueBtn.disabled = true;
+        continueBtn.style.opacity = '0.5';
+        return;
+      }
+
+      const xOffsetPx = deg2PixelForAxis(inputState.xOffsetDeg, 'x');
+      const yOffsetPx = deg2PixelForAxis(inputState.yOffsetDeg, 'y');
+      setStimulusOffsetSettings(inputState.xOffsetDeg, inputState.yOffsetDeg);
+
+      const markerRadius = Math.max(9, Math.min(screenWidth, screenHeight) * 0.014);
+      getPreviewCenters(xOffsetPx, yOffsetPx).forEach((center) => {
+        const visible = center.x >= 0 && center.x <= screenWidth && center.y >= 0 && center.y <= screenHeight;
+        const markerX = Math.min(Math.max(center.x, markerRadius), screenWidth - markerRadius);
+        const markerY = Math.min(Math.max(center.y, markerRadius), screenHeight - markerRadius);
+        appendSvgElement('line', {
+          x1: screenWidth / 2,
+          y1: screenHeight / 2,
+          x2: markerX,
+          y2: markerY,
+          stroke: visible ? '#1f2933' : '#991b1b',
+          'stroke-width': 2,
+          'stroke-dasharray': '8 7',
+          'vector-effect': 'non-scaling-stroke'
+        });
+        appendSvgElement('circle', {
+          cx: markerX,
+          cy: markerY,
+          r: markerRadius,
+          fill: visible ? '#111' : '#991b1b',
+          stroke: '#fff',
+          'stroke-width': 2,
+          'vector-effect': 'non-scaling-stroke'
+        });
+        appendSvgElement('text', {
+          x: markerX,
+          y: markerY - markerRadius - 8,
+          fill: visible ? '#111' : '#991b1b',
+          'font-size': Math.max(16, Math.min(screenWidth, screenHeight) * 0.022),
+          'text-anchor': 'middle'
+        }, center.label);
+      });
+
+      readout.textContent = `x ${xOffsetPx.toFixed(1)} px, y ${yOffsetPx.toFixed(1)} px`;
+      errorMessage.textContent = '';
+      continueBtn.disabled = false;
+      continueBtn.style.opacity = '1';
+    }
+
+    xInput.addEventListener('input', drawPreview);
+    yInput.addEventListener('input', drawPreview);
+    continueBtn.addEventListener('click', function() {
+      const inputState = validateInputs();
+      if (!inputState.valid) {
+        return;
+      }
+
+      const settings = setStimulusOffsetSettings(inputState.xOffsetDeg, inputState.yOffsetDeg);
+      jsPsych.data.addProperties({
+        stimulus_position_data: {
+          xOffsetDeg: settings.xOffsetDeg,
+          yOffsetDeg: settings.yOffsetDeg,
+          xOffsetPx: settings.xOffsetPx,
+          yOffsetPx: settings.yOffsetPx
+        },
+        stimulus_x_offset_deg: settings.xOffsetDeg,
+        stimulus_y_offset_deg: settings.yOffsetDeg,
+        stimulus_x_offset_px: settings.xOffsetPx,
+        stimulus_y_offset_px: settings.yOffsetPx
+      });
+    });
+
+    drawPreview();
+  },
+  on_finish: function(data) {
+    const settings = getStimulusOffsetSettings();
+    data.stimulus_position_data = {
+      xOffsetDeg: settings.xOffsetDeg,
+      yOffsetDeg: settings.yOffsetDeg,
+      xOffsetPx: settings.xOffsetPx,
+      yOffsetPx: settings.yOffsetPx
+    };
+    data.stimulus_x_offset_deg = settings.xOffsetDeg;
+    data.stimulus_y_offset_deg = settings.yOffsetDeg;
+    data.stimulus_x_offset_px = settings.xOffsetPx;
+    data.stimulus_y_offset_px = settings.yOffsetPx;
   }
 });
 
@@ -3622,6 +4357,49 @@ function createPauseReplayTrialNode(taskType, trialNum, totalTrials, trialSequen
   };
 }
 
+function annotateTrialSequenceForSession(trialSequence, taskType, trialNum, totalTrials) {
+  const sessionIndex = getSessionChunkIndexForTrial(taskType, trialNum);
+  const sessionCount = getSessionChunkCount(taskType);
+  const bounds = getSessionChunkBounds(taskType, sessionIndex);
+  const stimulusOffsets = getStimulusOffsetSettings();
+  const metadata = {
+    task_type: taskType,
+    overall_trial_number: trialNum,
+    session_chunk_index: sessionIndex,
+    session_chunk_total: sessionCount,
+    session_chunk_start_trial: bounds.start,
+    session_chunk_end_trial: bounds.end,
+    session_chunk_trial_number: trialNum - bounds.start + 1,
+    total_trials: totalTrials,
+    stimulus_x_offset_deg: stimulusOffsets.xOffsetDeg,
+    stimulus_y_offset_deg: stimulusOffsets.yOffsetDeg,
+    stimulus_x_offset_px: stimulusOffsets.xOffsetPx,
+    stimulus_y_offset_px: stimulusOffsets.yOffsetPx
+  };
+
+  trialSequence.forEach((trial) => {
+    const originalData = trial.data;
+
+    if (typeof originalData === 'function') {
+      trial.data = function() {
+        const resolvedData = originalData.call(this) || {};
+        return {
+          ...resolvedData,
+          ...metadata
+        };
+      };
+      return;
+    }
+
+    trial.data = {
+      ...(originalData || {}),
+      ...metadata
+    };
+  });
+
+  return trialSequence;
+}
+
 // Function to generate all trials for selected task
 function generateSelectedTaskTrials() {
   const trials = [];
@@ -3661,7 +4439,8 @@ function generateSelectedTaskTrials() {
           breakCounter,
           totalBreaks,
           i,
-          totalTrials
+          totalTrials,
+          { autoSaveSessionIndex: breakCounter }
         );
         trials.push(breakScreen);
         console.log(`🛑 Added break ${breakCounter}/${totalBreaks} after trial ${i}`);
@@ -3673,6 +4452,7 @@ function generateSelectedTaskTrials() {
         ? generateCentralFixationCatchTrialSequence(selectedTask, overallTrialNumber, totalTrials)
         : generateTrialSequence(selectedTask, overallTrialNumber, totalTrials, ++peripheralTrialCounter);
       
+      annotateTrialSequenceForSession(trialSequence, selectedTask, overallTrialNumber, totalTrials);
       trials.push(createPauseReplayTrialNode(selectedTask, overallTrialNumber, totalTrials, trialSequence));
     }
     
@@ -3727,7 +4507,7 @@ timeline.push(createReadyScreen('Motion Discrimination Task'));
 /*
 */
 
-// Results and download screen
+// Results and server-save screen
 timeline.push({
   type: jsPsychHtmlButtonResponse,
   stimulus: function() {
@@ -3868,11 +4648,6 @@ timeline.push({
           font-size: 14px;
           font-weight: 700;
         }
-        .download-instruction {
-          margin: 16px 0 0;
-          color: #333;
-          font-size: 17px;
-        }
         #jspsych-html-button-response-btngroup {
           width: min(1120px, calc(100vw - 96px));
           margin: 34px auto 0 !important;
@@ -3883,7 +4658,6 @@ timeline.push({
         #jspsych-html-button-response-btngroup .jspsych-html-button-response-button {
           margin: 0 !important;
         }
-        .result-download-btn,
         .result-finish-btn {
           margin: 0;
           min-width: 220px;
@@ -3895,7 +4669,6 @@ timeline.push({
           color: black;
           border: 1px solid #8f8f8f;
         }
-        .result-download-btn:hover,
         .result-finish-btn:hover {
           background: #bdbdbd;
         }
@@ -3933,7 +4706,6 @@ timeline.push({
             flex-direction: column;
             align-items: stretch;
           }
-          .result-download-btn,
           .result-finish-btn {
             width: 100%;
           }
@@ -3959,127 +4731,90 @@ timeline.push({
         </section>
 
         <p class="results-note">${escapeHtml(resultNote)}</p>
-        <section class="download-section" aria-label="Data export">
+        <section class="server-save-section" aria-label="Server save status">
           <p id="server-save-status" class="server-status" aria-live="polite">
-            <span id="save-status-text">Saving data to server...</span>
+            <span id="save-status-text">Saving final data and session files to server...</span>
             <span id="save-status-icon" class="status-badge">Saving</span>
           </p>
-          <p class="download-instruction">You can also download the detailed results as a CSV file.</p>
         </section>
       </main>
     `;
   },
-  choices: ['Download CSV', 'Finish'],
+  choices: ['Finish'],
   button_html: (choice) => {
-    if (choice === 'Download CSV') {
-      return `<button class="jspsych-btn result-download-btn" id="download-btn">${choice}</button>`;
-    } else {
-      return `<button class="jspsych-btn result-finish-btn" id="finish-btn">${choice}</button>`;
-    }
+    return `<button class="jspsych-btn result-finish-btn" id="finish-btn">${choice}</button>`;
   },
   on_load: function() {
-    const downloadBtn = document.getElementById('download-btn');
     const saveStatusText = document.getElementById('save-status-text');
     const saveStatusIcon = document.getElementById('save-status-icon');
     const serverStatus = document.getElementById('server-save-status');
+    const finishBtn = document.getElementById('finish-btn');
+
+    if (finishBtn) {
+      finishBtn.disabled = true;
+      finishBtn.style.opacity = '0.55';
+      finishBtn.style.cursor = 'not-allowed';
+    }
     
-    // Get all experiment data
-    const allData = jsPsych.data.get();
-    const csvData = allData.csv();
-    
-    // Get user ID for filename
-    const userId = allData.values()[0].user_id || 'unknown';
-    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-    const filename = `user_${userId}_${timestamp}.csv`;
-    
-    console.log('Generated filename:', filename);
-    console.log('User ID:', userId);
-    console.log('Timestamp:', timestamp);
-    
-    // Check if we're in development mode (Vite dev server)
-    const isDevelopment = window.location.port === '5173' || window.location.hostname === 'localhost' && window.location.port !== '8000';
-    
-    if (isDevelopment) {
-      // Skip server save in development mode
-      saveStatusText.textContent = 'Development mode: server save disabled';
-      saveStatusIcon.textContent = 'Local';
-      serverStatus.classList.add('info');
-    } else {
-      // Automatically save data to server
-      saveDataToServer(filename, csvData)
-        .then(response => {
-          saveStatusText.textContent = `Data saved to server: ${response.filename || filename}`;
-          saveStatusIcon.textContent = 'Saved';
-          serverStatus.classList.add('success');
-          console.log('Server save successful:', response);
-        })
-        .catch(error => {
-          saveStatusText.textContent = `Server save failed: ${error.message}`;
+    const saveRequests = [];
+    if (selectedTask) {
+      for (let sessionIndex = 1; sessionIndex <= getSessionChunkCount(selectedTask); sessionIndex++) {
+        saveRequests.push(autoSaveSessionChunk(selectedTask, sessionIndex));
+      }
+    }
+    saveRequests.push(saveFinalCompleteData());
+
+    Promise.allSettled(saveRequests)
+      .then((results) => {
+        const failures = results.filter((result) =>
+          result.status === 'rejected'
+          || (result.status === 'fulfilled' && result.value && result.value.success === false)
+        );
+        const developmentMode = results.some((result) =>
+          result.status === 'fulfilled' && result.value && result.value.development
+        );
+
+        serverStatus.classList.remove('success', 'error', 'info');
+        if (failures.length > 0) {
+          const firstFailure = failures[0];
+          const firstReason = firstFailure.reason || firstFailure.value;
+          saveStatusText.textContent = `Server save failed: ${firstReason?.message || 'unknown error'}`;
           saveStatusIcon.textContent = 'Error';
           serverStatus.classList.add('error');
-          console.error('Server save error:', error);
-        });
-    }
-    
-    // Download button functionality
-    if (downloadBtn) {
-      downloadBtn.addEventListener('click', function() {
-        // Create and download the file
-        const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', filename);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-        
-        // Update button to show download completed
-        downloadBtn.textContent = 'Downloaded';
-        downloadBtn.disabled = true;
-        
-        // Add success message
-        const downloadSection = document.querySelector('.download-section');
-        if (downloadSection) {
-          // Check if success message already exists
-          if (!document.getElementById('download-success-message')) {
-            const successMessage = document.createElement('div');
-            successMessage.id = 'download-success-message';
-            successMessage.style.cssText = `
-              border-top: 1px solid #8f8f8f;
-              color: #14532d;
-              padding-top: 14px;
-              margin-top: 18px;
-              font-size: 16px;
-              font-weight: 600;
-              text-align: left;
-              animation: fadeIn 0.5s ease-in;
-            `;
-            successMessage.textContent = 'Download complete. Your CSV file has been saved to your Downloads folder.';
-            
-            // Add CSS animation
-            if (!document.getElementById('download-success-animation')) {
-              const style = document.createElement('style');
-              style.id = 'download-success-animation';
-              style.innerHTML = `
-                @keyframes fadeIn {
-                  from { opacity: 0; transform: translateY(-10px); }
-                  to { opacity: 1; transform: translateY(0); }
-                }
-              `;
-              document.head.appendChild(style);
-            }
-            
-            downloadSection.appendChild(successMessage);
+          console.error('Server save errors:', failures);
+          if (finishBtn) {
+            finishBtn.disabled = false;
+            finishBtn.style.opacity = '1';
+            finishBtn.style.cursor = 'pointer';
           }
+          return;
+        }
+
+        if (developmentMode) {
+          saveStatusText.textContent = 'Development mode: server save disabled';
+          saveStatusIcon.textContent = 'Local';
+          serverStatus.classList.add('info');
+          if (finishBtn) {
+            finishBtn.disabled = false;
+            finishBtn.style.opacity = '1';
+            finishBtn.style.cursor = 'pointer';
+          }
+          return;
+        }
+
+        saveStatusText.textContent = 'Final data and session files saved to server.';
+        saveStatusIcon.textContent = 'Saved';
+        serverStatus.classList.add('success');
+        console.log('Server saves successful:', results.map((result) => result.value));
+        if (finishBtn) {
+          finishBtn.disabled = false;
+          finishBtn.style.opacity = '1';
+          finishBtn.style.cursor = 'pointer';
         }
       });
-    }
   },
   on_finish: function(data) {
-    if (data.response === 1) { // Finish button clicked
+    if (data.response === 0) { // Finish button clicked
       // Show thank you message
       document.body.innerHTML = `
         <main style="display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #ccc; font-family: Arial, sans-serif; color: black; padding: 32px; box-sizing: border-box;">

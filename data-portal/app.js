@@ -1017,7 +1017,7 @@
   }
 
   function parseUserIdFromFileName(fileName) {
-    const match = String(fileName).match(/(?:^|\/)user_([^_/]+)_/i);
+    const match = String(fileName).match(/(?:^|\/|_)user_([^_/]+)_/i);
     return match ? match[1] : 'Unknown';
   }
 

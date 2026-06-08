@@ -581,7 +581,9 @@ function data_portal_file_allowed_for_scope(string $relativePath, array $scope):
     }
 
     $baseName = basename(str_replace('\\', '/', $relativePath));
-    return preg_match('/^user_' . preg_quote($userId, '/') . '_.+\.csv$/i', $baseName) === 1;
+    $quotedUserId = preg_quote($userId, '/');
+    return preg_match('/^user_' . $quotedUserId . '_.+\.csv$/i', $baseName) === 1
+        || preg_match('/^(?:final_complete|session_complete|pause_progress|session_chunk_complete|pause_checkpoint)_user_' . $quotedUserId . '_.+\.csv$/i', $baseName) === 1;
 }
 
 function data_portal_download_file(string $dataDir, array $scope): void
