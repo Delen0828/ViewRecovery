@@ -72,7 +72,8 @@
       visibleTasks: TASKS.reduce((visible, task) => {
         visible[task] = true;
         return visible;
-      }, {})
+      }, {}),
+      difficultyTaskByUser: {}
     }
   };
 
@@ -492,8 +493,6 @@
     }
 
     panel.append('h2').text(selectedUser.label);
-    renderTaskControls(panel);
-
     const metrics = [
       { label: 'Sessions', value: String(selectedUser.sessions) },
       { label: 'Trials', value: String(selectedUser.trials) },
@@ -502,9 +501,22 @@
     ];
     renderMetrics(panel, metrics);
 
+    const trendSection = panel.append('section').attr('class', 'chart-section');
+    trendSection.append('h2').text('Accuracy Over Time');
+    renderTaskControls(trendSection);
+
     const series = aggregateUserTrendSeries(state.users.records, selectedUser.id);
-    const chart = panel.append('div').attr('class', 'chart-wrap');
+    const chart = trendSection.append('div').attr('class', 'chart-wrap');
     renderUserTrendChart(chart.node(), series);
+
+    const difficultyTask = getSelectedDifficultyTask(selectedUser.id);
+    const difficultySection = panel.append('section').attr('class', 'chart-section');
+    difficultySection.append('h2').text('Accuracy by Difficulty Over Dates');
+    renderDifficultyTaskControls(difficultySection, selectedUser.id, difficultyTask);
+
+    const difficultySeries = aggregateUserDifficultyTrendSeries(state.users.records, selectedUser.id, difficultyTask);
+    const difficultyChart = difficultySection.append('div').attr('class', 'chart-wrap difficulty-trend-chart');
+    renderUserDifficultyTrendChart(difficultyChart.node(), difficultySeries, difficultyTask);
   }
 
   function renderTaskControls(panel) {
@@ -524,6 +536,28 @@
         .attr('class', 'task-swatch')
         .style('background', TASK_COLORS[task]);
       label.append('span').text(task);
+    });
+  }
+
+  function renderDifficultyTaskControls(panel, userId, selectedTask) {
+    const controls = panel.append('div').attr('class', 'task-toggle-controls');
+    TASKS.forEach((task) => {
+      const button = controls
+        .append('button')
+        .attr('type', 'button')
+        .attr('class', task === selectedTask ? 'task-toggle active' : 'task-toggle')
+        .attr('aria-pressed', task === selectedTask ? 'true' : 'false')
+        .style('--task-color', TASK_COLORS[task])
+        .on('click', () => {
+          state.users.difficultyTaskByUser[userId] = task;
+          renderUsers();
+        });
+
+      button
+        .append('span')
+        .attr('class', 'task-swatch')
+        .style('background', TASK_COLORS[task]);
+      button.append('span').text(task);
     });
   }
 
@@ -814,8 +848,25 @@
     return null;
   }
 
-  function hasDifficultyLevel(row) {
-    return String(row.difficulty_level ?? '').trim() !== '';
+  function parseDifficultyLevel(row) {
+    const rawLevel = String(row.difficulty_level ?? '').trim();
+    if (rawLevel === '') {
+      return null;
+    }
+
+    const numericLevel = Number(rawLevel);
+    return {
+      level: Number.isFinite(numericLevel) ? String(numericLevel) : rawLevel,
+      sortValue: Number.isFinite(numericLevel) ? numericLevel : rawLevel
+    };
+  }
+
+  function compareDifficultySort(a, b) {
+    if (typeof a.sortValue === 'number' && typeof b.sortValue === 'number') {
+      return a.sortValue - b.sortValue;
+    }
+
+    return String(a.sortValue).localeCompare(String(b.sortValue), undefined, { numeric: true });
   }
 
   function aggregateAccuracyByDifficulty(rows) {
@@ -823,17 +874,16 @@
 
     rows.forEach((row) => {
       const correct = parseBoolean(row.correct);
-      const rawLevel = String(row.difficulty_level ?? '').trim();
-      if (correct === null || rawLevel === '') {
+      const difficulty = parseDifficultyLevel(row);
+      if (correct === null || !difficulty) {
         return;
       }
 
-      const numericLevel = Number(rawLevel);
-      const key = Number.isFinite(numericLevel) ? String(numericLevel) : rawLevel;
+      const key = difficulty.level;
       if (!groups.has(key)) {
         groups.set(key, {
           level: key,
-          sortValue: Number.isFinite(numericLevel) ? numericLevel : key,
+          sortValue: difficulty.sortValue,
           correct: 0,
           total: 0
         });
@@ -845,13 +895,7 @@
     });
 
     return Array.from(groups.values())
-      .sort((a, b) => {
-        if (typeof a.sortValue === 'number' && typeof b.sortValue === 'number') {
-          return a.sortValue - b.sortValue;
-        }
-
-        return String(a.sortValue).localeCompare(String(b.sortValue), undefined, { numeric: true });
-      })
+      .sort(compareDifficultySort)
       .map((group) => ({
         level: group.level,
         correct: group.correct,
@@ -889,7 +933,8 @@
       .map((row) => {
         const correct = parseBoolean(row.correct);
         const task = normalizeTask(row);
-        if (correct === null || !task || !hasDifficultyLevel(row)) {
+        const difficulty = parseDifficultyLevel(row);
+        if (correct === null || !task || !difficulty) {
           return null;
         }
 
@@ -899,6 +944,8 @@
           userLabel: formatUserLabel(userId),
           task,
           correct,
+          difficultyLevel: difficulty.level,
+          difficultySortValue: difficulty.sortValue,
           date: sessionDate,
           dateKey: sessionKey,
           fileName: file.name
@@ -974,8 +1021,91 @@
           accuracy: group.total ? (group.correct / group.total) * 100 : 0,
           correct: group.correct,
           total: group.total
-        }))
+      }))
     }));
+  }
+
+  function aggregateUserDifficultyTrendSeries(records, userId, task) {
+    const groups = new Map();
+
+    records.forEach((record) => {
+      if (
+        record.userId !== userId ||
+        record.task !== task ||
+        Number.isNaN(record.date.getTime()) ||
+        !record.difficultyLevel
+      ) {
+        return;
+      }
+
+      const key = `${record.dateKey}|${record.difficultyLevel}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          date: startOfDay(record.date),
+          dateKey: record.dateKey,
+          level: record.difficultyLevel,
+          sortValue: record.difficultySortValue,
+          correct: 0,
+          total: 0
+        });
+      }
+
+      const group = groups.get(key);
+      group.correct += record.correct ? 1 : 0;
+      group.total += 1;
+    });
+
+    const byDate = new Map();
+    Array.from(groups.values()).forEach((group) => {
+      if (!byDate.has(group.dateKey)) {
+        byDate.set(group.dateKey, {
+          date: group.date,
+          dateKey: group.dateKey,
+          values: []
+        });
+      }
+
+      byDate.get(group.dateKey).values.push({
+        level: group.level,
+        sortValue: group.sortValue,
+        accuracy: group.total ? (group.correct / group.total) * 100 : 0,
+        correct: group.correct,
+        total: group.total
+      });
+    });
+
+    const series = Array.from(byDate.values())
+      .sort((a, b) => a.date - b.date)
+      .map((item) => ({
+        date: item.date,
+        dateKey: item.dateKey,
+        values: item.values.sort(compareDifficultySort)
+      }));
+
+    const maxIndex = series.length - 1;
+    return series.map((item, index) => ({
+      ...item,
+      opacity: maxIndex > 0 ? Number((0.3 + (index / maxIndex) * 0.7).toFixed(3)) : 1
+    }));
+  }
+
+  function getSelectedDifficultyTask(userId) {
+    const savedTask = state.users.difficultyTaskByUser[userId];
+    if (TASKS.includes(savedTask)) {
+      return savedTask;
+    }
+
+    return getFirstUserTask(userId) || TASKS[0];
+  }
+
+  function getFirstUserTask(userId) {
+    const availableTasks = new Set(
+      state.users.records
+        .filter((record) => record.userId === userId && record.difficultyLevel)
+        .map((record) => record.task)
+    );
+
+    return TASKS.find((task) => availableTasks.has(task)) || '';
   }
 
   function normalizeTask(row) {
@@ -1258,5 +1388,163 @@
       .attr('y', 18)
       .attr('text-anchor', 'middle')
       .text('Accuracy');
+  }
+
+  function renderUserDifficultyTrendChart(container, dateSeries, task) {
+    container.innerHTML = '';
+
+    const color = TASK_COLORS[task] || '#0b6b61';
+    const points = dateSeries.flatMap((item) => item.values);
+    if (!points.length) {
+      const empty = document.createElement('p');
+      empty.className = 'message info';
+      empty.textContent = `No ${task} response rows with difficulty levels were found for this user.`;
+      container.appendChild(empty);
+      return;
+    }
+
+    const levels = Array.from(
+      points
+        .reduce((levelMap, point) => {
+          if (!levelMap.has(point.level)) {
+            levelMap.set(point.level, {
+              level: point.level,
+              sortValue: point.sortValue
+            });
+          }
+
+          return levelMap;
+        }, new Map())
+        .values()
+    )
+      .sort(compareDifficultySort)
+      .map((point) => point.level);
+
+    const width = Math.max(container.clientWidth || 760, 360);
+    const height = 420;
+    const margin = { top: 24, right: 34, bottom: 56, left: 64 };
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+
+    const svg = d3
+      .select(container)
+      .append('svg')
+      .attr('class', 'chart')
+      .attr('viewBox', `0 0 ${width} ${height}`)
+      .attr('role', 'img')
+      .attr('aria-label', `${task} accuracy by difficulty level over dates`);
+
+    const x = d3
+      .scalePoint()
+      .domain(levels)
+      .range([margin.left, margin.left + innerWidth])
+      .padding(0.45);
+    const y = d3.scaleLinear().domain([0, 100]).range([margin.top + innerHeight, margin.top]);
+
+    svg
+      .append('g')
+      .attr('class', 'grid-lines')
+      .attr('transform', `translate(${margin.left},0)`)
+      .call(
+        d3
+          .axisLeft(y)
+          .ticks(5)
+          .tickSize(-innerWidth)
+          .tickFormat('')
+      );
+
+    svg
+      .append('g')
+      .attr('class', 'axis')
+      .attr('transform', `translate(0,${margin.top + innerHeight})`)
+      .call(d3.axisBottom(x));
+
+    svg
+      .append('g')
+      .attr('class', 'axis')
+      .attr('transform', `translate(${margin.left},0)`)
+      .call(d3.axisLeft(y).ticks(5).tickFormat((value) => `${value}%`));
+
+    function highlightDate(dateKey) {
+      const hasHighlight = Boolean(dateKey);
+      svg
+        .selectAll('.difficulty-date-series')
+        .attr('display', (item) => (!hasHighlight || item.dateKey === dateKey ? null : 'none'));
+      d3.select(container)
+        .selectAll('.date-legend-item')
+        .classed('muted', (item) => hasHighlight && item.dateKey !== dateKey);
+    }
+
+    dateSeries.forEach((item) => {
+      const dateGroup = svg.append('g').datum(item).attr('class', 'difficulty-date-series');
+
+      if (item.values.length > 1) {
+        const path = dateGroup
+          .append('path')
+          .datum(item.values)
+          .attr('class', 'difficulty-date-line')
+          .attr('stroke', color)
+          .attr('stroke-opacity', item.opacity)
+          .attr('d', d3.line().x((point) => x(point.level)).y((point) => y(point.accuracy)));
+
+        path.append('title').text(`${item.dateKey}: ${task} accuracy by difficulty`);
+      }
+
+      const point = dateGroup
+        .selectAll('g')
+        .data(item.values)
+        .enter()
+        .append('g')
+        .attr('class', 'difficulty-trend-point');
+
+      point
+        .append('circle')
+        .attr('cx', (value) => x(value.level))
+        .attr('cy', (value) => y(value.accuracy))
+        .attr('r', 5)
+        .attr('fill', color)
+        .attr('fill-opacity', item.opacity);
+      point
+        .append('title')
+        .text(
+          (value) =>
+            `${task} ${item.dateKey} level ${value.level}: ${formatPercent(value.accuracy)} (${value.correct}/${value.total})`
+        );
+    });
+
+    svg
+      .append('text')
+      .attr('class', 'axis-label')
+      .attr('x', margin.left + innerWidth / 2)
+      .attr('y', height - 12)
+      .attr('text-anchor', 'middle')
+      .text('Difficulty Level');
+
+    svg
+      .append('text')
+      .attr('class', 'axis-label')
+      .attr('transform', 'rotate(-90)')
+      .attr('x', -(margin.top + innerHeight / 2))
+      .attr('y', 18)
+      .attr('text-anchor', 'middle')
+      .text('Accuracy');
+
+    const legend = d3.select(container).append('div').attr('class', 'date-legend');
+    const legendItem = legend
+      .selectAll('.date-legend-item')
+      .data(dateSeries)
+      .enter()
+      .append('span')
+      .attr('class', 'date-legend-item')
+      .attr('tabindex', 0)
+      .attr('aria-label', (item) => `Show only ${item.dateKey}`)
+      .on('mouseenter focus', (event, item) => highlightDate(item.dateKey))
+      .on('mouseleave blur', () => highlightDate(''));
+    legendItem
+      .append('span')
+      .attr('class', 'date-legend-swatch')
+      .style('background', color)
+      .style('opacity', (item) => item.opacity);
+    legendItem.append('span').text((item) => item.dateKey);
   }
 })();

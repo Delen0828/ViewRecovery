@@ -384,6 +384,15 @@ tbody tr:last-child td {
   min-width: 0;
 }
 
+.chart-section {
+  margin-top: 22px;
+}
+
+.chart-section + .chart-section {
+  border-top: 1px solid #dfe5ee;
+  padding-top: 20px;
+}
+
 .task-controls {
   display: flex;
   flex-wrap: wrap;
@@ -406,7 +415,47 @@ tbody tr:last-child td {
   border-radius: 999px;
 }
 
+.task-toggle-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 16px;
+}
+
+.task-toggle {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #fff;
+  color: #253249;
+  font-size: 0.88rem;
+  font-weight: 750;
+}
+
+.task-toggle:hover,
+.task-toggle.active {
+  border-color: var(--task-color);
+  background: #fbfcfe;
+  color: #172033;
+  text-decoration: none;
+}
+
+.task-toggle.active {
+  box-shadow: inset 0 0 0 1px var(--task-color);
+}
+
 .task-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.difficulty-date-line {
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -416,6 +465,45 @@ tbody tr:last-child td {
 .trend-point circle {
   stroke: #fff;
   stroke-width: 2;
+}
+
+.difficulty-trend-point circle {
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.date-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 8px;
+  color: #667085;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.date-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.date-legend-item:focus-visible {
+  outline: 2px solid #0b6b61;
+  outline-offset: 2px;
+}
+
+.date-legend-item.muted {
+  opacity: 0.42;
+}
+
+.date-legend-swatch {
+  width: 22px;
+  height: 4px;
+  border-radius: 999px;
 }
 
 .empty-cell {
