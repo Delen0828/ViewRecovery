@@ -109,6 +109,444 @@ function hideFullscreenPrompt() {
   fullscreenPromptVisible = false;
 }
 
+const READ_ALOUD_SYMBOL_LABELS = [
+  ['✖️', 'X shaped crosshair'],
+  ['✖', 'X shaped crosshair'],
+  ['➕', 'plus shaped crosshair'],
+  ['↑', 'the up arrow'],
+  ['↓', 'the down arrow'],
+  ['←', 'the left arrow'],
+  ['→', 'the right arrow'],
+  ['✅', 'check mark'],
+  ['✔️', 'check mark'],
+  ['✔', 'check mark'],
+  ['❌', 'X mark']
+];
+
+const READ_ALOUD_KEY_LABELS = {
+  '↑': 'the up arrow',
+  '↓': 'the down arrow',
+  '←': 'the left arrow',
+  '→': 'the right arrow',
+  'SPACE': 'space bar',
+  'B': 'B key',
+  'R': 'R key'
+};
+
+const readAloudState = {
+  generation: 0
+};
+
+function installReadAloudShortcut() {
+  document.addEventListener('keydown', (event) => {
+    if (isReadAloudShortcut(event)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      readCurrentScreenAloud();
+      return;
+    }
+
+    if (!event.repeat && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      cancelReadAloud();
+    }
+  }, true);
+
+  document.addEventListener('pointerdown', cancelReadAloud, true);
+}
+
+function isReadAloudShortcut(event) {
+  if (
+    event.repeat ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.altKey ||
+    event.isComposing ||
+    typeof event.key !== 'string'
+  ) {
+    return false;
+  }
+
+  return event.key.toLowerCase() === 'r';
+}
+
+function readCurrentScreenAloud() {
+  const text = getCurrentScreenSpeechText();
+  speakText(text || 'There is no readable text on this screen.');
+}
+
+function getCurrentScreenSpeechText() {
+  const root = getReadAloudRoot();
+  const chunks = collectReadableChunks(root);
+  return normalizeSpeechText(chunks.join(' '));
+}
+
+function getReadAloudRoot() {
+  const fullscreenPrompt = document.getElementById(FULLSCREEN_PROMPT_ID);
+  if (fullscreenPrompt && isVisibleElement(fullscreenPrompt) && elementHasReadableContent(fullscreenPrompt)) {
+    return fullscreenPrompt;
+  }
+
+  const rootCandidates = [
+    document.getElementById('jspsych-content'),
+    document.querySelector('.jspsych-content-wrapper'),
+    document.querySelector('.jspsych-display-element'),
+    document.getElementById('jspsych-target'),
+    document.body
+  ];
+
+  const readableRoot = rootCandidates.find((candidate) =>
+    candidate && isVisibleElement(candidate) && elementHasReadableContent(candidate)
+  );
+  if (readableRoot) {
+    return readableRoot;
+  }
+
+  return document.body;
+}
+
+function elementHasReadableContent(element) {
+  if (!element) {
+    return false;
+  }
+
+  if (normalizeSpeechText(element.textContent || '')) {
+    return true;
+  }
+
+  if (element.querySelector('button, [role="button"], input:not([type="hidden"]), textarea, select')) {
+    return true;
+  }
+
+  return Boolean(element.querySelector('svg[data-crosshair-shape] .crosshair'));
+}
+
+function collectReadableChunks(root) {
+  const chunks = [];
+
+  function addChunk(value) {
+    const normalized = normalizeSpeechText(value);
+    if (normalized) {
+      chunks.push(normalized);
+    }
+  }
+
+  function visit(node) {
+    if (!node) return;
+
+    if (node.nodeType === Node.TEXT_NODE) {
+      addChunk(node.nodeValue || '');
+      return;
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return;
+    }
+
+    const element = node;
+    if (shouldSkipReadAloudElement(element)) {
+      return;
+    }
+
+    if (element.tagName === 'BR') {
+      addChunk('.');
+      return;
+    }
+
+    if (element.classList.contains('key-icon')) {
+      addChunk(getKeySpeechLabel(element.textContent));
+      return;
+    }
+
+    if (isButtonLikeElement(element)) {
+      addChunk(describeButtonElement(element));
+      return;
+    }
+
+    if (isFormFieldElement(element)) {
+      addChunk(describeFormFieldElement(element));
+      return;
+    }
+
+    if (element.tagName.toLowerCase() === 'svg') {
+      addChunk(getSvgSpeechLabel(element));
+    }
+
+    Array.from(element.childNodes).forEach(visit);
+  }
+
+  visit(root);
+  return chunks;
+}
+
+function shouldSkipReadAloudElement(element) {
+  const tagName = element.tagName.toLowerCase();
+  if (['script', 'style', 'noscript', 'template', 'audio', 'video'].includes(tagName)) {
+    return true;
+  }
+
+  if (element.hidden || element.getAttribute('aria-hidden') === 'true') {
+    return true;
+  }
+
+  if (tagName === 'input' && element.type === 'hidden') {
+    return true;
+  }
+
+  return !isVisibleElement(element);
+}
+
+function isVisibleElement(element) {
+  if (!element || element === document.body || element === document.documentElement) {
+    return Boolean(element);
+  }
+
+  const style = window.getComputedStyle(element);
+  if (
+    !style ||
+    style.display === 'none' ||
+    style.visibility === 'hidden' ||
+    style.visibility === 'collapse' ||
+    Number(style.opacity) === 0
+  ) {
+    return false;
+  }
+
+  return element.getClientRects().length > 0 || (typeof SVGElement !== 'undefined' && element instanceof SVGElement);
+}
+
+function isButtonLikeElement(element) {
+  const tagName = element.tagName.toLowerCase();
+  const type = (element.getAttribute('type') || '').toLowerCase();
+
+  return (
+    tagName === 'button' ||
+    element.getAttribute('role') === 'button' ||
+    (tagName === 'input' && ['button', 'submit', 'reset'].includes(type))
+  );
+}
+
+function isFormFieldElement(element) {
+  const tagName = element.tagName.toLowerCase();
+  return ['input', 'textarea', 'select'].includes(tagName);
+}
+
+function describeButtonElement(element) {
+  const label = getElementAccessibleText(element) || 'unlabeled';
+  const prefix = element.disabled ? 'disabled button' : 'button';
+  return `${prefix}, ${label}`;
+}
+
+function describeFormFieldElement(element) {
+  const tagName = element.tagName.toLowerCase();
+  const label = getFormFieldLabel(element);
+
+  if (tagName === 'select') {
+    const selectedOption = element.options[element.selectedIndex];
+    const selectedText = selectedOption ? selectedOption.textContent : '';
+    return `${label || 'selection field'}, selected value ${selectedText || 'blank'}`;
+  }
+
+  const type = (element.getAttribute('type') || '').toLowerCase();
+  if (['checkbox', 'radio'].includes(type)) {
+    return `${label || `${type} field`}, ${element.checked ? 'checked' : 'not checked'}`;
+  }
+
+  const value = element.value || '';
+  const placeholder = element.getAttribute('placeholder') || '';
+  if (value) {
+    return `${label || 'text field'}, current value ${value}`;
+  }
+
+  if (placeholder) {
+    return `${label || 'text field'}, blank, example ${placeholder}`;
+  }
+
+  return `${label || 'text field'}, blank`;
+}
+
+function getFormFieldLabel(element) {
+  const labelledByText = getAriaLabelledByText(element);
+  if (labelledByText) return labelledByText;
+
+  const ariaLabel = element.getAttribute('aria-label');
+  if (ariaLabel) return ariaLabel;
+
+  if (element.id) {
+    const label = Array.from(document.querySelectorAll('label'))
+      .find((candidate) => candidate.htmlFor === element.id);
+    if (label) return label.textContent || '';
+  }
+
+  const wrappingLabel = element.closest('label');
+  if (wrappingLabel) {
+    return wrappingLabel.textContent || '';
+  }
+
+  return element.getAttribute('name') || '';
+}
+
+function getElementAccessibleText(element) {
+  return (
+    element.getAttribute('aria-label') ||
+    getAriaLabelledByText(element) ||
+    element.innerText ||
+    element.textContent ||
+    element.value ||
+    element.getAttribute('title') ||
+    element.getAttribute('alt') ||
+    ''
+  );
+}
+
+function getAriaLabelledByText(element) {
+  const labelledBy = element.getAttribute('aria-labelledby');
+  if (!labelledBy) return '';
+
+  return labelledBy
+    .split(/\s+/)
+    .map((id) => document.getElementById(id)?.textContent || '')
+    .join(' ');
+}
+
+function getKeySpeechLabel(label) {
+  const normalizedLabel = normalizeSpeechText(label);
+  return READ_ALOUD_KEY_LABELS[normalizedLabel] || normalizedLabel;
+}
+
+function getSvgSpeechLabel(svgElement) {
+  const crosshairShape = svgElement.getAttribute('data-crosshair-shape');
+  if (!crosshairShape || !svgElement.querySelector('.crosshair')) {
+    return '';
+  }
+
+  const color = (svgElement.getAttribute('data-crosshair-color') || '').toLowerCase();
+  const colorLabel = ['green', 'red'].includes(color) ? `${color} ` : '';
+  const shapeLabel = crosshairShape === 'x' ? 'X shaped crosshair' : 'plus shaped crosshair';
+  return `${colorLabel}${shapeLabel}`;
+}
+
+function normalizeSpeechText(value) {
+  if (!value) return '';
+
+  return replaceReadableSymbols(String(value))
+    .replace(/\bSPACE\b/g, 'space bar')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/\(\s+/g, '(')
+    .replace(/\s+\)/g, ')')
+    .trim();
+}
+
+function replaceReadableSymbols(value) {
+  return READ_ALOUD_SYMBOL_LABELS.reduce((text, [symbol, label]) => {
+    return text.split(symbol).join(` ${label} `);
+  }, value);
+}
+
+function speakText(text) {
+  if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+    console.warn('Text-to-speech is not supported in this browser.');
+    return;
+  }
+
+  const speechChunks = splitSpeechIntoChunks(text);
+  if (!speechChunks.length) {
+    return;
+  }
+
+  readAloudState.generation += 1;
+  const generation = readAloudState.generation;
+  window.speechSynthesis.cancel();
+
+  let chunkIndex = 0;
+  const speakNextChunk = () => {
+    if (generation !== readAloudState.generation || chunkIndex >= speechChunks.length) {
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(speechChunks[chunkIndex]);
+    chunkIndex += 1;
+    utterance.lang = 'en-US';
+    utterance.rate = 0.9;
+    utterance.onend = speakNextChunk;
+    utterance.onerror = (event) => {
+      if (event.error !== 'canceled' && event.error !== 'interrupted') {
+        speakNextChunk();
+      }
+    };
+    window.speechSynthesis.speak(utterance);
+  };
+
+  speakNextChunk();
+}
+
+function cancelReadAloud() {
+  if (!('speechSynthesis' in window)) {
+    return;
+  }
+
+  readAloudState.generation += 1;
+  window.speechSynthesis.cancel();
+}
+
+function splitSpeechIntoChunks(text) {
+  const normalized = normalizeSpeechText(text);
+  if (!normalized) return [];
+
+  const sentences = normalized.match(/[^.!?]+[.!?]?/g) || [normalized];
+  const chunks = [];
+  let currentChunk = '';
+
+  sentences.forEach((sentence) => {
+    const nextSentence = sentence.trim();
+    if (!nextSentence) return;
+
+    if (nextSentence.length > 180) {
+      if (currentChunk) {
+        chunks.push(currentChunk.trim());
+        currentChunk = '';
+      }
+      appendSpeechChunkWithLimit(chunks, nextSentence);
+      return;
+    }
+
+    if ((currentChunk + ' ' + nextSentence).trim().length > 180 && currentChunk) {
+      chunks.push(currentChunk.trim());
+      currentChunk = nextSentence;
+    } else {
+      currentChunk = `${currentChunk} ${nextSentence}`.trim();
+    }
+  });
+
+  if (currentChunk) {
+    chunks.push(currentChunk.trim());
+  }
+
+  return chunks;
+}
+
+function appendSpeechChunkWithLimit(chunks, text, maxLength = 180) {
+  let currentChunk = '';
+  text.split(/\s+/).forEach((word) => {
+    if (!word) return;
+
+    const nextChunk = `${currentChunk} ${word}`.trim();
+    if (nextChunk.length > maxLength && currentChunk) {
+      chunks.push(currentChunk.trim());
+      currentChunk = word;
+      return;
+    }
+
+    currentChunk = nextChunk;
+  });
+
+  if (currentChunk) {
+    chunks.push(currentChunk.trim());
+  }
+}
+
+installReadAloudShortcut();
+
 function handleInteractionDataUpdate(record) {
   if (!selectedTask || !fullscreenMonitoringEnabled || !record || !record.event) {
     return;
@@ -347,27 +785,27 @@ const dataSaveState = {
 // Trial configuration based on testing checklist requirements
 const TRIAL_CONFIG = {
   Motion: { 
-    totalTrials: 320, 
+    totalTrials: 256, 
     trialsPerBlock: 32, 
-    blocks: 10,
+    blocks: 8,
     breakEvery: 64  // Break after every 2 blocks (2 * 32 = 64)
   },
   Orientation: { 
-    totalTrials: 320, 
+    totalTrials: 256, 
     trialsPerBlock: 32, 
-    blocks: 10,
+    blocks: 8,
     breakEvery: 64  // Break after every 2 blocks
   },
   Centrality: { 
-    totalTrials: 320, 
+    totalTrials: 256, 
     trialsPerBlock: 32, 
-    blocks: 10,
+    blocks: 8,
     breakEvery: 64  // Break after every 2 blocks (2 * 32 = 64)
   },
   Bar: { 
-    totalTrials: 320, 
+    totalTrials: 256, 
     trialsPerBlock: 32, 
-    blocks: 10,
+    blocks: 8,
     breakEvery: 64  // Break after every 2 blocks (2 * 32 = 64)
   }
 };
@@ -916,6 +1354,9 @@ const crosshairStroke = 2;  // 线宽
 function drawCrosshair(svg, width, height, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke, color = 'black') {
   // 移除旧的十字
   svg.selectAll('.crosshair').remove();
+  svg
+    .attr('data-crosshair-shape', 'plus')
+    .attr('data-crosshair-color', color);
   const centerX = width / 2;
   const centerY = height / 2;
   // 水平线
@@ -940,6 +1381,9 @@ function drawCrosshair(svg, width, height, crosshairLen = crosshairLength, cross
 
 function drawXCrosshair(svg, width, height, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke, color = 'black') {
   svg.selectAll('.crosshair').remove();
+  svg
+    .attr('data-crosshair-shape', 'x')
+    .attr('data-crosshair-color', color);
   const centerX = width / 2;
   const centerY = height / 2;
   const halfLen = crosshairLen / (2 * Math.sqrt(2));
@@ -981,7 +1425,7 @@ function initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData =
   animationCenterY = stimulusCenter.y;
   const radius = deg2Pixel(5, chinrestData)/2;
   const dotRadius = 4;
-  const numDots = 30; // All dots are now signal dots
+  const numDots = 100; // All dots are signal dots
   
   // DEBUG: Log what motion parameters are actually being used
   console.log(`🎯 INIT MOTION ANIMATION: Received directionRange = ${directionRange}°`);
@@ -2122,16 +2566,18 @@ function createTaskInstructionTrials(taskType) {
   if (!instructionConfig) return [];
 
   const breakEvery = TRIAL_CONFIG[taskType]?.breakEvery || 64;
-  const totalPages = 2;
   const pages = [
     instructionConfig.pageOneParagraphs,
     [
       'Please keep your eyes fixed on the cross in the center of the screen at all times.',
-      `Occasionally, the cross will change from "➕" to "✖️", and when that happens, press <span class="key-icon key-icon-space">SPACE</span>. ${instructionConfig.noStimulusText}`,
+      `Occasionally, the cross will change from "➕" to "✖️", and when that happens, press <span class="key-icon key-icon-space">SPACE</span>. ${instructionConfig.noStimulusText}`
+    ],
+    [
       'You can press <span class="key-icon key-icon-square">B</span> at any time during numbered trials to take a manual pause and replay that trial. Your progress will be auto saved when the pause screen opens.',
       `There will be a short break after completing ${breakEvery} trials to help you rest your eyes. Your progress will be auto saved during each break. A 30-second countdown timer will appear. You can press <span class="key-icon key-icon-space">SPACE</span> to continue early, or wait until it reaches 0 and press <span class="key-icon key-icon-space">SPACE</span> when you are ready. You are also welcome to take a longer break if needed.`
     ]
   ];
+  const totalPages = pages.length;
 
   return pages.map((pageParagraphs, index) => {
     const currentPage = index + 1;
@@ -4159,13 +4605,15 @@ timeline.push({
           'stroke-width': 2,
           'vector-effect': 'non-scaling-stroke'
         });
-        appendSvgElement('text', {
-          x: markerX,
-          y: markerY - markerRadius - 8,
-          fill: visible ? '#111' : '#991b1b',
-          'font-size': Math.max(16, Math.min(screenWidth, screenHeight) * 0.022),
-          'text-anchor': 'middle'
-        }, center.label);
+        if (selectedTask !== 'Motion') {
+          appendSvgElement('text', {
+            x: markerX,
+            y: markerY - markerRadius - 8,
+            fill: visible ? '#111' : '#991b1b',
+            'font-size': Math.max(16, Math.min(screenWidth, screenHeight) * 0.022),
+            'text-anchor': 'middle'
+          }, center.label);
+        }
       });
 
       readout.textContent = `x ${xOffsetPx.toFixed(1)} px, y ${yOffsetPx.toFixed(1)} px`;
@@ -4416,7 +4864,7 @@ function generateSelectedTaskTrials() {
     
     // Dynamically generating trials
     
-    // Add two-page instructions for the selected task
+    // Add task instructions for the selected task
     const instructionTrials = createTaskInstructionTrials(selectedTask);
     for (const instructionTrial of instructionTrials) {
       trials.push(instructionTrial);

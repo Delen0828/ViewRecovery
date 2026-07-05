@@ -311,10 +311,10 @@ function data_portal_process_logout(): void
     session_destroy();
 
     if ($wantsJson) {
-        data_portal_send_json(['success' => true, 'redirect' => '/data-portal/index.html']);
+        data_portal_send_json(['success' => true, 'redirect' => '/data-portal/users.html']);
     }
 
-    header('Location: /data-portal/index.html', true, 303);
+    header('Location: /data-portal/users.html', true, 303);
     exit();
 }
 
@@ -422,14 +422,14 @@ function data_portal_login_success(): void
     if (data_portal_wants_json()) {
         data_portal_send_json([
             'success' => true,
-            'redirect' => '/data-portal/index.html',
+            'redirect' => '/data-portal/users.html',
             'csrf_token' => (string) ($_SESSION['csrf_token'] ?? ''),
             'role' => data_portal_authenticated_role(),
             'user_id' => data_portal_authenticated_user_id(),
         ]);
     }
 
-    header('Location: /data-portal/index.html', true, 303);
+    header('Location: /data-portal/users.html', true, 303);
     exit();
 }
 
@@ -440,7 +440,7 @@ function data_portal_login_error(string $message, int $statusCode, array $extra 
     }
 
     $_SESSION['login_error'] = $message;
-    header('Location: /data-portal/index.html', true, 303);
+    header('Location: /data-portal/users.html', true, 303);
     exit();
 }
 
@@ -483,7 +483,7 @@ function data_portal_send_json(array $payload, int $statusCode = 200): void
 
 function data_portal_redirect_to_app(): void
 {
-    header('Location: /data-portal/index.html', true, 302);
+    header('Location: /data-portal/users.html', true, 302);
     exit();
 }
 

@@ -26,13 +26,19 @@
     download: '/data-portal/download'
   };
   const TASKS = ['Motion', 'Orientation', 'Centrality', 'Bar'];
+  const SHOW_UNUSED_TASKS = false;
+  const UNUSED_DEPLOYMENT_TASKS = new Set(['Orientation', 'Bar']);
   const TASK_COLORS = {
     Motion: '#2563eb',
-    Orientation: '#d97706',
-    Centrality: '#059669',
+    Orientation: '#059669',
+    Centrality: '#d97706',
     Bar: '#7c3aed'
   };
+  const REST_TRIAL_CATEGORIES = new Set(['scheduled_break', 'manual_pause_screen']);
+  const DURATION_BAR_MIN_WIDTH = 148;
+  const DURATION_BAR_MAX_WIDTH = 276;
   const view = getPortalView();
+  const csvRowsCache = new Map();
 
   const state = {
     authenticated: false,
@@ -51,7 +57,9 @@
     filters: {
       q: '',
       dateFrom: '',
-      dateTo: ''
+      dateTo: '',
+      showPauseFiles: false,
+      showSessionFiles: false
     },
     preview: {
       fileName: '',
@@ -67,10 +75,11 @@
       loadedFileCount: 0,
       failedFileCount: 0,
       records: [],
+      fileSessions: [],
       users: [],
       selectedUserId: '',
       visibleTasks: TASKS.reduce((visible, task) => {
-        visible[task] = true;
+        visible[task] = isDeploymentTaskVisible(task);
         return visible;
       }, {}),
       difficultyTaskByUser: {}
@@ -148,6 +157,7 @@
       state.files = Array.isArray(data.files) ? data.files : [];
       state.total = Number.isFinite(data.total) ? data.total : state.files.length;
       state.generatedAt = data.generated_at || null;
+      await hydrateFileDurationMetrics(state.files);
     } catch (error) {
       state.fileError = error.message || 'Could not load files.';
     } finally {
@@ -190,8 +200,7 @@
     }
 
     try {
-      const csvText = await fetchCsvFile(state.preview.fileName);
-      const rows = d3.csvParse(csvText);
+      const rows = await fetchCsvRows(state.preview.fileName);
       state.preview.rows = rows;
       state.preview.points = aggregateAccuracyByDifficulty(rows);
     } catch (error) {
@@ -213,6 +222,7 @@
     state.users.loadedFileCount = 0;
     state.users.failedFileCount = 0;
     state.users.records = [];
+    state.users.fileSessions = [];
     state.users.users = [];
     renderUsers();
 
@@ -233,28 +243,35 @@
         throw new Error(data.error || 'Could not load data files.');
       }
 
-      const csvFiles = (Array.isArray(data.files) ? data.files : []).filter(isCsvFile);
+      const csvFiles = (Array.isArray(data.files) ? data.files : []).filter((file) => isCsvFile(file) && isFinalCsvFile(file));
       const results = await Promise.all(csvFiles.map(async (file) => {
         try {
-          const csvText = await fetchCsvFile(file.name);
-          return { file, rows: d3.csvParse(csvText), error: null };
+          const rows = await fetchCsvRows(file.name);
+          return { file, rows, duration: calculateDurationMetrics(rows), error: null };
         } catch (error) {
           if (!state.authenticated) {
             throw error;
           }
 
-          return { file, rows: [], error };
+          return { file, rows: [], duration: null, error };
         }
       }));
       const scopedUserId = isUserLogin() ? state.account.userId : '';
-      const records = results.flatMap((result) => extractResponseRecords(result.file, result.rows, scopedUserId));
-      const users = buildUserSummaries(records);
+      const fileSessions = results
+        .filter((result) => !result.error)
+        .map((result) => extractFileSessionSummary(result.file, result.rows, result.duration, scopedUserId))
+        .filter(Boolean);
+      const records = results.flatMap((result) =>
+        extractResponseRecords(result.file, result.rows, scopedUserId, result.duration)
+      );
+      const users = buildUserSummaries(records, fileSessions);
       const selectedUserStillExists = users.some((user) => user.id === state.users.selectedUserId);
 
       state.users.csvFiles = csvFiles;
       state.users.loadedFileCount = results.filter((result) => !result.error).length;
       state.users.failedFileCount = results.filter((result) => result.error).length;
       state.users.records = records;
+      state.users.fileSessions = fileSessions;
       state.users.users = users;
       state.users.selectedUserId = selectedUserStillExists ? state.users.selectedUserId : (users[0]?.id || '');
     } catch (error) {
@@ -357,7 +374,9 @@
     const nav = card.append('p').attr('class', 'portal-nav');
     nav.append('a').attr('href', '/data-portal/users.html').text('User Trends');
     renderToolbar(card);
-    renderSummary(card);
+    renderFileTypeControls(card);
+    const visibleFiles = getVisibleFiles();
+    renderSummary(card, visibleFiles);
 
     if (state.fileError) {
       card.append('p').attr('class', 'message error').text(state.fileError);
@@ -370,7 +389,7 @@
         .text(`Updated ${formatDate(state.generatedAt)}.`);
     }
 
-    renderTable(card);
+    renderTable(card, visibleFiles);
   }
 
   function renderPreview() {
@@ -439,7 +458,7 @@
     }
 
     if (!state.users.csvFiles.length) {
-      card.append('p').attr('class', 'message info').text('No CSV data files were found.');
+      card.append('p').attr('class', 'message info').text('No final CSV data files were found.');
       return;
     }
 
@@ -493,13 +512,7 @@
     }
 
     panel.append('h2').text(selectedUser.label);
-    const metrics = [
-      { label: 'Sessions', value: String(selectedUser.sessions) },
-      { label: 'Trials', value: String(selectedUser.trials) },
-      { label: 'Accuracy', value: formatPercent(selectedUser.accuracy) },
-      { label: 'Files Loaded', value: String(state.users.loadedFileCount) }
-    ];
-    renderMetrics(panel, metrics);
+    renderUserEncouragement(panel, selectedUser);
 
     const trendSection = panel.append('section').attr('class', 'chart-section');
     trendSection.append('h2').text('Accuracy Over Time');
@@ -508,6 +521,12 @@
     const series = aggregateUserTrendSeries(state.users.records, selectedUser.id);
     const chart = trendSection.append('div').attr('class', 'chart-wrap');
     renderUserTrendChart(chart.node(), series);
+
+    const durationSection = panel.append('section').attr('class', 'chart-section');
+    durationSection.append('h2').text('Duration Over Time');
+    const durationSeries = aggregateUserDurationTrendSeries(state.users.fileSessions, selectedUser.id);
+    const durationChart = durationSection.append('div').attr('class', 'chart-wrap duration-trend-chart');
+    renderUserDurationTrendChart(durationChart.node(), durationSeries);
 
     const difficultyTask = getSelectedDifficultyTask(selectedUser.id);
     const difficultySection = panel.append('section').attr('class', 'chart-section');
@@ -519,9 +538,35 @@
     renderUserDifficultyTrendChart(difficultyChart.node(), difficultySeries, difficultyTask);
   }
 
+  function renderUserEncouragement(panel, user) {
+    const trials = formatUnit(user.trials, 'trial');
+    const sessions = formatUnit(user.sessions, 'session');
+    const minutes = formatMinutesPhrase(user.durationMs);
+    const encouragement = panel.append('p').attr('class', 'user-encouragement');
+
+    if (isAdminLogin()) {
+      encouragement.append('span').text(`${user.label} has completed `);
+      encouragement.append('span').attr('class', 'encouragement-number').text(trials);
+      encouragement.append('span').text(' across ');
+      encouragement.append('span').attr('class', 'encouragement-number').text(sessions);
+      encouragement.append('span').text(' in ');
+      encouragement.append('span').attr('class', 'encouragement-number').text(minutes);
+      encouragement.append('span').text('. Keep going!');
+      return;
+    }
+
+    encouragement.append('span').text("You've done ");
+    encouragement.append('span').attr('class', 'encouragement-number').text(trials);
+    encouragement.append('span').text(', ');
+    encouragement.append('span').attr('class', 'encouragement-number').text(sessions);
+    encouragement.append('span').text(' in ');
+    encouragement.append('span').attr('class', 'encouragement-number').text(minutes);
+    encouragement.append('span').text('. Keep going!');
+  }
+
   function renderTaskControls(panel) {
     const controls = panel.append('div').attr('class', 'task-controls');
-    TASKS.forEach((task) => {
+    getPlottedTasks().forEach((task) => {
       const label = controls.append('label').attr('class', 'checkbox-row');
       label
         .append('input')
@@ -541,7 +586,7 @@
 
   function renderDifficultyTaskControls(panel, userId, selectedTask) {
     const controls = panel.append('div').attr('class', 'task-toggle-controls');
-    TASKS.forEach((task) => {
+    getPlottedTasks().forEach((task) => {
       const button = controls
         .append('button')
         .attr('type', 'button')
@@ -646,11 +691,40 @@
     toolbar.append('button').attr('type', 'submit').text('Refresh');
   }
 
-  function renderSummary(card) {
-    const totalBytes = d3.sum(state.files, (file) => Number(file.size_bytes) || 0);
-    const latestTimestamp = d3.max(state.files, (file) => Number(file.created_at) || 0);
+  function renderFileTypeControls(card) {
+    const counts = {
+      final: state.files.filter(isFinalCsvFile).length,
+      session: state.files.filter(isSessionCsvFile).length,
+      pause: state.files.filter(isPauseCsvFile).length
+    };
+    const controls = card.append('div').attr('class', 'file-type-controls');
+    controls
+      .append('span')
+      .attr('class', 'file-type-label')
+      .text(`Showing final CSV files (${counts.final})`);
+
+    [
+      { key: 'showSessionFiles', label: `Session files (${counts.session})` },
+      { key: 'showPauseFiles', label: `Pause files (${counts.pause})` }
+    ].forEach((option) => {
+      const label = controls.append('label').attr('class', 'checkbox-row file-type-option');
+      label
+        .append('input')
+        .attr('type', 'checkbox')
+        .property('checked', state.filters[option.key])
+        .on('change', (event) => {
+          state.filters[option.key] = event.currentTarget.checked;
+          renderFiles();
+        });
+      label.append('span').text(option.label);
+    });
+  }
+
+  function renderSummary(card, files = state.files) {
+    const totalBytes = d3.sum(files, (file) => Number(file.size_bytes) || 0);
+    const latestTimestamp = d3.max(files, (file) => Number(file.created_at) || 0);
     const metrics = [
-      { label: 'Files', value: String(state.total || 0) },
+      { label: 'Files', value: String(files.length || 0) },
       { label: 'Total Size', value: formatBytes(totalBytes) },
       { label: 'Newest File', value: latestTimestamp ? formatDate(latestTimestamp) : 'None' }
     ];
@@ -661,31 +735,35 @@
     metric.append('div').attr('class', 'metric-value').text((item) => item.value);
   }
 
-  function renderTable(card) {
+  function renderTable(card, files = state.files) {
     const wrap = card.append('div').attr('class', 'table-wrap');
     const table = wrap.append('table');
     table
       .append('thead')
       .append('tr')
       .selectAll('th')
-      .data(['File', 'Size', 'Created', 'Modified', 'Actions'])
+      .data(['File', 'Duration', 'Size', 'Created', 'Modified', 'Actions'])
       .enter()
       .append('th')
       .text((label) => label);
 
     const tbody = table.append('tbody');
-    if (!state.files.length) {
+    if (!files.length) {
       tbody
         .append('tr')
         .append('td')
         .attr('class', 'empty-cell')
-        .attr('colspan', 5)
-        .text(state.loadingFiles ? 'Loading files...' : 'No files found.');
+        .attr('colspan', 6)
+        .text(state.loadingFiles ? 'Loading files...' : (state.files.length ? 'No files match the selected file type filters.' : 'No files found.'));
       return;
     }
 
-    const rows = tbody.selectAll('tr').data(state.files, (file) => file.name).enter().append('tr');
+    const maxDurationMs = d3.max(files, getDurationTotalMs) || 0;
+    const rows = tbody.selectAll('tr').data(files, (file) => file.name).enter().append('tr');
     rows.append('td').append('span').attr('class', 'file-name').text((file) => file.name);
+    rows.append('td').each(function (file) {
+      renderDurationStack(d3.select(this), file, maxDurationMs);
+    });
     rows.append('td').text((file) => formatBytes(file.size_bytes));
     rows.append('td').text((file) => formatDate(file.created_at));
     rows.append('td').text((file) => formatDate(file.modified_at));
@@ -701,6 +779,40 @@
       .attr('class', 'button-link')
       .attr('href', (file) => file.download_url)
       .text('Download');
+  }
+
+  function renderDurationStack(cell, file, maxDurationMs) {
+    const trainingMs = Number(file.duration?.trainingMs) || 0;
+    const restingMs = Number(file.duration?.restingMs) || 0;
+    const totalMs = trainingMs + restingMs;
+    const minutes = getDurationMinuteParts(trainingMs, restingMs);
+    const trainingRatio = totalMs > 0 ? (trainingMs / totalMs) * 100 : 0;
+    const restingRatio = totalMs > 0 ? (restingMs / totalMs) * 100 : 0;
+    const barWidth = getDurationBarWidth(totalMs, maxDurationMs);
+    const title = `${minutes.total}m = ${minutes.training}m training + ${minutes.resting}m resting`;
+
+    const stack = cell
+      .append('div')
+      .attr('class', 'duration-stack')
+      .style('--duration-width', `${barWidth}px`)
+      .attr('title', title);
+
+    const label = stack.append('div').attr('class', 'duration-stack-label');
+    label.append('span').attr('class', 'duration-total-label').text(`${minutes.total}m`);
+    label
+      .append('span')
+      .attr('class', 'duration-equation')
+      .text(`${minutes.training}m + ${minutes.resting}m`);
+
+    const bar = stack.append('div').attr('class', 'duration-bar');
+    bar
+      .append('span')
+      .attr('class', 'duration-segment training')
+      .style('width', `${trainingRatio}%`);
+    bar
+      .append('span')
+      .attr('class', 'duration-segment resting')
+      .style('width', `${restingRatio}%`);
   }
 
   function renderMetrics(parent, metrics) {
@@ -759,6 +871,101 @@
     }
 
     return response.text();
+  }
+
+  async function fetchCsvRows(fileName) {
+    if (csvRowsCache.has(fileName)) {
+      return csvRowsCache.get(fileName);
+    }
+
+    const csvText = await fetchCsvFile(fileName);
+    const rows = d3.csvParse(csvText);
+    csvRowsCache.set(fileName, rows);
+    return rows;
+  }
+
+  async function hydrateFileDurationMetrics(files) {
+    const targets = files.filter((file) => isCsvFile(file) && isPortalDataCsvFile(file));
+    await Promise.all(targets.map(async (file) => {
+      try {
+        file.duration = calculateDurationMetrics(await fetchCsvRows(file.name));
+        file.durationError = false;
+      } catch (error) {
+        if (!state.authenticated) {
+          throw error;
+        }
+
+        file.duration = null;
+        file.durationError = true;
+      }
+    }));
+  }
+
+  function calculateDurationMetrics(rows) {
+    const rowDurations = new Map();
+    const trialDurations = new Map();
+    let previousElapsed = null;
+    let trainingMs = 0;
+    let restingMs = 0;
+
+    rows.forEach((row) => {
+      const elapsed = parseFiniteNumber(row.time_elapsed);
+      const rt = parseFiniteNumber(row.rt);
+      let durationMs = 0;
+
+      if (elapsed !== null) {
+        if (previousElapsed !== null && elapsed >= previousElapsed) {
+          durationMs = elapsed - previousElapsed;
+        } else if (rt !== null) {
+          durationMs = rt;
+        }
+        previousElapsed = elapsed;
+      } else if (rt !== null) {
+        durationMs = rt;
+      }
+
+      rowDurations.set(row, durationMs);
+
+      if (isRestingRow(row)) {
+        restingMs += durationMs;
+        return;
+      }
+
+      const trialKey = getTrialKey(row);
+      if (!trialKey) {
+        return;
+      }
+
+      trainingMs += durationMs;
+      if (!trialDurations.has(trialKey)) {
+        trialDurations.set(trialKey, {
+          durationMs: 0,
+          task: normalizeTask(row),
+          difficultyLevel: '',
+          difficultySortValue: ''
+        });
+      }
+
+      const trial = trialDurations.get(trialKey);
+      trial.durationMs += durationMs;
+      if (!trial.task) {
+        trial.task = normalizeTask(row);
+      }
+
+      const difficulty = parseDifficultyLevel(row);
+      if (difficulty) {
+        trial.difficultyLevel = difficulty.level;
+        trial.difficultySortValue = difficulty.sortValue;
+      }
+    });
+
+    return {
+      totalMs: trainingMs + restingMs,
+      trainingMs,
+      restingMs,
+      rowDurations,
+      trialDurations
+    };
   }
 
   function setButtonBusy(button, busy, label) {
@@ -834,6 +1041,151 @@
 
   function isCsvFile(file) {
     return Boolean(file && /\.csv$/i.test(file.name || ''));
+  }
+
+  function isDeploymentTaskVisible(task) {
+    return SHOW_UNUSED_TASKS || !UNUSED_DEPLOYMENT_TASKS.has(task);
+  }
+
+  function getPlottedTasks() {
+    return TASKS.filter(isDeploymentTaskVisible);
+  }
+
+  function getVisibleFiles() {
+    return state.files.filter((file) => {
+      if (!isCsvFile(file)) {
+        return false;
+      }
+      if (isFinalCsvFile(file)) {
+        return true;
+      }
+      if (isSessionCsvFile(file)) {
+        return state.filters.showSessionFiles;
+      }
+      if (isPauseCsvFile(file)) {
+        return state.filters.showPauseFiles;
+      }
+
+      return false;
+    });
+  }
+
+  function isPortalDataCsvFile(file) {
+    return isFinalCsvFile(file) || isSessionCsvFile(file) || isPauseCsvFile(file);
+  }
+
+  function isFinalCsvFile(file) {
+    return isCsvFile(file) && getBaseFileName(file.name).toLowerCase().startsWith('final');
+  }
+
+  function isSessionCsvFile(file) {
+    return isCsvFile(file) && getBaseFileName(file.name).toLowerCase().startsWith('session');
+  }
+
+  function isPauseCsvFile(file) {
+    return isCsvFile(file) && getBaseFileName(file.name).toLowerCase().startsWith('pause');
+  }
+
+  function getBaseFileName(fileName) {
+    const parts = String(fileName || '').split('/');
+    return parts[parts.length - 1] || '';
+  }
+
+  function parseFiniteNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? number : null;
+  }
+
+  function isRestingRow(row) {
+    return REST_TRIAL_CATEGORIES.has(String(row.trial_category || '').trim());
+  }
+
+  function getTrialKey(row) {
+    const trialNumber = String(row.overall_trial_number ?? '').trim();
+    if (!trialNumber) {
+      return '';
+    }
+
+    return `${normalizeTask(row) || 'Unknown'}|${trialNumber}`;
+  }
+
+  function formatUnit(value, unit) {
+    const count = Number(value) || 0;
+    return `${count} ${count === 1 ? unit : `${unit}s`}`;
+  }
+
+  function formatDurationCell(valueMs) {
+    const ms = Number(valueMs);
+    if (!Number.isFinite(ms) || ms <= 0) {
+      return '0s';
+    }
+
+    const totalSeconds = Math.round(ms / 1000);
+    if (totalSeconds < 60) {
+      return `${totalSeconds}s`;
+    }
+
+    const totalMinutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (totalMinutes < 60) {
+      return seconds ? `${totalMinutes}m ${seconds}s` : `${totalMinutes}m`;
+    }
+
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+
+  function getDurationMinuteParts(trainingMs, restingMs) {
+    const safeTrainingMs = Number(trainingMs) || 0;
+    const safeRestingMs = Number(restingMs) || 0;
+    const total = Math.floor((safeTrainingMs + safeRestingMs) / 60000);
+    let training = Math.floor(safeTrainingMs / 60000);
+    let resting = Math.floor(safeRestingMs / 60000);
+    const missingMinutes = total - training - resting;
+
+    if (missingMinutes > 0) {
+      if (safeRestingMs % 60000 >= safeTrainingMs % 60000) {
+        resting += missingMinutes;
+      } else {
+        training += missingMinutes;
+      }
+    }
+
+    return { total, training, resting };
+  }
+
+  function getDurationTotalMs(file) {
+    const trainingMs = Number(file.duration?.trainingMs) || 0;
+    const restingMs = Number(file.duration?.restingMs) || 0;
+    return trainingMs + restingMs;
+  }
+
+  function getDurationBarWidth(totalMs, maxDurationMs) {
+    if (!Number.isFinite(totalMs) || totalMs <= 0 || !Number.isFinite(maxDurationMs) || maxDurationMs <= 0) {
+      return DURATION_BAR_MIN_WIDTH;
+    }
+
+    const ratio = Math.min(1, totalMs / maxDurationMs);
+    return Math.round(DURATION_BAR_MIN_WIDTH + ratio * (DURATION_BAR_MAX_WIDTH - DURATION_BAR_MIN_WIDTH));
+  }
+
+  function formatDurationTick(valueMs) {
+    const ms = Number(valueMs);
+    if (!Number.isFinite(ms) || ms <= 0) {
+      return '0s';
+    }
+    if (ms < 60000) {
+      return `${Math.round(ms / 1000)}s`;
+    }
+
+    return `${Math.round(ms / 60000)}m`;
+  }
+
+  function formatMinutesPhrase(valueMs) {
+    const ms = Number(valueMs);
+    const minutes = Number.isFinite(ms) && ms > 0 ? Math.round(ms / 60000) : 0;
+    return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`;
   }
 
   function parseBoolean(value) {
@@ -925,7 +1277,12 @@
     return String(row.task_type || row.selected_task).trim();
   }
 
-  function extractResponseRecords(file, rows, scopedUserId = '') {
+  function inferTaskFromRows(rows) {
+    const row = rows.find((item) => normalizeTask(item));
+    return row ? normalizeTask(row) : '';
+  }
+
+  function extractResponseRecords(file, rows, scopedUserId = '', durationMetrics = null) {
     const sessionDate = parseSessionDate(file);
     const sessionKey = formatDateKey(sessionDate);
 
@@ -939,6 +1296,7 @@
         }
 
         const userId = scopedUserId || getUserId(row, file.name);
+        const trialDuration = durationMetrics?.trialDurations?.get(getTrialKey(row));
         return {
           userId,
           userLabel: formatUserLabel(userId),
@@ -946,6 +1304,7 @@
           correct,
           difficultyLevel: difficulty.level,
           difficultySortValue: difficulty.sortValue,
+          durationMs: trialDuration?.durationMs || 0,
           date: sessionDate,
           dateKey: sessionKey,
           fileName: file.name
@@ -954,24 +1313,58 @@
       .filter(Boolean);
   }
 
-  function buildUserSummaries(records) {
+  function extractFileSessionSummary(file, rows, durationMetrics, scopedUserId = '') {
+    const userId = scopedUserId || getUserId(rows.find((row) => getUserId(row, file.name) !== 'Unknown') || {}, file.name);
+    if (!userId || userId === 'Unknown') {
+      return null;
+    }
+
+    const sessionDate = parseSessionDate(file);
+    return {
+      userId,
+      userLabel: formatUserLabel(userId),
+      task: inferTaskFromRows(rows),
+      fileName: file.name,
+      date: sessionDate,
+      dateKey: formatDateKey(sessionDate),
+      durationMs: durationMetrics?.totalMs || 0,
+      trainingMs: durationMetrics?.trainingMs || 0,
+      restingMs: durationMetrics?.restingMs || 0
+    };
+  }
+
+  function buildUserSummaries(records, sessions = []) {
     const users = new Map();
 
-    records.forEach((record) => {
-      if (!users.has(record.userId)) {
-        users.set(record.userId, {
-          id: record.userId,
-          label: record.userLabel,
+    function ensureUser(userId, userLabel) {
+      if (!users.has(userId)) {
+        users.set(userId, {
+          id: userId,
+          label: userLabel,
           trials: 0,
           correct: 0,
-          sessions: new Set()
+          sessions: new Set(),
+          durationMs: 0,
+          trainingMs: 0,
+          restingMs: 0
         });
       }
 
-      const user = users.get(record.userId);
+      return users.get(userId);
+    }
+
+    records.forEach((record) => {
+      const user = ensureUser(record.userId, record.userLabel);
       user.trials += 1;
       user.correct += record.correct ? 1 : 0;
-      user.sessions.add(record.fileName);
+    });
+
+    sessions.forEach((session) => {
+      const user = ensureUser(session.userId, session.userLabel);
+      user.sessions.add(session.fileName);
+      user.durationMs += session.durationMs || 0;
+      user.trainingMs += session.trainingMs || 0;
+      user.restingMs += session.restingMs || 0;
     });
 
     return Array.from(users.values())
@@ -980,7 +1373,10 @@
         label: user.label,
         trials: user.trials,
         accuracy: user.trials ? (user.correct / user.trials) * 100 : 0,
-        sessions: user.sessions.size
+        sessions: user.sessions.size,
+        durationMs: user.durationMs,
+        trainingMs: user.trainingMs,
+        restingMs: user.restingMs
       }))
       .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
   }
@@ -1009,7 +1405,7 @@
       group.total += 1;
     });
 
-    return TASKS.map((task) => ({
+    return getPlottedTasks().map((task) => ({
       task,
       color: TASK_COLORS[task],
       values: Array.from(groups.values())
@@ -1022,6 +1418,47 @@
           correct: group.correct,
           total: group.total
       }))
+    }));
+  }
+
+  function aggregateUserDurationTrendSeries(sessions, userId) {
+    const groups = new Map();
+
+    sessions.forEach((session) => {
+      if (
+        session.userId !== userId ||
+        Number.isNaN(session.date.getTime()) ||
+        !isDeploymentTaskVisible(session.task)
+      ) {
+        return;
+      }
+
+      const key = `${session.dateKey}|${session.task}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          date: startOfDay(session.date),
+          dateKey: session.dateKey,
+          task: session.task,
+          durationMs: 0,
+          trainingMs: 0,
+          restingMs: 0,
+          sessions: 0
+        });
+      }
+
+      const group = groups.get(key);
+      group.durationMs += session.durationMs || 0;
+      group.trainingMs += session.trainingMs || 0;
+      group.restingMs += session.restingMs || 0;
+      group.sessions += 1;
+    });
+
+    return getPlottedTasks().map((task) => ({
+      task,
+      color: TASK_COLORS[task],
+      values: Array.from(groups.values())
+        .filter((group) => group.task === task)
+        .sort((a, b) => a.date - b.date)
     }));
   }
 
@@ -1089,13 +1526,78 @@
     }));
   }
 
+  function aggregateUserDurationDifficultyTrendSeries(records, userId, task) {
+    const groups = new Map();
+
+    records.forEach((record) => {
+      if (
+        record.userId !== userId ||
+        record.task !== task ||
+        Number.isNaN(record.date.getTime()) ||
+        !record.difficultyLevel ||
+        !record.durationMs
+      ) {
+        return;
+      }
+
+      const key = `${record.dateKey}|${record.difficultyLevel}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          date: startOfDay(record.date),
+          dateKey: record.dateKey,
+          level: record.difficultyLevel,
+          sortValue: record.difficultySortValue,
+          durationMs: 0,
+          total: 0
+        });
+      }
+
+      const group = groups.get(key);
+      group.durationMs += record.durationMs;
+      group.total += 1;
+    });
+
+    const byDate = new Map();
+    Array.from(groups.values()).forEach((group) => {
+      if (!byDate.has(group.dateKey)) {
+        byDate.set(group.dateKey, {
+          date: group.date,
+          dateKey: group.dateKey,
+          values: []
+        });
+      }
+
+      byDate.get(group.dateKey).values.push({
+        level: group.level,
+        sortValue: group.sortValue,
+        averageDurationMs: group.total ? group.durationMs / group.total : 0,
+        totalDurationMs: group.durationMs,
+        total: group.total
+      });
+    });
+
+    const series = Array.from(byDate.values())
+      .sort((a, b) => a.date - b.date)
+      .map((item) => ({
+        date: item.date,
+        dateKey: item.dateKey,
+        values: item.values.sort(compareDifficultySort)
+      }));
+
+    const maxIndex = series.length - 1;
+    return series.map((item, index) => ({
+      ...item,
+      opacity: maxIndex > 0 ? Number((0.3 + (index / maxIndex) * 0.7).toFixed(3)) : 1
+    }));
+  }
+
   function getSelectedDifficultyTask(userId) {
     const savedTask = state.users.difficultyTaskByUser[userId];
-    if (TASKS.includes(savedTask)) {
+    if (TASKS.includes(savedTask) && isDeploymentTaskVisible(savedTask)) {
       return savedTask;
     }
 
-    return getFirstUserTask(userId) || TASKS[0];
+    return getFirstUserTask(userId) || getPlottedTasks()[0] || TASKS[0];
   }
 
   function getFirstUserTask(userId) {
@@ -1105,7 +1607,7 @@
         .map((record) => record.task)
     );
 
-    return TASKS.find((task) => availableTasks.has(task)) || '';
+    return getPlottedTasks().find((task) => availableTasks.has(task)) || '';
   }
 
   function normalizeTask(row) {
@@ -1390,6 +1892,119 @@
       .text('Accuracy');
   }
 
+  function renderUserDurationTrendChart(container, series) {
+    container.innerHTML = '';
+
+    const visibleSeries = series.filter((item) => state.users.visibleTasks[item.task] && item.values.length);
+    const points = visibleSeries.flatMap((item) => item.values);
+    if (!points.length) {
+      const empty = document.createElement('p');
+      empty.className = 'message info';
+      empty.textContent = 'Select at least one task with available duration data to show the chart.';
+      container.appendChild(empty);
+      return;
+    }
+
+    const width = Math.max(container.clientWidth || 760, 360);
+    const height = 420;
+    const margin = { top: 24, right: 34, bottom: 56, left: 72 };
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+    let [minDate, maxDate] = d3.extent(points, (point) => point.date);
+    if (minDate.getTime() === maxDate.getTime()) {
+      minDate = new Date(minDate.getTime() - 12 * 60 * 60 * 1000);
+      maxDate = new Date(maxDate.getTime() + 12 * 60 * 60 * 1000);
+    }
+
+    const maxDuration = d3.max(points, (point) => point.durationMs) || 1000;
+    const svg = d3
+      .select(container)
+      .append('svg')
+      .attr('class', 'chart')
+      .attr('viewBox', `0 0 ${width} ${height}`)
+      .attr('role', 'img')
+      .attr('aria-label', 'User duration over time by task');
+
+    const x = d3.scaleTime().domain([minDate, maxDate]).range([margin.left, margin.left + innerWidth]);
+    const y = d3
+      .scaleLinear()
+      .domain([0, maxDuration * 1.12])
+      .nice()
+      .range([margin.top + innerHeight, margin.top]);
+
+    svg
+      .append('g')
+      .attr('class', 'grid-lines')
+      .attr('transform', `translate(${margin.left},0)`)
+      .call(
+        d3
+          .axisLeft(y)
+          .ticks(5)
+          .tickSize(-innerWidth)
+          .tickFormat('')
+      );
+
+    svg
+      .append('g')
+      .attr('class', 'axis')
+      .attr('transform', `translate(0,${margin.top + innerHeight})`)
+      .call(d3.axisBottom(x).ticks(Math.min(5, points.length)).tickFormat(d3.timeFormat('%b %d')));
+
+    svg
+      .append('g')
+      .attr('class', 'axis')
+      .attr('transform', `translate(${margin.left},0)`)
+      .call(d3.axisLeft(y).ticks(5).tickFormat(formatDurationTick));
+
+    visibleSeries.forEach((item) => {
+      if (item.values.length > 1) {
+        svg
+          .append('path')
+          .datum(item.values)
+          .attr('class', 'task-line')
+          .attr('stroke', item.color)
+          .attr('d', d3.line().x((point) => x(point.date)).y((point) => y(point.durationMs)));
+      }
+
+      const point = svg
+        .selectAll(`.duration-trend-point-${item.task}`)
+        .data(item.values)
+        .enter()
+        .append('g')
+        .attr('class', `duration-trend-point duration-trend-point-${item.task}`);
+
+      point
+        .append('circle')
+        .attr('cx', (value) => x(value.date))
+        .attr('cy', (value) => y(value.durationMs))
+        .attr('r', 5)
+        .attr('fill', item.color);
+      point
+        .append('title')
+        .text(
+          (value) =>
+            `${item.task} ${value.dateKey}: ${formatDurationCell(value.durationMs)} (${formatDurationCell(value.trainingMs)} training + ${formatDurationCell(value.restingMs)} resting)`
+        );
+    });
+
+    svg
+      .append('text')
+      .attr('class', 'axis-label')
+      .attr('x', margin.left + innerWidth / 2)
+      .attr('y', height - 12)
+      .attr('text-anchor', 'middle')
+      .text('Date');
+
+    svg
+      .append('text')
+      .attr('class', 'axis-label')
+      .attr('transform', 'rotate(-90)')
+      .attr('x', -(margin.top + innerHeight / 2))
+      .attr('y', 18)
+      .attr('text-anchor', 'middle')
+      .text('Duration');
+  }
+
   function renderUserDifficultyTrendChart(container, dateSeries, task) {
     container.innerHTML = '';
 
@@ -1528,6 +2143,169 @@
       .attr('y', 18)
       .attr('text-anchor', 'middle')
       .text('Accuracy');
+
+    const legend = d3.select(container).append('div').attr('class', 'date-legend');
+    const legendItem = legend
+      .selectAll('.date-legend-item')
+      .data(dateSeries)
+      .enter()
+      .append('span')
+      .attr('class', 'date-legend-item')
+      .attr('tabindex', 0)
+      .attr('aria-label', (item) => `Show only ${item.dateKey}`)
+      .on('mouseenter focus', (event, item) => highlightDate(item.dateKey))
+      .on('mouseleave blur', () => highlightDate(''));
+    legendItem
+      .append('span')
+      .attr('class', 'date-legend-swatch')
+      .style('background', color)
+      .style('opacity', (item) => item.opacity);
+    legendItem.append('span').text((item) => item.dateKey);
+  }
+
+  function renderUserDurationDifficultyTrendChart(container, dateSeries, task) {
+    container.innerHTML = '';
+
+    const color = TASK_COLORS[task] || '#0b6b61';
+    const points = dateSeries.flatMap((item) => item.values);
+    if (!points.length) {
+      const empty = document.createElement('p');
+      empty.className = 'message info';
+      empty.textContent = `No ${task} duration rows with difficulty levels were found for this user.`;
+      container.appendChild(empty);
+      return;
+    }
+
+    const levels = Array.from(
+      points
+        .reduce((levelMap, point) => {
+          if (!levelMap.has(point.level)) {
+            levelMap.set(point.level, {
+              level: point.level,
+              sortValue: point.sortValue
+            });
+          }
+
+          return levelMap;
+        }, new Map())
+        .values()
+    )
+      .sort(compareDifficultySort)
+      .map((point) => point.level);
+
+    const width = Math.max(container.clientWidth || 760, 360);
+    const height = 420;
+    const margin = { top: 24, right: 34, bottom: 56, left: 72 };
+    const innerWidth = width - margin.left - margin.right;
+    const innerHeight = height - margin.top - margin.bottom;
+    const maxDuration = d3.max(points, (point) => point.averageDurationMs) || 1000;
+
+    const svg = d3
+      .select(container)
+      .append('svg')
+      .attr('class', 'chart')
+      .attr('viewBox', `0 0 ${width} ${height}`)
+      .attr('role', 'img')
+      .attr('aria-label', `${task} average duration by difficulty level over dates`);
+
+    const x = d3
+      .scalePoint()
+      .domain(levels)
+      .range([margin.left, margin.left + innerWidth])
+      .padding(0.45);
+    const y = d3
+      .scaleLinear()
+      .domain([0, maxDuration * 1.12])
+      .nice()
+      .range([margin.top + innerHeight, margin.top]);
+
+    svg
+      .append('g')
+      .attr('class', 'grid-lines')
+      .attr('transform', `translate(${margin.left},0)`)
+      .call(
+        d3
+          .axisLeft(y)
+          .ticks(5)
+          .tickSize(-innerWidth)
+          .tickFormat('')
+      );
+
+    svg
+      .append('g')
+      .attr('class', 'axis')
+      .attr('transform', `translate(0,${margin.top + innerHeight})`)
+      .call(d3.axisBottom(x));
+
+    svg
+      .append('g')
+      .attr('class', 'axis')
+      .attr('transform', `translate(${margin.left},0)`)
+      .call(d3.axisLeft(y).ticks(5).tickFormat(formatDurationTick));
+
+    function highlightDate(dateKey) {
+      const hasHighlight = Boolean(dateKey);
+      svg
+        .selectAll('.duration-date-series')
+        .attr('display', (item) => (!hasHighlight || item.dateKey === dateKey ? null : 'none'));
+      d3.select(container)
+        .selectAll('.date-legend-item')
+        .classed('muted', (item) => hasHighlight && item.dateKey !== dateKey);
+    }
+
+    dateSeries.forEach((item) => {
+      const dateGroup = svg.append('g').datum(item).attr('class', 'duration-date-series');
+
+      if (item.values.length > 1) {
+        const path = dateGroup
+          .append('path')
+          .datum(item.values)
+          .attr('class', 'duration-date-line')
+          .attr('stroke', color)
+          .attr('stroke-opacity', item.opacity)
+          .attr('d', d3.line().x((point) => x(point.level)).y((point) => y(point.averageDurationMs)));
+
+        path.append('title').text(`${item.dateKey}: ${task} average trial duration by difficulty`);
+      }
+
+      const point = dateGroup
+        .selectAll('g')
+        .data(item.values)
+        .enter()
+        .append('g')
+        .attr('class', 'duration-trend-point');
+
+      point
+        .append('circle')
+        .attr('cx', (value) => x(value.level))
+        .attr('cy', (value) => y(value.averageDurationMs))
+        .attr('r', 5)
+        .attr('fill', color)
+        .attr('fill-opacity', item.opacity);
+      point
+        .append('title')
+        .text(
+          (value) =>
+            `${task} ${item.dateKey} level ${value.level}: ${formatDurationCell(value.averageDurationMs)} avg (${value.total} trials, ${formatDurationCell(value.totalDurationMs)} total)`
+        );
+    });
+
+    svg
+      .append('text')
+      .attr('class', 'axis-label')
+      .attr('x', margin.left + innerWidth / 2)
+      .attr('y', height - 12)
+      .attr('text-anchor', 'middle')
+      .text('Difficulty Level');
+
+    svg
+      .append('text')
+      .attr('class', 'axis-label')
+      .attr('transform', 'rotate(-90)')
+      .attr('x', -(margin.top + innerHeight / 2))
+      .attr('y', 18)
+      .attr('text-anchor', 'middle')
+      .text('Avg Trial Time');
 
     const legend = d3.select(container).append('div').attr('class', 'date-legend');
     const legendItem = legend

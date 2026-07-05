@@ -18,7 +18,7 @@ Successfully implemented a 3-up-1-down adaptive stair casing algorithm for the V
 - **Levels**: [0, 25.71, 51.43, 77.14, 102.86, 128.57, 154.29, 180] degrees
 - **Range**: 0° (easiest - all dots move straight down) to 180° (hardest - complete randomness)
 - **Effect**: Higher direction range makes motion detection more difficult
-- **Implementation**: All 30 dots are signal dots moving within ±directionRange degrees from vertical (downward)
+- **Implementation**: All 100 dots are signal dots moving within ±directionRange degrees from vertical (downward)
 - **No noise dots**: Unlike previous implementation, all dots contribute to the signal
 
 #### Orientation Discrimination  
