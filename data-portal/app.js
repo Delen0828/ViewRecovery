@@ -77,6 +77,9 @@
       failedFileCount: 0,
       records: [],
       fileSessions: [],
+      accuracySeries: [],
+      durationSeries: [],
+      difficultySeries: [],
       users: [],
       selectedUserId: '',
       visibleTasks: TASKS.reduce((visible, task) => {
@@ -227,6 +230,9 @@
     state.users.failedFileCount = 0;
     state.users.records = [];
     state.users.fileSessions = [];
+    state.users.accuracySeries = [];
+    state.users.durationSeries = [];
+    state.users.difficultySeries = [];
     state.users.users = [];
     renderUsers();
 
@@ -250,7 +256,11 @@
       const csvFiles = Array.isArray(data.csv_files) ? data.csv_files : [];
       const records = normalizeTrendRecords(data.records);
       const fileSessions = normalizeTrendSessions(data.file_sessions);
-      const users = buildUserSummaries(records, fileSessions);
+      const accuracySeries = normalizeAggregatedAccuracySeries(data.accuracy_series);
+      const durationSeries = normalizeAggregatedDurationSeries(data.duration_series);
+      const difficultySeries = normalizeAggregatedDifficultySeries(data.difficulty_series);
+      const apiUsers = normalizeUserSummaries(data.user_summaries);
+      const users = apiUsers.length ? apiUsers : buildUserSummaries(records, fileSessions);
       const selectedUserStillExists = users.some((user) => user.id === state.users.selectedUserId);
 
       state.users.csvFiles = csvFiles;
@@ -258,6 +268,9 @@
       state.users.failedFileCount = Number.isFinite(data.failed_file_count) ? data.failed_file_count : 0;
       state.users.records = records;
       state.users.fileSessions = fileSessions;
+      state.users.accuracySeries = accuracySeries;
+      state.users.durationSeries = durationSeries;
+      state.users.difficultySeries = difficultySeries;
       state.users.users = users;
       state.users.selectedUserId = selectedUserStillExists ? state.users.selectedUserId : (users[0]?.id || '');
     } catch (error) {
@@ -358,7 +371,7 @@
     const card = portal.append('section').attr('class', 'card');
     appendHeader(card, 'Data Files', isAdminLogin() ? 'Search by filename and filter by created date.' : 'Search your saved experiment files.', true);
     const nav = card.append('p').attr('class', 'portal-nav');
-    nav.append('a').attr('href', '/data-portal/users.html').text('User Trends');
+    nav.append('a').attr('href', '/data-portal/index.html').text('User Trends');
     renderToolbar(card);
     renderFileTypeControls(card);
     const visibleFiles = getVisibleFiles();
@@ -384,8 +397,8 @@
     appendHeader(card, 'Data Preview', 'Accuracy by difficulty level for one data file.', true);
 
     const nav = card.append('p').attr('class', 'portal-nav');
-    nav.append('a').attr('href', '/data-portal/index.html').text('Data Files');
-    nav.append('a').attr('href', '/data-portal/users.html').text('User Trends');
+    nav.append('a').attr('href', '/data-portal/index.html?view=files').text('Data Files');
+    nav.append('a').attr('href', '/data-portal/index.html').text('User Trends');
 
     if (state.preview.fileName) {
       card
@@ -431,7 +444,7 @@
     appendHeader(card, 'User Trends', isAdminLogin() ? 'Accuracy over time by task.' : 'Your accuracy over time by task.', true);
 
     const nav = card.append('p').attr('class', 'portal-nav');
-    nav.append('a').attr('href', '/data-portal/index.html').text('Data Files');
+    nav.append('a').attr('href', '/data-portal/index.html?view=files').text('Data Files');
 
     if (state.users.error) {
       card.append('p').attr('class', 'message error').text(state.users.error);
@@ -1018,14 +1031,18 @@
 
   function getPortalView() {
     const page = window.location.pathname.split('/').pop();
+    const requestedView = new URLSearchParams(window.location.search).get('view');
     if (page === 'preview.html') {
       return 'preview';
     }
-    if (page === 'users.html') {
+    if (requestedView === 'files') {
+      return 'files';
+    }
+    if (page === 'users.html' || page === 'index.html' || page === '') {
       return 'users';
     }
 
-    return 'files';
+    return 'users';
   }
 
   function getFileQueryParam() {
@@ -1124,6 +1141,121 @@
 
     const date = new Date(value || '');
     return Number.isNaN(date.getTime()) ? new Date(NaN) : date;
+  }
+
+
+  function normalizeUserSummaries(users) {
+    if (!Array.isArray(users)) {
+      return [];
+    }
+
+    return users
+      .map((user) => {
+        const id = String(user.id || '').trim() || 'Unknown';
+        return {
+          id,
+          label: String(user.label || formatUserLabel(id)),
+          trials: Number(user.trials) || 0,
+          accuracy: Number(user.accuracy) || 0,
+          sessions: Number(user.sessions) || 0,
+          durationMs: Number(user.durationMs) || 0,
+          trainingMs: Number(user.trainingMs) || 0,
+          restingMs: Number(user.restingMs) || 0
+        };
+      })
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+  }
+
+  function normalizeAggregatedAccuracySeries(series) {
+    if (!Array.isArray(series)) {
+      return [];
+    }
+
+    return series
+      .map((point) => {
+        const userId = String(point.userId || '').trim() || 'Unknown';
+        const task = String(point.task || '').trim();
+        const date = parseApiDate(point.dateLocal);
+        if (!task || Number.isNaN(date.getTime())) {
+          return null;
+        }
+
+        const total = Number(point.total) || 0;
+        const correct = Number(point.correct) || 0;
+        return {
+          userId,
+          userLabel: String(point.userLabel || formatUserLabel(userId)),
+          task,
+          date,
+          dateKey: String(point.dateKey || formatDateKey(date)),
+          accuracy: Number.isFinite(Number(point.accuracy)) ? Number(point.accuracy) : (total ? (correct / total) * 100 : 0),
+          correct,
+          total
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function normalizeAggregatedDurationSeries(series) {
+    if (!Array.isArray(series)) {
+      return [];
+    }
+
+    return series
+      .map((point) => {
+        const userId = String(point.userId || '').trim() || 'Unknown';
+        const task = String(point.task || '').trim();
+        const date = parseApiDate(point.dateLocal);
+        if (!task || Number.isNaN(date.getTime())) {
+          return null;
+        }
+
+        return {
+          userId,
+          userLabel: String(point.userLabel || formatUserLabel(userId)),
+          task,
+          date,
+          dateKey: String(point.dateKey || formatDateKey(date)),
+          durationMs: Number(point.durationMs) || 0,
+          trainingMs: Number(point.trainingMs) || 0,
+          restingMs: Number(point.restingMs) || 0,
+          sessions: Number(point.sessions) || 0
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function normalizeAggregatedDifficultySeries(series) {
+    if (!Array.isArray(series)) {
+      return [];
+    }
+
+    return series
+      .map((point) => {
+        const userId = String(point.userId || '').trim() || 'Unknown';
+        const task = String(point.task || '').trim();
+        const difficultyLevel = String(point.difficultyLevel || '').trim();
+        const date = parseApiDate(point.dateLocal);
+        if (!task || !difficultyLevel || Number.isNaN(date.getTime())) {
+          return null;
+        }
+
+        const total = Number(point.total) || 0;
+        const correct = Number(point.correct) || 0;
+        return {
+          userId,
+          userLabel: String(point.userLabel || formatUserLabel(userId)),
+          task,
+          date,
+          dateKey: String(point.dateKey || formatDateKey(date)),
+          difficultyLevel,
+          difficultySortValue: point.difficultySortValue,
+          accuracy: Number.isFinite(Number(point.accuracy)) ? Number(point.accuracy) : (total ? (correct / total) * 100 : 0),
+          correct,
+          total
+        };
+      })
+      .filter(Boolean);
   }
 
   function normalizeTrendRecords(records) {
@@ -1471,6 +1603,16 @@
   }
 
   function aggregateUserTrendSeries(records, userId) {
+    if (state.users.accuracySeries.length) {
+      return getPlottedTasks().map((task) => ({
+        task,
+        color: TASK_COLORS[task],
+        values: state.users.accuracySeries
+          .filter((point) => point.userId === userId && point.task === task)
+          .sort((a, b) => a.date - b.date)
+      }));
+    }
+
     const groups = new Map();
 
     records.forEach((record) => {
@@ -1511,6 +1653,16 @@
   }
 
   function aggregateUserDurationTrendSeries(sessions, userId) {
+    if (state.users.durationSeries.length) {
+      return getPlottedTasks().map((task) => ({
+        task,
+        color: TASK_COLORS[task],
+        values: state.users.durationSeries
+          .filter((point) => point.userId === userId && point.task === task && isDeploymentTaskVisible(point.task))
+          .sort((a, b) => a.date - b.date)
+      }));
+    }
+
     const groups = new Map();
 
     sessions.forEach((session) => {
@@ -1552,6 +1704,45 @@
   }
 
   function aggregateUserDifficultyTrendSeries(records, userId, task) {
+    if (state.users.difficultySeries.length) {
+      const byDate = new Map();
+      state.users.difficultySeries.forEach((point) => {
+        if (point.userId !== userId || point.task !== task || Number.isNaN(point.date.getTime())) {
+          return;
+        }
+
+        if (!byDate.has(point.dateKey)) {
+          byDate.set(point.dateKey, {
+            date: startOfDay(point.date),
+            dateKey: point.dateKey,
+            values: []
+          });
+        }
+
+        byDate.get(point.dateKey).values.push({
+          level: point.difficultyLevel,
+          sortValue: point.difficultySortValue,
+          accuracy: point.accuracy,
+          correct: point.correct,
+          total: point.total
+        });
+      });
+
+      const series = Array.from(byDate.values())
+        .sort((a, b) => a.date - b.date)
+        .map((item) => ({
+          date: item.date,
+          dateKey: item.dateKey,
+          values: item.values.sort(compareDifficultySort)
+        }));
+
+      const maxIndex = series.length - 1;
+      return series.map((item, index) => ({
+        ...item,
+        opacity: maxIndex > 0 ? Number((0.3 + (index / maxIndex) * 0.7).toFixed(3)) : 1
+      }));
+    }
+
     const groups = new Map();
 
     records.forEach((record) => {
@@ -1690,9 +1881,10 @@
   }
 
   function getFirstUserTask(userId) {
+    const source = state.users.difficultySeries.length ? state.users.difficultySeries : state.users.records;
     const availableTasks = new Set(
-      state.users.records
-        .filter((record) => record.userId === userId && record.difficultyLevel)
+      source
+        .filter((record) => record.userId === userId && (record.difficultyLevel || record.level))
         .map((record) => record.task)
     );
 

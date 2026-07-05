@@ -520,11 +520,7 @@ function data_portal_send_file_index(string $dataDir, array $scope): void
     $metricsCacheDirty = false;
 
     if (is_dir($dataDir)) {
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($dataDir, FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::LEAVES_ONLY
-        );
-
+        $iterator = data_portal_data_file_iterator($dataDir);
         $baseDirPrefixLength = strlen($dataDir) + 1;
 
         foreach ($iterator as $fileInfo) {
@@ -604,11 +600,7 @@ function data_portal_send_user_trends(string $dataDir, array $scope): void
     $metricsCacheDirty = false;
 
     if (is_dir($dataDir)) {
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($dataDir, FilesystemIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::LEAVES_ONLY
-        );
-
+        $iterator = data_portal_data_file_iterator($dataDir);
         $baseDirPrefixLength = strlen($dataDir) + 1;
 
         foreach ($iterator as $fileInfo) {
@@ -654,14 +646,207 @@ function data_portal_send_user_trends(string $dataDir, array $scope): void
         return $b['created_at'] <=> $a['created_at'];
     });
 
+    $trendPayload = data_portal_build_user_trend_payload($records, $fileSessions);
+    $includeRecords = ((string) ($_GET['include_records'] ?? '')) === '1';
+
     data_portal_send_json([
         'generated_at' => time(),
         'csv_files' => $csvFiles,
         'loaded_file_count' => $loadedFileCount,
         'failed_file_count' => $failedFileCount,
-        'records' => $records,
+        'records' => $includeRecords ? $records : [],
         'file_sessions' => $fileSessions,
+        'user_summaries' => $trendPayload['user_summaries'],
+        'accuracy_series' => $trendPayload['accuracy_series'],
+        'duration_series' => $trendPayload['duration_series'],
+        'difficulty_series' => $trendPayload['difficulty_series'],
     ]);
+}
+
+
+function data_portal_build_user_trend_payload(array $records, array $fileSessions): array
+{
+    $users = [];
+    $accuracyGroups = [];
+    $difficultyGroups = [];
+    $durationGroups = [];
+
+    foreach ($records as $record) {
+        $userId = trim((string) ($record['userId'] ?? 'Unknown')) ?: 'Unknown';
+        $userLabel = (string) ($record['userLabel'] ?? data_portal_user_label_for_chart($userId));
+        $task = trim((string) ($record['task'] ?? ''));
+        $dateKey = trim((string) ($record['dateKey'] ?? ''));
+        $dateLocal = trim((string) ($record['dateLocal'] ?? ''));
+        $difficultyLevel = trim((string) ($record['difficultyLevel'] ?? ''));
+        if ($task === '' || $dateKey === '' || $dateLocal === '') {
+            continue;
+        }
+
+        data_portal_ensure_user_summary($users, $userId, $userLabel);
+        $users[$userId]['trials']++;
+        $users[$userId]['correct'] += !empty($record['correct']) ? 1 : 0;
+
+        $accuracyKey = $userId . "\0" . $dateKey . "\0" . $task;
+        if (!isset($accuracyGroups[$accuracyKey])) {
+            $accuracyGroups[$accuracyKey] = [
+                'userId' => $userId,
+                'userLabel' => $userLabel,
+                'task' => $task,
+                'dateLocal' => $dateLocal,
+                'dateKey' => $dateKey,
+                'correct' => 0,
+                'total' => 0,
+            ];
+        }
+        $accuracyGroups[$accuracyKey]['correct'] += !empty($record['correct']) ? 1 : 0;
+        $accuracyGroups[$accuracyKey]['total']++;
+
+        if ($difficultyLevel === '') {
+            continue;
+        }
+
+        $difficultyKey = $accuracyKey . "\0" . $difficultyLevel;
+        if (!isset($difficultyGroups[$difficultyKey])) {
+            $difficultyGroups[$difficultyKey] = [
+                'userId' => $userId,
+                'userLabel' => $userLabel,
+                'task' => $task,
+                'dateLocal' => $dateLocal,
+                'dateKey' => $dateKey,
+                'difficultyLevel' => $difficultyLevel,
+                'difficultySortValue' => $record['difficultySortValue'] ?? $difficultyLevel,
+                'correct' => 0,
+                'total' => 0,
+            ];
+        }
+        $difficultyGroups[$difficultyKey]['correct'] += !empty($record['correct']) ? 1 : 0;
+        $difficultyGroups[$difficultyKey]['total']++;
+    }
+
+    foreach ($fileSessions as $session) {
+        $userId = trim((string) ($session['userId'] ?? 'Unknown')) ?: 'Unknown';
+        $userLabel = (string) ($session['userLabel'] ?? data_portal_user_label_for_chart($userId));
+        data_portal_ensure_user_summary($users, $userId, $userLabel);
+
+        $fileName = (string) ($session['fileName'] ?? '');
+        if ($fileName !== '') {
+            $users[$userId]['sessions'][$fileName] = true;
+        }
+        $users[$userId]['durationMs'] += (float) ($session['durationMs'] ?? 0);
+        $users[$userId]['trainingMs'] += (float) ($session['trainingMs'] ?? 0);
+        $users[$userId]['restingMs'] += (float) ($session['restingMs'] ?? 0);
+
+        $task = trim((string) ($session['task'] ?? ''));
+        $dateKey = trim((string) ($session['dateKey'] ?? ''));
+        $dateLocal = trim((string) ($session['dateLocal'] ?? ''));
+        if ($task === '' || $dateKey === '' || $dateLocal === '') {
+            continue;
+        }
+
+        $durationKey = $userId . "\0" . $dateKey . "\0" . $task;
+        if (!isset($durationGroups[$durationKey])) {
+            $durationGroups[$durationKey] = [
+                'userId' => $userId,
+                'userLabel' => $userLabel,
+                'task' => $task,
+                'dateLocal' => $dateLocal,
+                'dateKey' => $dateKey,
+                'durationMs' => 0.0,
+                'trainingMs' => 0.0,
+                'restingMs' => 0.0,
+                'sessions' => 0,
+            ];
+        }
+        $durationGroups[$durationKey]['durationMs'] += (float) ($session['durationMs'] ?? 0);
+        $durationGroups[$durationKey]['trainingMs'] += (float) ($session['trainingMs'] ?? 0);
+        $durationGroups[$durationKey]['restingMs'] += (float) ($session['restingMs'] ?? 0);
+        $durationGroups[$durationKey]['sessions']++;
+    }
+
+    $userSummaries = array_map(static function (array $user): array {
+        $trials = (int) $user['trials'];
+        return [
+            'id' => $user['id'],
+            'label' => $user['label'],
+            'trials' => $trials,
+            'accuracy' => $trials > 0 ? ($user['correct'] / $trials) * 100 : 0,
+            'sessions' => count($user['sessions']),
+            'durationMs' => $user['durationMs'],
+            'trainingMs' => $user['trainingMs'],
+            'restingMs' => $user['restingMs'],
+        ];
+    }, array_values($users));
+
+    usort($userSummaries, static fn(array $a, array $b): int => strnatcasecmp((string) $a['label'], (string) $b['label']));
+
+    $durationSeries = array_values($durationGroups);
+    usort($durationSeries, static fn(array $a, array $b): int => [$a['userLabel'], $a['dateKey'], $a['task']] <=> [$b['userLabel'], $b['dateKey'], $b['task']]);
+
+    return [
+        'user_summaries' => $userSummaries,
+        'accuracy_series' => data_portal_finalize_count_series($accuracyGroups),
+        'duration_series' => $durationSeries,
+        'difficulty_series' => data_portal_finalize_count_series($difficultyGroups),
+    ];
+}
+
+function data_portal_ensure_user_summary(array &$users, string $userId, string $userLabel): void
+{
+    if (isset($users[$userId])) {
+        return;
+    }
+
+    $users[$userId] = [
+        'id' => $userId,
+        'label' => $userLabel,
+        'trials' => 0,
+        'correct' => 0,
+        'sessions' => [],
+        'durationMs' => 0.0,
+        'trainingMs' => 0.0,
+        'restingMs' => 0.0,
+    ];
+}
+
+function data_portal_finalize_count_series(array $groups): array
+{
+    $series = array_values(array_map(static function (array $group): array {
+        $total = (int) ($group['total'] ?? 0);
+        $group['accuracy'] = $total > 0 ? (((int) ($group['correct'] ?? 0)) / $total) * 100 : 0;
+        return $group;
+    }, $groups));
+
+    usort($series, static fn(array $a, array $b): int => [$a['userLabel'], $a['dateKey'], $a['task'], (string) ($a['difficultyLevel'] ?? '')] <=> [$b['userLabel'], $b['dateKey'], $b['task'], (string) ($b['difficultyLevel'] ?? '')]);
+
+    return $series;
+}
+
+function data_portal_data_file_iterator(string $dataDir): Traversable
+{
+    $directory = new RecursiveDirectoryIterator($dataDir, FilesystemIterator::SKIP_DOTS);
+    $includeBackups = data_portal_truthy_env('DATA_PORTAL_INCLUDE_BACKUPS');
+    $filter = new RecursiveCallbackFilterIterator(
+        $directory,
+        static function (SplFileInfo $current) use ($includeBackups): bool {
+            if (!$current->isDir()) {
+                return $current->getBasename() !== '.data_portal_metrics_cache.json';
+            }
+
+            if (!$includeBackups && preg_match('/^\d{8}_\d{6}$/', $current->getBasename()) === 1) {
+                return false;
+            }
+
+            return true;
+        }
+    );
+
+    return new RecursiveIteratorIterator($filter, RecursiveIteratorIterator::LEAVES_ONLY);
+}
+
+function data_portal_truthy_env(string $name): bool
+{
+    $value = strtolower(trim((string) getenv($name)));
+    return in_array($value, ['1', 'true', 'yes', 'on'], true);
 }
 
 function data_portal_requested_metric_types(): array
@@ -704,6 +889,10 @@ function data_portal_file_metric_type(string $relativePath): string
 
 function data_portal_metrics_cache_file(string $dataDir): string
 {
+    if (is_dir($dataDir) && is_writable($dataDir)) {
+        return rtrim($dataDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . '.data_portal_metrics_cache.json';
+    }
+
     return sys_get_temp_dir() . '/data_portal_metrics_' . hash('sha256', $dataDir) . '.json';
 }
 
@@ -757,7 +946,7 @@ function data_portal_get_csv_metrics(
     $cacheKey = str_replace('\\', '/', $relativePath);
     $sizeBytes = $fileInfo->getSize();
     $modifiedAt = $fileInfo->getMTime();
-    $parserVersion = 2;
+    $parserVersion = 3;
 
     if (
         isset($cache[$cacheKey])
