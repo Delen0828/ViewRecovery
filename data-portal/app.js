@@ -23,6 +23,7 @@
     login: '/data-portal/login',
     logout: '/data-portal/logout',
     files: '/data-portal/api/files',
+    userTrends: '/data-portal/api/user-trends',
     download: '/data-portal/download'
   };
   const TASKS = ['Motion', 'Orientation', 'Centrality', 'Bar'];
@@ -136,6 +137,10 @@
     if (state.filters.dateTo) {
       params.set('date_to', state.filters.dateTo);
     }
+    const metricTypes = getRequestedMetricTypes();
+    if (metricTypes.length) {
+      params.set('metric_types', metricTypes.join(','));
+    }
 
     try {
       const response = await fetch(API.files + (params.toString() ? `?${params.toString()}` : ''), {
@@ -157,7 +162,6 @@
       state.files = Array.isArray(data.files) ? data.files : [];
       state.total = Number.isFinite(data.total) ? data.total : state.files.length;
       state.generatedAt = data.generated_at || null;
-      await hydrateFileDurationMetrics(state.files);
     } catch (error) {
       state.fileError = error.message || 'Could not load files.';
     } finally {
@@ -227,7 +231,7 @@
     renderUsers();
 
     try {
-      const response = await fetch(API.files, {
+      const response = await fetch(API.userTrends, {
         credentials: 'same-origin',
         headers: { Accept: 'application/json' }
       });
@@ -240,36 +244,18 @@
 
       const data = await readJson(response);
       if (!response.ok) {
-        throw new Error(data.error || 'Could not load data files.');
+        throw new Error(data.error || 'Could not load user trends.');
       }
 
-      const csvFiles = (Array.isArray(data.files) ? data.files : []).filter((file) => isCsvFile(file) && isFinalCsvFile(file));
-      const results = await Promise.all(csvFiles.map(async (file) => {
-        try {
-          const rows = await fetchCsvRows(file.name);
-          return { file, rows, duration: calculateDurationMetrics(rows), error: null };
-        } catch (error) {
-          if (!state.authenticated) {
-            throw error;
-          }
-
-          return { file, rows: [], duration: null, error };
-        }
-      }));
-      const scopedUserId = isUserLogin() ? state.account.userId : '';
-      const fileSessions = results
-        .filter((result) => !result.error)
-        .map((result) => extractFileSessionSummary(result.file, result.rows, result.duration, scopedUserId))
-        .filter(Boolean);
-      const records = results.flatMap((result) =>
-        extractResponseRecords(result.file, result.rows, scopedUserId, result.duration)
-      );
+      const csvFiles = Array.isArray(data.csv_files) ? data.csv_files : [];
+      const records = normalizeTrendRecords(data.records);
+      const fileSessions = normalizeTrendSessions(data.file_sessions);
       const users = buildUserSummaries(records, fileSessions);
       const selectedUserStillExists = users.some((user) => user.id === state.users.selectedUserId);
 
       state.users.csvFiles = csvFiles;
-      state.users.loadedFileCount = results.filter((result) => !result.error).length;
-      state.users.failedFileCount = results.filter((result) => result.error).length;
+      state.users.loadedFileCount = Number.isFinite(data.loaded_file_count) ? data.loaded_file_count : csvFiles.length;
+      state.users.failedFileCount = Number.isFinite(data.failed_file_count) ? data.failed_file_count : 0;
       state.users.records = records;
       state.users.fileSessions = fileSessions;
       state.users.users = users;
@@ -714,7 +700,11 @@
         .property('checked', state.filters[option.key])
         .on('change', (event) => {
           state.filters[option.key] = event.currentTarget.checked;
-          renderFiles();
+          if (event.currentTarget.checked) {
+            loadFiles();
+          } else {
+            renderFiles();
+          }
         });
       label.append('span').text(option.label);
     });
@@ -742,7 +732,7 @@
       .append('thead')
       .append('tr')
       .selectAll('th')
-      .data(['File', 'Duration', 'Size', 'Created', 'Modified', 'Actions'])
+      .data(['File', 'Duration', 'Size', 'Created', 'Test Pass Rate', 'Actions'])
       .enter()
       .append('th')
       .text((label) => label);
@@ -766,7 +756,7 @@
     });
     rows.append('td').text((file) => formatBytes(file.size_bytes));
     rows.append('td').text((file) => formatDate(file.created_at));
-    rows.append('td').text((file) => formatDate(file.modified_at));
+    rows.append('td').text(formatCatchPassRate);
     const actions = rows.append('td').append('div').attr('class', 'action-links');
     actions
       .append('a')
@@ -1015,6 +1005,17 @@
     return `${Math.round(number)}%`;
   }
 
+  function formatCatchPassRate(file) {
+    const metric = file?.catch_pass_rate;
+    const total = Number(metric?.total) || 0;
+    if (!total) {
+      return 'N/A';
+    }
+
+    const correct = Number(metric?.correct) || 0;
+    return `${formatPercent(metric.accuracy)} (${correct}/${total})`;
+  }
+
   function getPortalView() {
     const page = window.location.pathname.split('/').pop();
     if (page === 'preview.html') {
@@ -1070,6 +1071,18 @@
     });
   }
 
+  function getRequestedMetricTypes() {
+    const types = ['final'];
+    if (state.filters.showSessionFiles) {
+      types.push('session');
+    }
+    if (state.filters.showPauseFiles) {
+      types.push('pause');
+    }
+
+    return types;
+  }
+
   function isPortalDataCsvFile(file) {
     return isFinalCsvFile(file) || isSessionCsvFile(file) || isPauseCsvFile(file);
   }
@@ -1094,6 +1107,82 @@
   function parseFiniteNumber(value) {
     const number = Number(value);
     return Number.isFinite(number) && number >= 0 ? number : null;
+  }
+
+  function parseApiDate(value) {
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})$/);
+    if (match) {
+      return new Date(
+        Number(match[1]),
+        Number(match[2]) - 1,
+        Number(match[3]),
+        Number(match[4]),
+        Number(match[5]),
+        Number(match[6])
+      );
+    }
+
+    const date = new Date(value || '');
+    return Number.isNaN(date.getTime()) ? new Date(NaN) : date;
+  }
+
+  function normalizeTrendRecords(records) {
+    if (!Array.isArray(records)) {
+      return [];
+    }
+
+    return records
+      .map((record) => {
+        const userId = String(record.userId || '').trim() || 'Unknown';
+        const task = String(record.task || '').trim();
+        const difficultyLevel = String(record.difficultyLevel || '').trim();
+        const date = parseApiDate(record.dateLocal);
+        if (!task || !difficultyLevel || Number.isNaN(date.getTime())) {
+          return null;
+        }
+
+        return {
+          userId,
+          userLabel: String(record.userLabel || formatUserLabel(userId)),
+          task,
+          correct: Boolean(record.correct),
+          difficultyLevel,
+          difficultySortValue: record.difficultySortValue,
+          durationMs: Number(record.durationMs) || 0,
+          date,
+          dateKey: String(record.dateKey || formatDateKey(date)),
+          fileName: String(record.fileName || '')
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function normalizeTrendSessions(sessions) {
+    if (!Array.isArray(sessions)) {
+      return [];
+    }
+
+    return sessions
+      .map((session) => {
+        const userId = String(session.userId || '').trim() || 'Unknown';
+        const date = parseApiDate(session.dateLocal);
+        if (Number.isNaN(date.getTime())) {
+          return null;
+        }
+
+        return {
+          userId,
+          userLabel: String(session.userLabel || formatUserLabel(userId)),
+          task: String(session.task || '').trim(),
+          fileName: String(session.fileName || ''),
+          date,
+          dateKey: String(session.dateKey || formatDateKey(date)),
+          durationMs: Number(session.durationMs) || 0,
+          trainingMs: Number(session.trainingMs) || 0,
+          restingMs: Number(session.restingMs) || 0
+        };
+      })
+      .filter(Boolean);
   }
 
   function isRestingRow(row) {

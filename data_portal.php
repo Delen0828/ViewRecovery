@@ -29,6 +29,11 @@ function data_portal_handle_request(string $path): void
         data_portal_send_file_index($config['data_dir'], data_portal_current_access_scope());
     }
 
+    if ($path === '/data-portal/api/user-trends') {
+        data_portal_require_auth();
+        data_portal_send_user_trends($config['data_dir'], data_portal_current_access_scope());
+    }
+
     if ($path === '/data-portal/download') {
         data_portal_require_auth();
         data_portal_download_file($config['data_dir'], data_portal_current_access_scope());
@@ -492,6 +497,7 @@ function data_portal_send_file_index(string $dataDir, array $scope): void
     $search = trim((string) ($_GET['q'] ?? ''));
     $dateFrom = trim((string) ($_GET['date_from'] ?? ''));
     $dateTo = trim((string) ($_GET['date_to'] ?? ''));
+    $metricTypes = data_portal_requested_metric_types();
 
     $fromTimestamp = null;
     if ($dateFrom !== '') {
@@ -510,6 +516,9 @@ function data_portal_send_file_index(string $dataDir, array $scope): void
     }
 
     $files = [];
+    $metricsCache = data_portal_load_metrics_cache($dataDir);
+    $metricsCacheDirty = false;
+
     if (is_dir($dataDir)) {
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($dataDir, FilesystemIterator::SKIP_DOTS),
@@ -544,14 +553,33 @@ function data_portal_send_file_index(string $dataDir, array $scope): void
                 continue;
             }
 
-            $files[] = [
+            $file = [
                 'name' => $relativePath,
                 'size_bytes' => $fileInfo->getSize(),
                 'created_at' => $createdAt,
                 'modified_at' => $modifiedAt,
                 'download_url' => '/data-portal/download?file=' . rawurlencode($relativePath),
             ];
+
+            $metricType = data_portal_file_metric_type($relativePath);
+            if ($metricType !== '' && isset($metricTypes[$metricType])) {
+                try {
+                    $metrics = data_portal_get_csv_metrics($absolutePath, $relativePath, $fileInfo, $metricsCache, $metricsCacheDirty);
+                    $file['duration'] = $metrics['duration'];
+                    $file['catch_pass_rate'] = $metrics['catch_pass_rate'];
+                } catch (Throwable $error) {
+                    $file['duration'] = null;
+                    $file['catch_pass_rate'] = null;
+                    $file['metrics_error'] = true;
+                }
+            }
+
+            $files[] = $file;
         }
+    }
+
+    if ($metricsCacheDirty) {
+        data_portal_store_metrics_cache($dataDir, $metricsCache);
     }
 
     usort($files, static function (array $a, array $b): int {
@@ -563,6 +591,501 @@ function data_portal_send_file_index(string $dataDir, array $scope): void
         'total' => count($files),
         'files' => $files,
     ]);
+}
+
+function data_portal_send_user_trends(string $dataDir, array $scope): void
+{
+    $csvFiles = [];
+    $records = [];
+    $fileSessions = [];
+    $loadedFileCount = 0;
+    $failedFileCount = 0;
+    $metricsCache = data_portal_load_metrics_cache($dataDir);
+    $metricsCacheDirty = false;
+
+    if (is_dir($dataDir)) {
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dataDir, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::LEAVES_ONLY
+        );
+
+        $baseDirPrefixLength = strlen($dataDir) + 1;
+
+        foreach ($iterator as $fileInfo) {
+            if (!$fileInfo->isFile()) {
+                continue;
+            }
+
+            $absolutePath = $fileInfo->getPathname();
+            $relativePath = str_replace('\\', '/', substr($absolutePath, $baseDirPrefixLength));
+            if (!data_portal_file_allowed_for_scope($relativePath, $scope) || data_portal_file_metric_type($relativePath) !== 'final') {
+                continue;
+            }
+
+            $file = [
+                'name' => $relativePath,
+                'size_bytes' => $fileInfo->getSize(),
+                'created_at' => $fileInfo->getCTime(),
+                'modified_at' => $fileInfo->getMTime(),
+                'download_url' => '/data-portal/download?file=' . rawurlencode($relativePath),
+            ];
+            $csvFiles[] = $file;
+
+            try {
+                $metrics = data_portal_get_csv_metrics($absolutePath, $relativePath, $fileInfo, $metricsCache, $metricsCacheDirty);
+                $loadedFileCount++;
+                foreach ($metrics['trend_records'] as $record) {
+                    $records[] = $record;
+                }
+                if (isset($metrics['session']) && is_array($metrics['session'])) {
+                    $fileSessions[] = $metrics['session'];
+                }
+            } catch (Throwable $error) {
+                $failedFileCount++;
+            }
+        }
+    }
+
+    if ($metricsCacheDirty) {
+        data_portal_store_metrics_cache($dataDir, $metricsCache);
+    }
+
+    usort($csvFiles, static function (array $a, array $b): int {
+        return $b['created_at'] <=> $a['created_at'];
+    });
+
+    data_portal_send_json([
+        'generated_at' => time(),
+        'csv_files' => $csvFiles,
+        'loaded_file_count' => $loadedFileCount,
+        'failed_file_count' => $failedFileCount,
+        'records' => $records,
+        'file_sessions' => $fileSessions,
+    ]);
+}
+
+function data_portal_requested_metric_types(): array
+{
+    $raw = trim((string) ($_GET['metric_types'] ?? ''));
+    if ($raw === '') {
+        return [];
+    }
+
+    $requested = [];
+    foreach (explode(',', strtolower($raw)) as $type) {
+        $type = trim($type);
+        if (in_array($type, ['final', 'session', 'pause'], true)) {
+            $requested[$type] = true;
+        }
+    }
+
+    return $requested;
+}
+
+function data_portal_file_metric_type(string $relativePath): string
+{
+    $baseName = strtolower(basename(str_replace('\\', '/', $relativePath)));
+    if (!str_ends_with($baseName, '.csv')) {
+        return '';
+    }
+
+    if (str_starts_with($baseName, 'final')) {
+        return 'final';
+    }
+    if (str_starts_with($baseName, 'session')) {
+        return 'session';
+    }
+    if (str_starts_with($baseName, 'pause')) {
+        return 'pause';
+    }
+
+    return '';
+}
+
+function data_portal_metrics_cache_file(string $dataDir): string
+{
+    return sys_get_temp_dir() . '/data_portal_metrics_' . hash('sha256', $dataDir) . '.json';
+}
+
+function data_portal_load_metrics_cache(string $dataDir): array
+{
+    $file = data_portal_metrics_cache_file($dataDir);
+    if (!is_file($file)) {
+        return [];
+    }
+
+    $raw = @file_get_contents($file);
+    if ($raw === false || $raw === '') {
+        return [];
+    }
+
+    $decoded = json_decode($raw, true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+function data_portal_store_metrics_cache(string $dataDir, array $cache): void
+{
+    $file = data_portal_metrics_cache_file($dataDir);
+    $encoded = json_encode($cache, JSON_UNESCAPED_SLASHES);
+    if (!is_string($encoded)) {
+        return;
+    }
+
+    $fp = @fopen($file, 'c+');
+    if ($fp === false) {
+        return;
+    }
+
+    if (flock($fp, LOCK_EX)) {
+        ftruncate($fp, 0);
+        rewind($fp);
+        fwrite($fp, $encoded);
+        fflush($fp);
+        flock($fp, LOCK_UN);
+    }
+
+    fclose($fp);
+}
+
+function data_portal_get_csv_metrics(
+    string $absolutePath,
+    string $relativePath,
+    SplFileInfo $fileInfo,
+    array &$cache,
+    bool &$cacheDirty
+): array {
+    $cacheKey = str_replace('\\', '/', $relativePath);
+    $sizeBytes = $fileInfo->getSize();
+    $modifiedAt = $fileInfo->getMTime();
+    $parserVersion = 2;
+
+    if (
+        isset($cache[$cacheKey])
+        && is_array($cache[$cacheKey])
+        && ($cache[$cacheKey]['size_bytes'] ?? null) === $sizeBytes
+        && ($cache[$cacheKey]['modified_at'] ?? null) === $modifiedAt
+        && ($cache[$cacheKey]['parser_version'] ?? null) === $parserVersion
+        && isset($cache[$cacheKey]['metrics'])
+        && is_array($cache[$cacheKey]['metrics'])
+    ) {
+        return $cache[$cacheKey]['metrics'];
+    }
+
+    $metrics = data_portal_parse_csv_metrics($absolutePath, $relativePath, $fileInfo);
+    $cache[$cacheKey] = [
+        'size_bytes' => $sizeBytes,
+        'modified_at' => $modifiedAt,
+        'parser_version' => $parserVersion,
+        'metrics' => $metrics,
+    ];
+    $cacheDirty = true;
+
+    return $metrics;
+}
+
+function data_portal_parse_csv_metrics(string $absolutePath, string $relativePath, SplFileInfo $fileInfo): array
+{
+    $handle = @fopen($absolutePath, 'rb');
+    if ($handle === false) {
+        throw new RuntimeException('Could not open CSV file.');
+    }
+
+    $header = fgetcsv($handle, 0, ',', '"', '');
+    if (!is_array($header) || $header === []) {
+        fclose($handle);
+        return data_portal_empty_csv_metrics($relativePath, $fileInfo);
+    }
+
+    $indexes = [];
+    foreach ($header as $index => $column) {
+        $indexes[(string) $column] = $index;
+    }
+
+    $dateInfo = data_portal_session_date_info($relativePath, $fileInfo);
+    $fallbackUserId = data_portal_parse_user_id_from_filename($relativePath);
+    $fallbackTask = data_portal_parse_task_from_filename($relativePath);
+    $previousElapsed = null;
+    $trainingMs = 0.0;
+    $restingMs = 0.0;
+    $catchCorrect = 0;
+    $catchTotal = 0;
+    $records = [];
+    $sessionUserId = $fallbackUserId;
+    $sessionTask = $fallbackTask;
+
+    while (($row = fgetcsv($handle, 0, ',', '"', '')) !== false) {
+        if (!is_array($row) || $row === [null]) {
+            continue;
+        }
+
+        $elapsed = data_portal_parse_finite_number(data_portal_csv_value($row, $indexes, 'time_elapsed'));
+        $rt = data_portal_parse_finite_number(data_portal_csv_value($row, $indexes, 'rt'));
+        $durationMs = 0.0;
+
+        if ($elapsed !== null) {
+            if ($previousElapsed !== null && $elapsed >= $previousElapsed) {
+                $durationMs = $elapsed - $previousElapsed;
+            } elseif ($rt !== null) {
+                $durationMs = $rt;
+            }
+            $previousElapsed = $elapsed;
+        } elseif ($rt !== null) {
+            $durationMs = $rt;
+        }
+
+        $trialCategory = trim(data_portal_csv_value($row, $indexes, 'trial_category'));
+        if (in_array($trialCategory, ['scheduled_break', 'manual_pause_screen'], true)) {
+            $restingMs += $durationMs;
+        } elseif (trim(data_portal_csv_value($row, $indexes, 'overall_trial_number')) !== '') {
+            $trainingMs += $durationMs;
+        }
+
+        $rowUserId = trim(data_portal_csv_value($row, $indexes, 'user_id'));
+        if ($rowUserId !== '') {
+            $sessionUserId = $rowUserId;
+        }
+
+        $task = data_portal_normalize_task_from_csv($row, $indexes);
+        if ($task !== '') {
+            $sessionTask = $task;
+        }
+
+        $correct = data_portal_parse_csv_bool(data_portal_csv_value($row, $indexes, 'correct'));
+        if (data_portal_is_fixation_catch_response_row($row, $indexes) && $correct !== null) {
+            $catchTotal++;
+            $catchCorrect += $correct ? 1 : 0;
+            continue;
+        }
+
+        $difficulty = data_portal_parse_difficulty_level(data_portal_csv_value($row, $indexes, 'difficulty_level'));
+        if ($correct === null || $task === '' || $difficulty === null) {
+            continue;
+        }
+
+        $userId = $rowUserId !== '' ? $rowUserId : $fallbackUserId;
+        $records[] = [
+            'userId' => $userId,
+            'userLabel' => data_portal_user_label_for_chart($userId),
+            'task' => $task,
+            'correct' => $correct,
+            'difficultyLevel' => $difficulty['level'],
+            'difficultySortValue' => $difficulty['sortValue'],
+            'dateLocal' => $dateInfo['dateLocal'],
+            'dateKey' => $dateInfo['dateKey'],
+            'fileName' => $relativePath,
+        ];
+    }
+
+    fclose($handle);
+
+    $duration = [
+        'totalMs' => $trainingMs + $restingMs,
+        'trainingMs' => $trainingMs,
+        'restingMs' => $restingMs,
+    ];
+
+    return [
+        'duration' => $duration,
+        'catch_pass_rate' => [
+            'correct' => $catchCorrect,
+            'total' => $catchTotal,
+            'accuracy' => $catchTotal > 0 ? ($catchCorrect / $catchTotal) * 100 : null,
+        ],
+        'trend_records' => $records,
+        'session' => [
+            'userId' => $sessionUserId,
+            'userLabel' => data_portal_user_label_for_chart($sessionUserId),
+            'task' => $sessionTask,
+            'fileName' => $relativePath,
+            'dateLocal' => $dateInfo['dateLocal'],
+            'dateKey' => $dateInfo['dateKey'],
+            'durationMs' => $duration['totalMs'],
+            'trainingMs' => $duration['trainingMs'],
+            'restingMs' => $duration['restingMs'],
+        ],
+    ];
+}
+
+function data_portal_empty_csv_metrics(string $relativePath, SplFileInfo $fileInfo): array
+{
+    $dateInfo = data_portal_session_date_info($relativePath, $fileInfo);
+    $userId = data_portal_parse_user_id_from_filename($relativePath);
+    return [
+        'duration' => [
+            'totalMs' => 0,
+            'trainingMs' => 0,
+            'restingMs' => 0,
+        ],
+        'catch_pass_rate' => [
+            'correct' => 0,
+            'total' => 0,
+            'accuracy' => null,
+        ],
+        'trend_records' => [],
+        'session' => [
+            'userId' => $userId,
+            'userLabel' => data_portal_user_label_for_chart($userId),
+            'task' => data_portal_parse_task_from_filename($relativePath),
+            'fileName' => $relativePath,
+            'dateLocal' => $dateInfo['dateLocal'],
+            'dateKey' => $dateInfo['dateKey'],
+            'durationMs' => 0,
+            'trainingMs' => 0,
+            'restingMs' => 0,
+        ],
+    ];
+}
+
+function data_portal_csv_value(array $row, array $indexes, string $column): string
+{
+    if (!array_key_exists($column, $indexes)) {
+        return '';
+    }
+
+    $index = $indexes[$column];
+    return isset($row[$index]) ? (string) $row[$index] : '';
+}
+
+function data_portal_parse_finite_number(string $value): ?float
+{
+    if (trim($value) === '') {
+        return null;
+    }
+
+    $number = (float) $value;
+    return is_finite($number) && $number >= 0 ? $number : null;
+}
+
+function data_portal_parse_csv_bool(string $value): ?bool
+{
+    $normalized = strtolower(trim($value));
+    if (in_array($normalized, ['true', '1', 'yes', 'correct'], true)) {
+        return true;
+    }
+    if (in_array($normalized, ['false', '0', 'no', 'incorrect'], true)) {
+        return false;
+    }
+
+    return null;
+}
+
+function data_portal_parse_difficulty_level(string $value): ?array
+{
+    $rawLevel = trim($value);
+    if ($rawLevel === '') {
+        return null;
+    }
+
+    if (is_numeric($rawLevel)) {
+        $number = (float) $rawLevel;
+        return [
+            'level' => (string) (int) $number === $rawLevel ? (string) (int) $number : (string) $number,
+            'sortValue' => $number,
+        ];
+    }
+
+    return [
+        'level' => $rawLevel,
+        'sortValue' => $rawLevel,
+    ];
+}
+
+function data_portal_normalize_task_from_csv(array $row, array $indexes): string
+{
+    $tasks = ['Motion', 'Orientation', 'Centrality', 'Bar'];
+    foreach (['task_type', 'selected_task', 'task_route'] as $column) {
+        $candidate = strtolower(trim(data_portal_csv_value($row, $indexes, $column)));
+        if ($candidate === '') {
+            continue;
+        }
+
+        foreach ($tasks as $task) {
+            if (str_contains($candidate, strtolower($task))) {
+                return $task;
+            }
+        }
+    }
+
+    $direction = strtolower(trim(data_portal_csv_value($row, $indexes, 'correct_direction')));
+    if ($direction === 'up' || $direction === 'down') {
+        return 'Motion';
+    }
+    if ($direction === 'vertical' || $direction === 'horizontal') {
+        return 'Orientation';
+    }
+    if ($direction === 'black' || $direction === 'white') {
+        return 'Centrality';
+    }
+    if ($direction === 'same' || $direction === 'different') {
+        return 'Bar';
+    }
+
+    return '';
+}
+
+function data_portal_is_fixation_catch_response_row(array $row, array $indexes): bool
+{
+    $trialCategory = trim(data_portal_csv_value($row, $indexes, 'trial_category'));
+    if ($trialCategory === 'fixation_catch_response') {
+        return true;
+    }
+
+    $isCatchTrial = data_portal_parse_csv_bool(data_portal_csv_value($row, $indexes, 'fixation_catch_trial')) === true;
+    $correctDirection = strtolower(trim(data_portal_csv_value($row, $indexes, 'correct_direction')));
+    $responseKey = trim(data_portal_csv_value($row, $indexes, 'fixation_response_key'));
+
+    return $isCatchTrial && $correctDirection === 'x' && $responseKey !== '';
+}
+
+function data_portal_parse_user_id_from_filename(string $relativePath): string
+{
+    $baseName = basename(str_replace('\\', '/', $relativePath));
+    if (preg_match('/(?:^|_)user_([^_]+)_/i', $baseName, $match) === 1) {
+        return $match[1];
+    }
+
+    return 'Unknown';
+}
+
+function data_portal_parse_task_from_filename(string $relativePath): string
+{
+    $baseName = basename(str_replace('\\', '/', $relativePath));
+    if (preg_match('/(?:^|_)user_[^_]+_([A-Za-z]+)(?:_|\.csv$)/i', $baseName, $match) === 1) {
+        $candidate = strtolower($match[1]);
+        foreach (['Motion', 'Orientation', 'Centrality', 'Bar'] as $task) {
+            if ($candidate === strtolower($task)) {
+                return $task;
+            }
+        }
+    }
+
+    return '';
+}
+
+function data_portal_user_label_for_chart(string $userId): string
+{
+    if ($userId === '' || $userId === 'Unknown') {
+        return 'Unknown User';
+    }
+
+    return stripos($userId, 'user') === 0 ? $userId : 'User ' . $userId;
+}
+
+function data_portal_session_date_info(string $relativePath, SplFileInfo $fileInfo): array
+{
+    $name = str_replace('\\', '/', $relativePath);
+    if (preg_match('/(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/', $name, $match) === 1) {
+        return [
+            'dateLocal' => $match[1] . '-' . $match[2] . '-' . $match[3] . 'T' . $match[4] . ':' . $match[5] . ':' . $match[6],
+            'dateKey' => $match[1] . '-' . $match[2] . '-' . $match[3],
+        ];
+    }
+
+    $createdAt = $fileInfo->getCTime();
+    return [
+        'dateLocal' => date('Y-m-d\TH:i:s', $createdAt),
+        'dateKey' => date('Y-m-d', $createdAt),
+    ];
 }
 
 function data_portal_file_allowed_for_scope(string $relativePath, array $scope): bool
