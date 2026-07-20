@@ -2525,39 +2525,27 @@ function createKeyIcon(label, extraClass = '') {
 const TASK_INSTRUCTION_CONFIG = {
   Motion: {
     title: 'Motion Discrimination Task',
-    pageOneParagraphs: [
-      'You will see dots moving in your blind field, and they will move either up or down.',
-      `Using your dominant hand, press ${createKeyIcon('↑')} if the dots move upward, and ${createKeyIcon('↓')} if the dots move downward.`,
-      'The program will wait for your response before moving to the next trial. If you are not sure about the direction, please make your best guess.'
-    ],
-    noStimulusText: 'On those trials, you will not see any moving dots.'
+    stimulusText: 'On most trials, dots will appear moving in your blind field.',
+    responseText: `Press ${createKeyIcon('↑')} if the dots move upward and ${createKeyIcon('↓')} if the dots move downward. If you are unsure, make your best guess.`,
+    noStimulusText: 'No moving dots will appear on those trials.'
   },
   Orientation: {
     title: 'Orientation Discrimination Task',
-    pageOneParagraphs: [
-      'You will see striped gratings in your blind field, and each one will be either vertical or horizontal.',
-      `Using your dominant hand, press ${createKeyIcon('←')} if the stripes are vertical, and ${createKeyIcon('→')} if the stripes are horizontal.`,
-      'The program will wait for your response before moving to the next trial. If you are not sure about the orientation, please make your best guess.'
-    ],
-    noStimulusText: 'On those trials, you will not see any grating stimulus.'
+    stimulusText: 'On most trials, striped gratings will appear in your blind field.',
+    responseText: `Press ${createKeyIcon('←')} if the stripes are vertical. Press ${createKeyIcon('→')} if the stripes are horizontal. If you are unsure, make your best guess.`,
+    noStimulusText: 'No striped gratings will appear on those trials.'
   },
   Centrality: {
     title: 'Centrality Discrimination Task',
-    pageOneParagraphs: [
-      'You will see a grid of black and white squares in your blind field, and you will judge whether there are more black or more white squares.',
-      `Using your dominant hand, press ${createKeyIcon('←')} if you think there are more black squares, and ${createKeyIcon('→')} if you think there are more white squares.`,
-      'The program will wait for your response before moving to the next trial. If you are not sure, please make your best guess.'
-    ],
-    noStimulusText: 'On those trials, you will not see any grid stimulus.'
+    stimulusText: 'On most trials, a grid of black and white squares will appear in your blind field.',
+    responseText: `Press ${createKeyIcon('←')} if you think there are more black squares. Press ${createKeyIcon('→')} if you think there are more white squares. If you are unsure, make your best guess.`,
+    noStimulusText: 'No grid will appear on those trials.'
   },
   Bar: {
     title: 'Bar Comparison Task',
-    pageOneParagraphs: [
-      'You will see two bars in your blind field, and you will judge whether their heights are the same or different.',
-      `Using your dominant hand, press ${createKeyIcon('←')} if the bars are the same height, and ${createKeyIcon('→')} if the bars are different heights.`,
-      'The program will wait for your response before moving to the next trial. If you are not sure, please make your best guess.'
-    ],
-    noStimulusText: 'On those trials, you will not see any bar stimulus.'
+    stimulusText: 'On most trials, two bars will appear in your blind field.',
+    responseText: `Press ${createKeyIcon('←')} if the bars are the same height. Press ${createKeyIcon('→')} if the bars are different heights. If you are unsure, make your best guess.`,
+    noStimulusText: 'No bars will appear on those trials.'
   }
 };
 
@@ -2567,14 +2555,15 @@ function createTaskInstructionTrials(taskType) {
 
   const breakEvery = TRIAL_CONFIG[taskType]?.breakEvery || 64;
   const pages = [
-    instructionConfig.pageOneParagraphs,
     [
-      'Please keep your eyes fixed on the cross in the center of the screen at all times.',
-      `Occasionally, the cross will change from "➕" to "✖️", and when that happens, press <span class="key-icon key-icon-space">SPACE</span>. ${instructionConfig.noStimulusText}`
+      'Please keep your eyes fixed on the center cross throughout the task.',
+      instructionConfig.stimulusText,
+      instructionConfig.responseText
     ],
     [
-      'You can press <span class="key-icon key-icon-square">B</span> at any time during numbered trials to take a manual pause and replay that trial. Your progress will be auto saved when the pause screen opens.',
-      `There will be a short break after completing ${breakEvery} trials to help you rest your eyes. Your progress will be auto saved during each break. A 30-second countdown timer will appear. You can press <span class="key-icon key-icon-space">SPACE</span> to continue early, or wait until it reaches 0 and press <span class="key-icon key-icon-space">SPACE</span> when you are ready. You are also welcome to take a longer break if needed.`
+      `Occasionally, the center cross will change from ➕ to ✖️. When it does, press <span class="key-icon key-icon-space">SPACE</span>. ${instructionConfig.noStimulusText}`,
+      'You can press <span class="key-icon key-icon-square">B</span> during numbered trials to pause and replay the current trial. Your progress will be saved automatically.',
+      `After every ${breakEvery} trials, there will be a short break. Press <span class="key-icon key-icon-space">SPACE</span> to continue when you’re ready, or take a longer break if you need to.`
     ]
   ];
   const totalPages = pages.length;
@@ -3889,7 +3878,7 @@ timeline.push({
         padding: 0 24px;
       }
     </style>
-    <div class="startup-message">Press continue to start the experiment.</div>
+    <div class="startup-message">Please click the “Continue” button below to start the experiment.</div>
   `,
   choices: ['Continue'],
   button_html: (choice) => `<div class="my-btn-container"><button class="jspsych-btn">${choice}</button></div>`
@@ -4186,7 +4175,7 @@ timeline.push({
       </div>
     </div>
   `,
-  choices: ['Continue with Experiment'],
+  choices: ['Continue'],
   button_html: (choice) => `<div class="my-btn-container"><button class="jspsych-btn" id="continue-calc-btn">${choice}</button></div>`,
   on_load: function() {
     const continueBtn = document.getElementById('continue-calc-btn');
@@ -4427,7 +4416,7 @@ timeline.push({
       </main>
     `;
   },
-  choices: ['Continue with Position'],
+  choices: ['Continue'],
   button_html: (choice) => `<div class="my-btn-container"><button class="jspsych-btn" id="continue-position-btn">${choice}</button></div>`,
   data: {
     trial_category: 'stimulus_position_editor',
@@ -4680,16 +4669,7 @@ const conditionalReadyScreen = {
   stimulus: function() {
     // Only show the ready screen with countdown for the selected task
     if (!selectedTask) return '<p>Loading...</p>';
-    
-    const taskNames = {
-      'Motion': 'Motion Discrimination Task',
-      'Orientation': 'Orientation Discrimination Task', 
-      'Centrality': 'Centrality Discrimination Task',
-      'Bar': 'Bar Comparison Task'
-    };
-    
-    const taskName = taskNames[selectedTask] || 'Unknown Task';
-    
+
     return `
       <style>
         body {
@@ -4730,13 +4710,10 @@ const conditionalReadyScreen = {
         ${SHARED_KEY_ICON_CSS}
       </style>
       <div class="ready-container">
-        <div class="ready-title">Ready for ${taskName}?</div>
-        <div class="task-info">
-          The task will begin after a brief countdown.<br>
-          If the central fixation changes from ➕ to ✖️, press <span class="key-icon key-icon-space">SPACE</span> immediately.
-        </div>
+        <div class="ready-title">Ready?</div>
+        <div class="task-info">The task will begin after a brief countdown.</div>
         <div class="countdown" id="countdown">30</div>
-        <div class="start-instruction">You can also press the <span class="key-icon key-icon-space">SPACE</span> to skip the countdown.</div>
+        <div class="start-instruction">Press <span class="key-icon key-icon-space">SPACE</span> to skip the countdown and begin immediately.</div>
       </div>
     `;
   },
