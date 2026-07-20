@@ -788,25 +788,25 @@ const TRIAL_CONFIG = {
     totalTrials: 256, 
     trialsPerBlock: 32, 
     blocks: 8,
-    breakEvery: 64  // Break after every 2 blocks (2 * 32 = 64)
+    breakEvery: 32  // Break after every 2 blocks (2 * 32 = 64)
   },
   Orientation: { 
     totalTrials: 256, 
     trialsPerBlock: 32, 
     blocks: 8,
-    breakEvery: 64  // Break after every 2 blocks
+    breakEvery: 32  // Break after every 2 blocks
   },
   Centrality: { 
     totalTrials: 256, 
     trialsPerBlock: 32, 
     blocks: 8,
-    breakEvery: 64  // Break after every 2 blocks (2 * 32 = 64)
+    breakEvery: 32  // Break after every 2 blocks (2 * 32 = 64)
   },
   Bar: { 
     totalTrials: 256, 
     trialsPerBlock: 32, 
     blocks: 8,
-    breakEvery: 64  // Break after every 2 blocks (2 * 32 = 64)
+    breakEvery: 32  // Break after every 2 blocks (2 * 32 = 64)
   }
 };
 
