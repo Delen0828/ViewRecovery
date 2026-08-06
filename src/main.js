@@ -10,10 +10,23 @@ import jsPsychExtensionWebgazer from "@jspsych/extension-webgazer";
 // import imageButtonResponse from '@jspsych/plugin-image-button-response';
 
 import './style.css';
+const GAZE_FEEDBACK_TRIAL_CLASS = 'gaze-feedback-trial';
+
 const jsPsych = initJsPsych({
   extensions: [
     {type: jsPsychExtensionWebgazer}
-  ]
+  ],
+  on_trial_start: function(trial) {
+    const cssClasses = Array.isArray(trial.css_classes)
+      ? trial.css_classes
+      : [trial.css_classes].filter(Boolean);
+    const gazeFeedbackEnabled = cssClasses.includes(GAZE_FEEDBACK_TRIAL_CLASS);
+
+    setGazeFeedbackEnabled(gazeFeedbackEnabled);
+    if (gazeFeedbackEnabled) {
+      startContinuousGazeTracking();
+    }
+  }
 });
 const timeline = [];
 const screenWidth = window.innerWidth;
@@ -27,7 +40,10 @@ const POST_STIMULUS_CH_DURATION = 500; // Part 3: Crosshair after stimulus
 const FEEDBACK_CH_DURATION = 1000;      // Final: Colored feedback crosshair
 
 // Eye-tracking configuration
-const GAZE_DEVIATION_THRESHOLD = 200; // Pixels from center for gaze point color change
+const GAZE_DEVIATION_THRESHOLD = 200; // Pixels from center for ambient feedback activation
+const GAZE_AVERAGE_WINDOW_MS = 1000;
+const GAZE_RECENTER_CONFIRMATION_MS = 150;
+const GAZE_SAMPLE_STALE_MS = 1000;
 
 // Task progress tracking
 const SHOW_TASK_PROGRESS = true; // Global flag to enable/disable task progress display
@@ -1050,64 +1066,114 @@ function createReadyScreen(taskName = "next task") {
 }
 
 // Eye-tracking helper functions
-// function updateGazePoint(data, elapsedTime) {
-//   const gazePoint = document.getElementById('gaze-point');
-//   if (data == null) {
-//     gazePoint.style.display = 'none';
-//   } else {
-//     gazePoint.style.display = 'block';
-//     gazePoint.style.left = data.x + 'px';
-//     gazePoint.style.top = data.y + 'px';
-    
-//     // Calculate distance from screen center for color change
-//     const centerX = window.innerWidth / 2;
-//     const centerY = window.innerHeight / 2;
-//     const dx = data.x - centerX;
-//     const dy = data.y - centerY;
-//     const distance = Math.sqrt(dx * dx + dy * dy);
-    
-//     // Change color based on distance from center
-//     gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
-//   }
-// }
+let continuousGazeTrackingStarted = false;
+let gazeFeedbackEnabled = false;
+let gazeFeedbackActive = false;
+let gazeSamples = [];
+let gazeWindowStartedAt = null;
+let gazeCenteredSince = null;
+let gazeSampleStaleTimer = null;
 
-function ensureGazepointVisible() {
-  const gazePoint = document.getElementById('gaze-point');
-  if (gazePoint) {
-    gazePoint.style.display = 'block';
+function setGazeGlowActive(active) {
+  gazeFeedbackActive = active;
+  const gazeGlow = document.getElementById('gaze-focus-glow');
+  if (gazeGlow) {
+    gazeGlow.classList.toggle('is-visible', active);
   }
 }
 
-let continuousGazeTrackingStarted = false;
+function clearGazeSampleStaleTimer() {
+  if (gazeSampleStaleTimer !== null) {
+    window.clearTimeout(gazeSampleStaleTimer);
+    gazeSampleStaleTimer = null;
+  }
+}
 
-function updateGazePoint(data) {
-  const gazePoint = document.getElementById('gaze-point');
-  if (!gazePoint) return;
+function resetGazeFeedbackWindow() {
+  gazeSamples = [];
+  gazeWindowStartedAt = null;
+  gazeCenteredSince = null;
+}
 
-  gazePoint.style.display = 'block';
-  if (!data) return;
+function resetGazeFeedback() {
+  clearGazeSampleStaleTimer();
+  resetGazeFeedbackWindow();
+  setGazeGlowActive(false);
+}
 
-  gazePoint.style.left = data.x + 'px';
-  gazePoint.style.top = data.y + 'px';
+function setGazeFeedbackEnabled(enabled) {
+  if (gazeFeedbackEnabled === enabled) return;
 
+  gazeFeedbackEnabled = enabled;
+  resetGazeFeedback();
+}
+
+function scheduleStaleGazeReset() {
+  clearGazeSampleStaleTimer();
+  gazeSampleStaleTimer = window.setTimeout(() => {
+    if (gazeFeedbackEnabled) {
+      resetGazeFeedback();
+    }
+  }, GAZE_SAMPLE_STALE_MS);
+}
+
+function updateGazeFeedback(data) {
+  if (!gazeFeedbackEnabled || !data || !Number.isFinite(data.x) || !Number.isFinite(data.y)) {
+    return;
+  }
+
+  const now = performance.now();
   const centerX = window.innerWidth / 2;
   const centerY = window.innerHeight / 2;
   const distance = Math.hypot(data.x - centerX, data.y - centerY);
-  gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
+
+  scheduleStaleGazeReset();
+
+  if (gazeWindowStartedAt === null) {
+    gazeWindowStartedAt = now;
+  }
+
+  gazeSamples.push({ timestamp: now, distance });
+  const windowStart = now - GAZE_AVERAGE_WINDOW_MS;
+  while (gazeSamples.length > 0 && gazeSamples[0].timestamp < windowStart) {
+    gazeSamples.shift();
+  }
+
+  if (gazeFeedbackActive) {
+    if (distance <= GAZE_DEVIATION_THRESHOLD) {
+      if (gazeCenteredSince === null) {
+        gazeCenteredSince = now;
+      } else if (now - gazeCenteredSince >= GAZE_RECENTER_CONFIRMATION_MS) {
+        setGazeGlowActive(false);
+        resetGazeFeedbackWindow();
+      }
+    } else {
+      gazeCenteredSince = null;
+    }
+    return;
+  }
+
+  if (now - gazeWindowStartedAt < GAZE_AVERAGE_WINDOW_MS || gazeSamples.length === 0) {
+    return;
+  }
+
+  const averageDistance = gazeSamples.reduce((sum, sample) => sum + sample.distance, 0) / gazeSamples.length;
+  if (averageDistance > GAZE_DEVIATION_THRESHOLD) {
+    setGazeGlowActive(true);
+  }
 }
 
 function startContinuousGazeTracking() {
   if (typeof webgazer === 'undefined' || !webgazer.isReady()) return;
 
   if (!continuousGazeTrackingStarted) {
-    webgazer.setGazeListener(updateGazePoint);
+    webgazer.setGazeListener(updateGazeFeedback);
     continuousGazeTrackingStarted = true;
   }
 
   // resume() is idempotent in the pinned WebGazer build. Unlike begin(),
   // it does not request another camera stream or create another prediction loop.
   webgazer.resume();
-  ensureGazepointVisible();
 }
 
 // Eye-tracking calibration sequence functions
@@ -1157,7 +1223,7 @@ const calibration = {
   repetitions_per_point: 2,
   randomize_calibration_order: true,
   on_start: function() {
-    // Gazepoint now remains visible during calibration
+    // Ambient gaze feedback remains disabled during calibration.
   }
 };
 
@@ -1184,7 +1250,7 @@ const validation = {
     task: 'validate'
   },
   on_start: function() {
-    // Gazepoint now remains visible during calibration
+    // Ambient gaze feedback remains disabled during validation.
     // Hide cursor during validation
     document.body.style.cursor = 'none';
   },
@@ -1627,6 +1693,7 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
   
   // Part 1: Pre-stimulus crosshair
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: function() {
       return `
@@ -1655,6 +1722,7 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
   
   // Part 2: Motion stimulus
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: function() {
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
@@ -1687,8 +1755,6 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
       stopMotionAnimation = initMotionAnimation(
         angleArray, screenWidth, screenHeight, chinrestData, signalDirection, position, motionSpeedDegreePerSecond, directionRange, crosshairLength, crosshairStroke
       );
-      
-      startContinuousGazeTracking();
     },
     on_finish: function() {
       if (stopMotionAnimation) {
@@ -1700,6 +1766,7 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
   
   // Part 3: Post-stimulus crosshair
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: function() {
       return `
@@ -1727,6 +1794,7 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
 
   // Part 4: Response trial
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: function() {
       return `
@@ -1793,8 +1861,6 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
       
       // Hide cursor during response trial
       document.body.style.cursor = 'none';
-      
-      startContinuousGazeTracking();
     },
     on_finish: function(data) {
       // Restore cursor after response
@@ -1827,6 +1893,7 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
   
   // Part 5: Feedback crosshair
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: `
       <style>
@@ -1870,6 +1937,7 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
   
   // Pre-stimulus crosshair
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: function() {
       return `
@@ -1898,6 +1966,7 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
   
   // Grating stimulus
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: function() {
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
@@ -1928,8 +1997,6 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
       console.log(`   Position: ${position}`);
       
       initGratingStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, orientation, stripeSpacingDegree, tiltDegree, crosshairLength, crosshairStroke);
-      
-      startContinuousGazeTracking();
     },
     on_finish: function() {
       // Keep gaze listener active for continuous tracking
@@ -1939,6 +2006,7 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
   
   // Post-stimulus crosshair
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: function() {
       return `
@@ -1966,6 +2034,7 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
 
   // Response trial
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: function() {
       return `
@@ -2028,8 +2097,6 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
       
       // Hide cursor during response trial
       document.body.style.cursor = 'none';
-      
-      startContinuousGazeTracking();
     },
     on_finish: function(data) {
       // Restore cursor after response
@@ -2062,6 +2129,7 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
   
   // Feedback crosshair
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: `
       <style>
@@ -2104,6 +2172,7 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
   
   // Pre-stimulus crosshair
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: function() {
       return `
@@ -2132,6 +2201,7 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
   
   // Grid stimulus
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: function() {
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
@@ -2175,8 +2245,6 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
       console.log(`   Position: ${position}`);
       
       initGridStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, finalCenterPercentage, crosshairLength, crosshairStroke);
-      
-      startContinuousGazeTracking();
     },
     on_finish: function() {
       // Keep gaze listener active for continuous tracking
@@ -2186,6 +2254,7 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
   
   // Post-stimulus crosshair
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: function() {
       return `
@@ -2213,6 +2282,7 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
 
   // Response trial
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: function() {
       return `
@@ -2286,8 +2356,6 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
       
       // Hide cursor during response trial
       document.body.style.cursor = 'none';
-      
-      startContinuousGazeTracking();
     },
     on_finish: function(data) {
       // Restore cursor after response
@@ -2320,6 +2388,7 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
   
   // Feedback crosshair
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: `
       <style>
@@ -2362,6 +2431,7 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
   
   // Pre-stimulus crosshair
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: function() {
       return `
@@ -2390,6 +2460,7 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
   
   // Bar chart stimulus
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: function() {
       const chinrestData = jsPsych.data.get().filter({trial_type: 'virtual-chinrest'}).last(1).values()[0];
@@ -2439,8 +2510,6 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
       console.log(`   Position: ${position}`);
       
       initBarChartStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, heights, crosshairLength, crosshairStroke);
-      
-      startContinuousGazeTracking();
     },
     on_finish: function() {
       // Keep gaze listener active for continuous tracking
@@ -2450,6 +2519,7 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
   
   // Post-stimulus crosshair
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: function() {
       return `
@@ -2477,6 +2547,7 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
 
   // Response trial
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: function() {
       return `
@@ -2555,8 +2626,6 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
       
       // Hide cursor during response trial
       document.body.style.cursor = 'none';
-      
-      startContinuousGazeTracking();
     },
     on_finish: function(data) {
       // Restore cursor after response
@@ -2589,6 +2658,7 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
   
   // Feedback crosshair
   trialSequence.push({
+    css_classes: GAZE_FEEDBACK_TRIAL_CLASS,
     type: htmlKeyboardResponse,
     stimulus: `
       <style>

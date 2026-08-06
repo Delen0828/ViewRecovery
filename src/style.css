@@ -1,4 +1,6 @@
 :root {
+	--gaze-glow-fade-in: 600ms;
+	--gaze-glow-fade-out: 1200ms;
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 	line-height: 1.6;
 	font-weight: 400;
@@ -9,6 +11,103 @@
 	text-rendering: optimizeLegibility;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
+}
+
+#gaze-focus-glow {
+	position: fixed;
+	inset: 0;
+	z-index: 9998;
+	pointer-events: none;
+	opacity: 0;
+	visibility: hidden;
+	isolation: isolate;
+	transition:
+		opacity var(--gaze-glow-fade-out) cubic-bezier(0.22, 1, 0.36, 1),
+		visibility 0s linear var(--gaze-glow-fade-out);
+	will-change: opacity;
+}
+
+#gaze-focus-glow::before,
+#gaze-focus-glow::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	border: clamp(12px, 1.3vw, 20px) solid transparent;
+	background: conic-gradient(
+		from 25deg,
+		#53e7ff,
+		#5268ff 20%,
+		#9b5cff 40%,
+		#ff4da6 62%,
+		#7b61ff 80%,
+		#53e7ff
+	) border-box;
+	-webkit-mask:
+		linear-gradient(#000 0 0) padding-box,
+		linear-gradient(#000 0 0);
+	-webkit-mask-composite: xor;
+	mask:
+		linear-gradient(#000 0 0) padding-box,
+		linear-gradient(#000 0 0);
+	mask-composite: exclude;
+	filter: blur(10px) saturate(1.4);
+	transform: scale(1.01);
+	animation: gaze-glow-drift 6s ease-in-out infinite alternate;
+	will-change: filter, transform;
+}
+
+#gaze-focus-glow::after {
+	inset: 4px;
+	border-width: clamp(8px, 0.9vw, 14px);
+	opacity: 0.72;
+	filter: blur(22px) saturate(1.6);
+	animation-name: gaze-glow-drift-soft;
+	animation-direction: alternate-reverse;
+}
+
+#gaze-focus-glow.is-visible {
+	opacity: 1;
+	visibility: visible;
+	transition:
+		opacity var(--gaze-glow-fade-in) cubic-bezier(0.16, 1, 0.3, 1),
+		visibility 0s linear 0s;
+}
+
+@keyframes gaze-glow-drift {
+	0% {
+		filter: blur(10px) saturate(1.35) hue-rotate(0deg);
+		transform: scale(1.01);
+	}
+	50% {
+		filter: blur(16px) saturate(1.65) hue-rotate(18deg);
+		transform: scale(1.018);
+	}
+	100% {
+		filter: blur(12px) saturate(1.5) hue-rotate(-12deg);
+		transform: scale(1.012);
+	}
+}
+
+@keyframes gaze-glow-drift-soft {
+	0% {
+		filter: blur(22px) saturate(1.5) hue-rotate(-10deg);
+		transform: scale(1.012);
+	}
+	50% {
+		filter: blur(28px) saturate(1.75) hue-rotate(12deg);
+		transform: scale(1.02);
+	}
+	100% {
+		filter: blur(24px) saturate(1.6) hue-rotate(24deg);
+		transform: scale(1.015);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	#gaze-focus-glow::before,
+	#gaze-focus-glow::after {
+		animation: none;
+	}
 }
 
 a {
