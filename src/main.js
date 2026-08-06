@@ -378,7 +378,13 @@ function drawCrosshair(svg, width, height, crosshairLen = crosshairLength, cross
 }
 
 // Function to initialize motion animation
+let activeMotionAnimationStop = null;
+
 function initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData = null, signalDirection = [-1, 1], position = 'left_upper', motionSpeedDegreePerSecond = 5, directionRange = 0, crosshairLen = crosshairLength, crosshairStrokeWidth = crosshairStroke) {
+  if (activeMotionAnimationStop) {
+    activeMotionAnimationStop();
+  }
+
   const svg = d3.select("#stimulus");
   
   // 获取实际的SVG尺寸
@@ -416,13 +422,17 @@ function initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData =
   const radius = deg2Pixel(5, chinrestData)/2;
   const dotRadius = 4;
   const numDots = 30; // All dots are now signal dots
+  // Preserve physical speed when the browser misses a frame and avoid reading
+  // the growing jsPsych data collection on every animation callback.
+  const motionSpeedPixelsPerSecond = deg2Pixel(motionSpeedDegreePerSecond / 60, chinrestData) * 60;
   
   // DEBUG: Log what motion parameters are actually being used
   console.log(`INIT MOTION ANIMATION: Received directionRange = ${directionRange}°`);
   console.log(`INIT MOTION ANIMATION: Received motionSpeedDegreePerSecond = ${motionSpeedDegreePerSecond}°/s`);
   // motionSpeed is now passed as parameter
 
-  let interval = null;
+  let animationFrame = null;
+  let lastFrameTime = null;
   let dots = [];
   let directions = [];
   let animationTimeout = null;
@@ -478,14 +488,26 @@ function initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData =
     }
   }
 
-  function updateDots() {
-    // Convert degrees/second to degrees/frame by dividing by frame rate (60fps)
-    const motionSpeedDegreesPerFrame = motionSpeedDegreePerSecond / 60;
-    const motionSpeedPixels = deg2Pixel(motionSpeedDegreesPerFrame, chinrestData);
+  function updateDots(timestamp) {
+    const svgElement = svg.node();
+    if (!svgElement || !svgElement.isConnected) {
+      stopAnimation();
+      return;
+    }
+
+    if (lastFrameTime === null) {
+      lastFrameTime = timestamp;
+      animationFrame = requestAnimationFrame(updateDots);
+      return;
+    }
+
+    const elapsedSeconds = (timestamp - lastFrameTime) / 1000;
+    const motionDistance = motionSpeedPixelsPerSecond * elapsedSeconds;
+    lastFrameTime = timestamp;
     for (let i = 0; i < numDots; i++) {
       let d = dots[i];
-      d.x += directions[i][0] * motionSpeedPixels;
-      d.y += directions[i][1] * motionSpeedPixels;
+      d.x += directions[i][0] * motionDistance;
+      d.y += directions[i][1] * motionDistance;
 
       // Check if outside the light ring
       if (d.x * d.x + d.y * d.y > radius * radius) {
@@ -509,33 +531,35 @@ function initMotionAnimation(angleArray,screenWidth,screenHeight, chinrestData =
         .attr("cx", animationCenterX + d.x)
         .attr("cy", animationCenterY + d.y);
     }
+
+    animationFrame = requestAnimationFrame(updateDots);
   }
 
   function startAnimation() {
-    const duration = 5; // Fixed 5 seconds
-    const durationMs = duration * 1000;
-    
-    interval = setInterval(updateDots, 1000 / 60); // 60 fps
-    
-    animationTimeout = setTimeout(() => {
-      stopAnimation();
-    }, durationMs);
+    lastFrameTime = null;
+    animationFrame = requestAnimationFrame(updateDots);
+    animationTimeout = setTimeout(stopAnimation, DURATION);
   }
 
   function stopAnimation() {
-    if (interval) {
-      clearInterval(interval);
-      interval = null;
+    if (animationFrame !== null) {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = null;
     }
-    if (animationTimeout) {
+    if (animationTimeout !== null) {
       clearTimeout(animationTimeout);
       animationTimeout = null;
+    }
+    if (activeMotionAnimationStop === stopAnimation) {
+      activeMotionAnimationStop = null;
     }
   }
 
   drawCircle();
   initializeDots();
+  activeMotionAnimationStop = stopAnimation;
   startAnimation();
+  return stopAnimation;
 }
 
 
@@ -1054,6 +1078,38 @@ function ensureGazepointVisible() {
   }
 }
 
+let continuousGazeTrackingStarted = false;
+
+function updateGazePoint(data) {
+  const gazePoint = document.getElementById('gaze-point');
+  if (!gazePoint) return;
+
+  gazePoint.style.display = 'block';
+  if (!data) return;
+
+  gazePoint.style.left = data.x + 'px';
+  gazePoint.style.top = data.y + 'px';
+
+  const centerX = window.innerWidth / 2;
+  const centerY = window.innerHeight / 2;
+  const distance = Math.hypot(data.x - centerX, data.y - centerY);
+  gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
+}
+
+function startContinuousGazeTracking() {
+  if (typeof webgazer === 'undefined' || !webgazer.isReady()) return;
+
+  if (!continuousGazeTrackingStarted) {
+    webgazer.setGazeListener(updateGazePoint);
+    continuousGazeTrackingStarted = true;
+  }
+
+  // resume() is idempotent in the pinned WebGazer build. Unlike begin(),
+  // it does not request another camera stream or create another prediction loop.
+  webgazer.resume();
+  ensureGazepointVisible();
+}
+
 // Eye-tracking calibration sequence functions
 const cameraInstructions = {
   type: jsPsychHtmlButtonResponse,
@@ -1567,6 +1623,7 @@ function generateTrialSequence(taskType, trialNum, totalTrials = null) {
 function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum = 1, totalTrials = 1) {
   const { position, signalDirection } = combination;
   const trialSequence = [];
+  let stopMotionAnimation = null;
   
   // Part 1: Pre-stimulus crosshair
   trialSequence.push({
@@ -1627,34 +1684,17 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
       console.log(`   SignalDirection: [${signalDirection[0]}, ${signalDirection[1]}]`);
       console.log(`   Position: ${position}`);
       
-      initMotionAnimation(
+      stopMotionAnimation = initMotionAnimation(
         angleArray, screenWidth, screenHeight, chinrestData, signalDirection, position, motionSpeedDegreePerSecond, directionRange, crosshairLength, crosshairStroke
       );
       
-      // Start gaze tracking
-      const centerX = window.innerWidth / 2;
-      const centerY = window.innerHeight / 2;
-      webgazer.begin().then(() => {
-        // Ensure gazepoint is always visible
-        ensureGazepointVisible();
-        webgazer.setGazeListener((data) => {
-          const gazePoint = document.getElementById('gaze-point');
-          // Always ensure gazepoint is visible
-          gazePoint.style.display = 'block';
-          if (data) {
-            gazePoint.style.left = data.x + 'px';
-            gazePoint.style.top = data.y + 'px';
-            const dx = data.x - centerX;
-            const dy = data.y - centerY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
-          }
-        });
-      });
+      startContinuousGazeTracking();
     },
     on_finish: function() {
-      // Keep gaze listener active for continuous tracking
-      // webgazer.clearGazeListener(); // Commented out to prevent freezing
+      if (stopMotionAnimation) {
+        stopMotionAnimation();
+        stopMotionAnimation = null;
+      }
     }
   });
   
@@ -1754,29 +1794,7 @@ function generateMotionTrialSequence(combination, taskType = 'Motion', trialNum 
       // Hide cursor during response trial
       document.body.style.cursor = 'none';
       
-      // Setup webgazer for response trial
-      const centerX = window.innerWidth / 2;
-      const centerY = window.innerHeight / 2;
-      webgazer.begin().then(() => {
-        // Ensure gazepoint is always visible
-        ensureGazepointVisible();
-        webgazer.setGazeListener((data) => {
-          const gazePoint = document.getElementById('gaze-point');
-          // Always ensure gazepoint is visible
-          gazePoint.style.display = 'block';
-          if (data) {
-            console.log(`[Motion Response] Gazepoint: x=${data.x.toFixed(1)}, y=${data.y.toFixed(1)}`);
-            gazePoint.style.left = data.x + 'px';
-            gazePoint.style.top = data.y + 'px';
-            const dx = data.x - centerX;
-            const dy = data.y - centerY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
-          } else {
-            console.log('[Motion Response] No gaze data received');
-          }
-        });
-      });
+      startContinuousGazeTracking();
     },
     on_finish: function(data) {
       // Restore cursor after response
@@ -1911,26 +1929,7 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
       
       initGratingStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, orientation, stripeSpacingDegree, tiltDegree, crosshairLength, crosshairStroke);
       
-      // Start gaze tracking
-      const centerX = window.innerWidth / 2;
-      const centerY = window.innerHeight / 2;
-      webgazer.begin().then(() => {
-        // Ensure gazepoint is always visible
-        ensureGazepointVisible();
-        webgazer.setGazeListener((data) => {
-          const gazePoint = document.getElementById('gaze-point');
-          // Always ensure gazepoint is visible
-          gazePoint.style.display = 'block';
-          if (data) {
-            gazePoint.style.left = data.x + 'px';
-            gazePoint.style.top = data.y + 'px';
-            const dx = data.x - centerX;
-            const dy = data.y - centerY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
-          }
-        });
-      });
+      startContinuousGazeTracking();
     },
     on_finish: function() {
       // Keep gaze listener active for continuous tracking
@@ -2030,29 +2029,7 @@ function generateGratingTrialSequence(combination, taskType = 'Orientation', tri
       // Hide cursor during response trial
       document.body.style.cursor = 'none';
       
-      // Setup webgazer for response trial
-      const centerX = window.innerWidth / 2;
-      const centerY = window.innerHeight / 2;
-      webgazer.begin().then(() => {
-        // Ensure gazepoint is always visible
-        ensureGazepointVisible();
-        webgazer.setGazeListener((data) => {
-          const gazePoint = document.getElementById('gaze-point');
-          // Always ensure gazepoint is visible
-          gazePoint.style.display = 'block';
-          if (data) {
-            console.log(`[Orientation Response] Gazepoint: x=${data.x.toFixed(1)}, y=${data.y.toFixed(1)}`);
-            gazePoint.style.left = data.x + 'px';
-            gazePoint.style.top = data.y + 'px';
-            const dx = data.x - centerX;
-            const dy = data.y - centerY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
-          } else {
-            console.log('[Orientation Response] No gaze data received');
-          }
-        });
-      });
+      startContinuousGazeTracking();
     },
     on_finish: function(data) {
       // Restore cursor after response
@@ -2199,26 +2176,7 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
       
       initGridStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, centerColor, finalCenterPercentage, crosshairLength, crosshairStroke);
       
-      // Start gaze tracking
-      const centerX = window.innerWidth / 2;
-      const centerY = window.innerHeight / 2;
-      webgazer.begin().then(() => {
-        // Ensure gazepoint is always visible
-        ensureGazepointVisible();
-        webgazer.setGazeListener((data) => {
-          const gazePoint = document.getElementById('gaze-point');
-          // Always ensure gazepoint is visible
-          gazePoint.style.display = 'block';
-          if (data) {
-            gazePoint.style.left = data.x + 'px';
-            gazePoint.style.top = data.y + 'px';
-            const dx = data.x - centerX;
-            const dy = data.y - centerY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
-          }
-        });
-      });
+      startContinuousGazeTracking();
     },
     on_finish: function() {
       // Keep gaze listener active for continuous tracking
@@ -2329,29 +2287,7 @@ function generateGridTrialSequence(combination, taskType = 'Centrality', trialNu
       // Hide cursor during response trial
       document.body.style.cursor = 'none';
       
-      // Setup webgazer for response trial
-      const centerX = window.innerWidth / 2;
-      const centerY = window.innerHeight / 2;
-      webgazer.begin().then(() => {
-        // Ensure gazepoint is always visible
-        ensureGazepointVisible();
-        webgazer.setGazeListener((data) => {
-          const gazePoint = document.getElementById('gaze-point');
-          // Always ensure gazepoint is visible
-          gazePoint.style.display = 'block';
-          if (data) {
-            console.log(`[Centrality Response] Gazepoint: x=${data.x.toFixed(1)}, y=${data.y.toFixed(1)}`);
-            gazePoint.style.left = data.x + 'px';
-            gazePoint.style.top = data.y + 'px';
-            const dx = data.x - centerX;
-            const dy = data.y - centerY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
-          } else {
-            console.log('[Centrality Response] No gaze data received');
-          }
-        });
-      });
+      startContinuousGazeTracking();
     },
     on_finish: function(data) {
       // Restore cursor after response
@@ -2504,26 +2440,7 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
       
       initBarChartStimulus(angleArray, screenWidth, screenHeight, chinrestData, position, heights, crosshairLength, crosshairStroke);
       
-      // Start gaze tracking
-      const centerX = window.innerWidth / 2;
-      const centerY = window.innerHeight / 2;
-      webgazer.begin().then(() => {
-        // Ensure gazepoint is always visible
-        ensureGazepointVisible();
-        webgazer.setGazeListener((data) => {
-          const gazePoint = document.getElementById('gaze-point');
-          // Always ensure gazepoint is visible
-          gazePoint.style.display = 'block';
-          if (data) {
-            gazePoint.style.left = data.x + 'px';
-            gazePoint.style.top = data.y + 'px';
-            const dx = data.x - centerX;
-            const dy = data.y - centerY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
-          }
-        });
-      });
+      startContinuousGazeTracking();
     },
     on_finish: function() {
       // Keep gaze listener active for continuous tracking
@@ -2639,29 +2556,7 @@ function generateBarChartTrialSequence(combination, taskType = 'Bar', trialNum =
       // Hide cursor during response trial
       document.body.style.cursor = 'none';
       
-      // Setup webgazer for response trial
-      const centerX = window.innerWidth / 2;
-      const centerY = window.innerHeight / 2;
-      webgazer.begin().then(() => {
-        // Ensure gazepoint is always visible
-        ensureGazepointVisible();
-        webgazer.setGazeListener((data) => {
-          const gazePoint = document.getElementById('gaze-point');
-          // Always ensure gazepoint is visible
-          gazePoint.style.display = 'block';
-          if (data) {
-            console.log(`[Bar Response] Gazepoint: x=${data.x.toFixed(1)}, y=${data.y.toFixed(1)}`);
-            gazePoint.style.left = data.x + 'px';
-            gazePoint.style.top = data.y + 'px';
-            const dx = data.x - centerX;
-            const dy = data.y - centerY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
-          } else {
-            console.log('[Bar Response] No gaze data received');
-          }
-        });
-      });
+      startContinuousGazeTracking();
     },
     on_finish: function(data) {
       // Restore cursor after response
