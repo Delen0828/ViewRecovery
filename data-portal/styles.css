@@ -262,6 +262,33 @@ tbody tr:last-child td {
   word-break: break-word;
 }
 
+.pass-rate-value {
+  display: inline-flex;
+  min-width: 84px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.pass-rate-value.passing {
+  background: #ecfdf3;
+  color: #047857;
+}
+
+.pass-rate-value.failing {
+  background: #fef2f2;
+  color: #b42318;
+}
+
+.pass-rate-value.unavailable {
+  background: #f2f4f7;
+  color: #667085;
+}
+
 .file-context {
   margin: 0 0 18px;
   color: #253249;
@@ -387,7 +414,9 @@ tbody tr:last-child td {
 .chart-wrap {
   min-height: 360px;
   margin-top: 12px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 4px;
 }
 
 .chart {
@@ -399,6 +428,17 @@ tbody tr:last-child td {
 .axis text {
   fill: #475467;
   font-size: 0.78rem;
+}
+
+.session-axis .session-tick-label {
+  fill: #253249;
+  font-weight: 800;
+}
+
+.session-axis .session-tick-date {
+  fill: #667085;
+  font-size: 0.68rem;
+  font-weight: 500;
 }
 
 .axis path,

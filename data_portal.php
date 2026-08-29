@@ -646,6 +646,7 @@ function data_portal_send_user_trends(string $dataDir, array $scope): void
         return $b['created_at'] <=> $a['created_at'];
     });
 
+    data_portal_assign_session_sequence($records, $fileSessions);
     $trendPayload = data_portal_build_user_trend_payload($records, $fileSessions);
     $includeRecords = ((string) ($_GET['include_records'] ?? '')) === '1';
 
@@ -677,8 +678,11 @@ function data_portal_build_user_trend_payload(array $records, array $fileSession
         $task = trim((string) ($record['task'] ?? ''));
         $dateKey = trim((string) ($record['dateKey'] ?? ''));
         $dateLocal = trim((string) ($record['dateLocal'] ?? ''));
+        $fileName = trim((string) ($record['fileName'] ?? ''));
+        $sessionIndex = (int) ($record['sessionIndex'] ?? 0);
+        $sessionLabel = trim((string) ($record['sessionLabel'] ?? ''));
         $difficultyLevel = trim((string) ($record['difficultyLevel'] ?? ''));
-        if ($task === '' || $dateKey === '' || $dateLocal === '') {
+        if ($task === '' || $dateKey === '' || $dateLocal === '' || $fileName === '' || $sessionIndex < 1) {
             continue;
         }
 
@@ -686,12 +690,15 @@ function data_portal_build_user_trend_payload(array $records, array $fileSession
         $users[$userId]['trials']++;
         $users[$userId]['correct'] += !empty($record['correct']) ? 1 : 0;
 
-        $accuracyKey = $userId . "\0" . $dateKey . "\0" . $task;
+        $accuracyKey = $userId . "\0" . $fileName . "\0" . $task;
         if (!isset($accuracyGroups[$accuracyKey])) {
             $accuracyGroups[$accuracyKey] = [
                 'userId' => $userId,
                 'userLabel' => $userLabel,
                 'task' => $task,
+                'fileName' => $fileName,
+                'sessionIndex' => $sessionIndex,
+                'sessionLabel' => $sessionLabel !== '' ? $sessionLabel : 'Session ' . $sessionIndex,
                 'dateLocal' => $dateLocal,
                 'dateKey' => $dateKey,
                 'correct' => 0,
@@ -711,6 +718,9 @@ function data_portal_build_user_trend_payload(array $records, array $fileSession
                 'userId' => $userId,
                 'userLabel' => $userLabel,
                 'task' => $task,
+                'fileName' => $fileName,
+                'sessionIndex' => $sessionIndex,
+                'sessionLabel' => $sessionLabel !== '' ? $sessionLabel : 'Session ' . $sessionIndex,
                 'dateLocal' => $dateLocal,
                 'dateKey' => $dateKey,
                 'difficultyLevel' => $difficultyLevel,
@@ -728,7 +738,7 @@ function data_portal_build_user_trend_payload(array $records, array $fileSession
         $userLabel = (string) ($session['userLabel'] ?? data_portal_user_label_for_chart($userId));
         data_portal_ensure_user_summary($users, $userId, $userLabel);
 
-        $fileName = (string) ($session['fileName'] ?? '');
+        $fileName = trim((string) ($session['fileName'] ?? ''));
         if ($fileName !== '') {
             $users[$userId]['sessions'][$fileName] = true;
         }
@@ -739,16 +749,21 @@ function data_portal_build_user_trend_payload(array $records, array $fileSession
         $task = trim((string) ($session['task'] ?? ''));
         $dateKey = trim((string) ($session['dateKey'] ?? ''));
         $dateLocal = trim((string) ($session['dateLocal'] ?? ''));
-        if ($task === '' || $dateKey === '' || $dateLocal === '') {
+        $sessionIndex = (int) ($session['sessionIndex'] ?? 0);
+        $sessionLabel = trim((string) ($session['sessionLabel'] ?? ''));
+        if ($task === '' || $dateKey === '' || $dateLocal === '' || $fileName === '' || $sessionIndex < 1) {
             continue;
         }
 
-        $durationKey = $userId . "\0" . $dateKey . "\0" . $task;
+        $durationKey = $userId . "\0" . $fileName . "\0" . $task;
         if (!isset($durationGroups[$durationKey])) {
             $durationGroups[$durationKey] = [
                 'userId' => $userId,
                 'userLabel' => $userLabel,
                 'task' => $task,
+                'fileName' => $fileName,
+                'sessionIndex' => $sessionIndex,
+                'sessionLabel' => $sessionLabel !== '' ? $sessionLabel : 'Session ' . $sessionIndex,
                 'dateLocal' => $dateLocal,
                 'dateKey' => $dateKey,
                 'durationMs' => 0.0,
@@ -780,7 +795,7 @@ function data_portal_build_user_trend_payload(array $records, array $fileSession
     usort($userSummaries, static fn(array $a, array $b): int => strnatcasecmp((string) $a['label'], (string) $b['label']));
 
     $durationSeries = array_values($durationGroups);
-    usort($durationSeries, static fn(array $a, array $b): int => [$a['userLabel'], $a['dateKey'], $a['task']] <=> [$b['userLabel'], $b['dateKey'], $b['task']]);
+    usort($durationSeries, static fn(array $a, array $b): int => [$a['userLabel'], $a['sessionIndex'], $a['task']] <=> [$b['userLabel'], $b['sessionIndex'], $b['task']]);
 
     return [
         'user_summaries' => $userSummaries,
@@ -788,6 +803,55 @@ function data_portal_build_user_trend_payload(array $records, array $fileSession
         'duration_series' => $durationSeries,
         'difficulty_series' => data_portal_finalize_count_series($difficultyGroups),
     ];
+}
+
+function data_portal_assign_session_sequence(array &$records, array &$fileSessions): void
+{
+    $sessionsByUser = [];
+
+    foreach ($fileSessions as $sourceIndex => $session) {
+        $userId = trim((string) ($session['userId'] ?? 'Unknown')) ?: 'Unknown';
+        $fileName = trim((string) ($session['fileName'] ?? ''));
+        if ($fileName === '') {
+            continue;
+        }
+
+        $sessionsByUser[$userId][] = [
+            'sourceIndex' => $sourceIndex,
+            'fileName' => $fileName,
+            'timestamp' => (int) ($session['sessionTimestamp'] ?? 0),
+        ];
+    }
+
+    $sequenceByFile = [];
+    foreach ($sessionsByUser as $sessions) {
+        usort($sessions, static fn(array $a, array $b): int => [$a['timestamp'], $a['fileName']] <=> [$b['timestamp'], $b['fileName']]);
+
+        foreach ($sessions as $offset => $session) {
+            $sessionIndex = $offset + 1;
+            $sessionLabel = 'Session ' . $sessionIndex;
+            $sourceIndex = (int) $session['sourceIndex'];
+            $fileName = (string) $session['fileName'];
+
+            $fileSessions[$sourceIndex]['sessionIndex'] = $sessionIndex;
+            $fileSessions[$sourceIndex]['sessionLabel'] = $sessionLabel;
+            $sequenceByFile[$fileName] = [
+                'sessionIndex' => $sessionIndex,
+                'sessionLabel' => $sessionLabel,
+            ];
+        }
+    }
+
+    foreach ($records as &$record) {
+        $fileName = trim((string) ($record['fileName'] ?? ''));
+        if ($fileName === '' || !isset($sequenceByFile[$fileName])) {
+            continue;
+        }
+
+        $record['sessionIndex'] = $sequenceByFile[$fileName]['sessionIndex'];
+        $record['sessionLabel'] = $sequenceByFile[$fileName]['sessionLabel'];
+    }
+    unset($record);
 }
 
 function data_portal_ensure_user_summary(array &$users, string $userId, string $userLabel): void
@@ -816,7 +880,7 @@ function data_portal_finalize_count_series(array $groups): array
         return $group;
     }, $groups));
 
-    usort($series, static fn(array $a, array $b): int => [$a['userLabel'], $a['dateKey'], $a['task'], (string) ($a['difficultyLevel'] ?? '')] <=> [$b['userLabel'], $b['dateKey'], $b['task'], (string) ($b['difficultyLevel'] ?? '')]);
+    usort($series, static fn(array $a, array $b): int => [$a['userLabel'], $a['sessionIndex'], $a['task'], (string) ($a['difficultyLevel'] ?? '')] <=> [$b['userLabel'], $b['sessionIndex'], $b['task'], (string) ($b['difficultyLevel'] ?? '')]);
 
     return $series;
 }
@@ -946,7 +1010,7 @@ function data_portal_get_csv_metrics(
     $cacheKey = str_replace('\\', '/', $relativePath);
     $sizeBytes = $fileInfo->getSize();
     $modifiedAt = $fileInfo->getMTime();
-    $parserVersion = 3;
+    $parserVersion = 4;
 
     if (
         isset($cache[$cacheKey])
@@ -1061,6 +1125,7 @@ function data_portal_parse_csv_metrics(string $absolutePath, string $relativePat
             'difficultySortValue' => $difficulty['sortValue'],
             'dateLocal' => $dateInfo['dateLocal'],
             'dateKey' => $dateInfo['dateKey'],
+            'sessionTimestamp' => $dateInfo['sessionTimestamp'],
             'fileName' => $relativePath,
         ];
     }
@@ -1088,6 +1153,7 @@ function data_portal_parse_csv_metrics(string $absolutePath, string $relativePat
             'fileName' => $relativePath,
             'dateLocal' => $dateInfo['dateLocal'],
             'dateKey' => $dateInfo['dateKey'],
+            'sessionTimestamp' => $dateInfo['sessionTimestamp'],
             'durationMs' => $duration['totalMs'],
             'trainingMs' => $duration['trainingMs'],
             'restingMs' => $duration['restingMs'],
@@ -1118,6 +1184,7 @@ function data_portal_empty_csv_metrics(string $relativePath, SplFileInfo $fileIn
             'fileName' => $relativePath,
             'dateLocal' => $dateInfo['dateLocal'],
             'dateKey' => $dateInfo['dateKey'],
+            'sessionTimestamp' => $dateInfo['sessionTimestamp'],
             'durationMs' => 0,
             'trainingMs' => 0,
             'restingMs' => 0,
@@ -1264,16 +1331,28 @@ function data_portal_session_date_info(string $relativePath, SplFileInfo $fileIn
 {
     $name = str_replace('\\', '/', $relativePath);
     if (preg_match('/(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})/', $name, $match) === 1) {
-        return [
-            'dateLocal' => $match[1] . '-' . $match[2] . '-' . $match[3] . 'T' . $match[4] . ':' . $match[5] . ':' . $match[6],
-            'dateKey' => $match[1] . '-' . $match[2] . '-' . $match[3],
-        ];
+        $utc = DateTimeImmutable::createFromFormat(
+            '!Y-m-d\TH-i-s',
+            $match[1] . '-' . $match[2] . '-' . $match[3] . 'T' . $match[4] . '-' . $match[5] . '-' . $match[6],
+            new DateTimeZone('UTC')
+        );
+
+        if ($utc instanceof DateTimeImmutable) {
+            $eastern = $utc->setTimezone(new DateTimeZone('America/New_York'));
+            return [
+                'dateLocal' => $eastern->format('Y-m-d\TH:i:sP'),
+                'dateKey' => $eastern->format('Y-m-d'),
+                'sessionTimestamp' => $utc->getTimestamp(),
+            ];
+        }
     }
 
     $createdAt = $fileInfo->getCTime();
+    $eastern = (new DateTimeImmutable('@' . $createdAt))->setTimezone(new DateTimeZone('America/New_York'));
     return [
-        'dateLocal' => date('Y-m-d\TH:i:s', $createdAt),
-        'dateKey' => date('Y-m-d', $createdAt),
+        'dateLocal' => $eastern->format('Y-m-d\TH:i:sP'),
+        'dateKey' => $eastern->format('Y-m-d'),
+        'sessionTimestamp' => $createdAt,
     ];
 }
 
