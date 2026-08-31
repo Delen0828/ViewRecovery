@@ -1,0 +1,319 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  color: #1f2937;
+  background: #ffffff;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#jspsych-target {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  background: #ffffff;
+}
+
+#jspsych-target {
+  min-height: 100vh;
+}
+
+#jspsych-target.jspsych-display-element {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+#jspsych-target .jspsych-content-wrapper {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+  margin: auto;
+  align-items: center;
+  justify-content: center;
+}
+
+#jspsych-target .jspsych-content {
+  width: 100%;
+  max-width: none;
+  text-align: center;
+}
+
+.gaze-test-card {
+  box-sizing: border-box;
+  width: min(680px, calc(100vw - 48px));
+  margin: auto;
+  padding: 36px 40px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgb(15 23 42 / 10%);
+  text-align: center;
+}
+
+.gaze-test-card h1,
+.gaze-test-card h2 {
+  margin: 0 0 18px;
+  color: #111827;
+  line-height: 1.2;
+}
+
+.gaze-test-card p {
+  margin: 12px 0;
+  font-size: 18px;
+  line-height: 1.55;
+}
+
+.gaze-test-card .secondary-copy {
+  color: #4b5563;
+  font-size: 16px;
+}
+
+.sound-effect-fieldset {
+  min-width: 0;
+  margin: 26px 0 0;
+  padding: 20px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  text-align: left;
+}
+
+.sound-effect-fieldset legend {
+  padding: 0 8px;
+  color: #111827;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.sound-effect-fieldset #sound-effect-help {
+  margin: 0 0 16px;
+  text-align: center;
+}
+
+.sound-effect-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sound-effect-option {
+  position: relative;
+  cursor: pointer;
+}
+
+.sound-effect-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.sound-effect-option-body {
+  box-sizing: border-box;
+  display: flex;
+  min-height: 54px;
+  padding: 12px 14px;
+  border: 2px solid #d1d5db;
+  border-radius: 9px;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;
+  color: #374151;
+  text-align: center;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.sound-effect-option:hover .sound-effect-option-body {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.sound-effect-option input:checked + .sound-effect-option-body {
+  border-color: #2563eb;
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.sound-effect-option input:focus-visible + .sound-effect-option-body {
+  outline: 3px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+.sound-effect-option-name {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.gaze-test-card .sound-effect-status {
+  min-height: 24px;
+  margin: 14px 0 0;
+  color: #4b5563;
+  font-size: 15px;
+  text-align: center;
+}
+
+.gaze-test-card .sound-effect-status.is-loading {
+  color: #1d4ed8;
+}
+
+.gaze-test-card .sound-effect-status.is-ready {
+  color: #047857;
+}
+
+.gaze-test-card .sound-effect-status.is-error {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.keycap {
+  display: inline-block;
+  min-width: 56px;
+  padding: 2px 10px;
+  border: 1px solid #9ca3af;
+  border-bottom-width: 3px;
+  border-radius: 6px;
+  background: #f9fafb;
+  color: #111827;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.9em;
+  font-weight: 700;
+}
+
+.jspsych-btn {
+  min-width: 150px;
+  margin: 22px 8px 0;
+  padding: 12px 22px;
+  border: 0;
+  border-radius: 8px;
+  background: #2563eb;
+  color: #ffffff;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgb(15 23 42 / 18%);
+}
+
+.jspsych-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.jspsych-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  box-shadow: none;
+  opacity: 0.7;
+}
+
+.jspsych-btn:focus-visible {
+  outline: 3px solid #93c5fd;
+  outline-offset: 3px;
+}
+
+body.gaze-test-running {
+  overflow: hidden;
+  cursor: none;
+}
+
+.pursuit-stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.fixation-crosshair {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 3;
+  width: 30px;
+  height: 30px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.fixation-crosshair::before,
+.fixation-crosshair::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  background: #000000;
+  transform: translate(-50%, -50%);
+}
+
+.fixation-crosshair::before {
+  width: 30px;
+  height: 2px;
+}
+
+.fixation-crosshair::after {
+  width: 2px;
+  height: 30px;
+}
+
+.moving-target {
+  position: fixed;
+  top: 50%;
+  left: 10vw;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #000000;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  will-change: left, top;
+}
+
+#gaze-point {
+  position: fixed;
+  z-index: 9999;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ef4444;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  will-change: left, top, background-color;
+}
+
+#gaze-point.is-visible {
+  opacity: 1;
+}
+
+@media (max-width: 600px) {
+  .gaze-test-card {
+    width: calc(100vw - 28px);
+    padding: 28px 20px;
+  }
+
+  .gaze-test-card p {
+    font-size: 16px;
+  }
+
+  .jspsych-btn {
+    display: block;
+    width: 100%;
+    margin: 14px 0 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .sound-effect-options {
+    grid-template-columns: 1fr;
+  }
+}

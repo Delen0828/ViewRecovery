@@ -40,9 +40,8 @@ const POST_STIMULUS_CH_DURATION = 500; // Part 3: Crosshair after stimulus
 const FEEDBACK_CH_DURATION = 1000;      // Final: Colored feedback crosshair
 
 // Eye-tracking configuration
-const GAZE_DEVIATION_THRESHOLD = 200; // Pixels from center for ambient feedback activation
-const GAZE_AVERAGE_WINDOW_MS = 1000;
-const GAZE_RECENTER_CONFIRMATION_MS = 150;
+const GAZE_DEVIATION_THRESHOLD = 200; // Pixels from center for gaze point color change
+const GAZE_POSITION_AVERAGE_WINDOW_MS = 50;
 const GAZE_SAMPLE_STALE_MS = 1000;
 
 // Task progress tracking
@@ -1068,17 +1067,13 @@ function createReadyScreen(taskName = "next task") {
 // Eye-tracking helper functions
 let continuousGazeTrackingStarted = false;
 let gazeFeedbackEnabled = false;
-let gazeFeedbackActive = false;
-let gazeSamples = [];
-let gazeWindowStartedAt = null;
-let gazeCenteredSince = null;
+let gazePositionSamples = [];
 let gazeSampleStaleTimer = null;
 
-function setGazeGlowActive(active) {
-  gazeFeedbackActive = active;
-  const gazeGlow = document.getElementById('gaze-focus-glow');
-  if (gazeGlow) {
-    gazeGlow.classList.toggle('is-visible', active);
+function setGazePointVisible(visible) {
+  const gazePoint = document.getElementById('gaze-point');
+  if (gazePoint) {
+    gazePoint.style.display = visible ? 'block' : 'none';
   }
 }
 
@@ -1090,15 +1085,13 @@ function clearGazeSampleStaleTimer() {
 }
 
 function resetGazeFeedbackWindow() {
-  gazeSamples = [];
-  gazeWindowStartedAt = null;
-  gazeCenteredSince = null;
+  gazePositionSamples = [];
 }
 
 function resetGazeFeedback() {
   clearGazeSampleStaleTimer();
   resetGazeFeedbackWindow();
-  setGazeGlowActive(false);
+  setGazePointVisible(false);
 }
 
 function setGazeFeedbackEnabled(enabled) {
@@ -1119,48 +1112,37 @@ function scheduleStaleGazeReset() {
 
 function updateGazeFeedback(data) {
   if (!gazeFeedbackEnabled || !data || !Number.isFinite(data.x) || !Number.isFinite(data.y)) {
+    setGazePointVisible(false);
     return;
   }
 
   const now = performance.now();
-  const centerX = window.innerWidth / 2;
-  const centerY = window.innerHeight / 2;
-  const distance = Math.hypot(data.x - centerX, data.y - centerY);
-
   scheduleStaleGazeReset();
 
-  if (gazeWindowStartedAt === null) {
-    gazeWindowStartedAt = now;
+  gazePositionSamples.push({ timestamp: now, x: data.x, y: data.y });
+  const windowStart = now - GAZE_POSITION_AVERAGE_WINDOW_MS;
+  while (gazePositionSamples.length > 0 && gazePositionSamples[0].timestamp < windowStart) {
+    gazePositionSamples.shift();
   }
 
-  gazeSamples.push({ timestamp: now, distance });
-  const windowStart = now - GAZE_AVERAGE_WINDOW_MS;
-  while (gazeSamples.length > 0 && gazeSamples[0].timestamp < windowStart) {
-    gazeSamples.shift();
-  }
+  const averagedPosition = gazePositionSamples.reduce(
+    (sum, sample) => ({ x: sum.x + sample.x, y: sum.y + sample.y }),
+    { x: 0, y: 0 }
+  );
+  averagedPosition.x /= gazePositionSamples.length;
+  averagedPosition.y /= gazePositionSamples.length;
 
-  if (gazeFeedbackActive) {
-    if (distance <= GAZE_DEVIATION_THRESHOLD) {
-      if (gazeCenteredSince === null) {
-        gazeCenteredSince = now;
-      } else if (now - gazeCenteredSince >= GAZE_RECENTER_CONFIRMATION_MS) {
-        setGazeGlowActive(false);
-        resetGazeFeedbackWindow();
-      }
-    } else {
-      gazeCenteredSince = null;
-    }
-    return;
-  }
+  const gazePoint = document.getElementById('gaze-point');
+  if (!gazePoint) return;
 
-  if (now - gazeWindowStartedAt < GAZE_AVERAGE_WINDOW_MS || gazeSamples.length === 0) {
-    return;
-  }
+  const centerX = window.innerWidth / 2;
+  const centerY = window.innerHeight / 2;
+  const distance = Math.hypot(averagedPosition.x - centerX, averagedPosition.y - centerY);
 
-  const averageDistance = gazeSamples.reduce((sum, sample) => sum + sample.distance, 0) / gazeSamples.length;
-  if (averageDistance > GAZE_DEVIATION_THRESHOLD) {
-    setGazeGlowActive(true);
-  }
+  gazePoint.style.left = `${averagedPosition.x}px`;
+  gazePoint.style.top = `${averagedPosition.y}px`;
+  gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
+  setGazePointVisible(true);
 }
 
 function startContinuousGazeTracking() {
