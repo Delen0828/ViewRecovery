@@ -77,6 +77,99 @@ body {
   font-size: 16px;
 }
 
+.display-calibration-grid {
+  display: grid;
+  margin-top: 24px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  text-align: left;
+}
+
+.display-calibration-group {
+  min-width: 0;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 9px;
+  background: #f9fafb;
+}
+
+.display-calibration-group legend {
+  padding: 0 5px;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.display-calibration-group label {
+  display: flex;
+  margin-top: 10px;
+  flex-direction: column;
+  gap: 5px;
+  color: #4b5563;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.input-with-unit,
+.threshold-input-with-unit {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.input-with-unit input {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 7px 9px;
+  border: 1px solid #9ca3af;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #111827;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.input-with-unit input:focus-visible,
+.threshold-input-with-unit input:focus-visible {
+  border-color: #2563eb;
+  outline: 3px solid #bfdbfe;
+  outline-offset: 1px;
+}
+
+.input-with-unit input[aria-invalid='true'],
+.threshold-input-with-unit input[aria-invalid='true'] {
+  border-color: #b91c1c;
+}
+
+.display-calibration-preview {
+  display: flex;
+  width: fit-content;
+  margin: 18px auto 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  align-items: baseline;
+  gap: 10px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 14px;
+}
+
+.display-calibration-preview strong {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gaze-test-card .display-calibration-error {
+  margin: 8px 0 0;
+  color: #b91c1c;
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .sound-effect-fieldset {
   min-width: 0;
   margin: 26px 0 0;
@@ -153,6 +246,68 @@ body {
 .sound-effect-option-name {
   font-size: 16px;
   font-weight: 700;
+}
+
+.sound-tuning-controls {
+  display: grid;
+  margin-top: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sound-tuning-control {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 7px;
+  color: #374151;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.sound-tuning-control select,
+.threshold-input-with-unit input {
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 36px 9px 12px;
+  border: 1px solid #9ca3af;
+  border-radius: 8px;
+  background-color: #ffffff;
+  color: #111827;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.threshold-input-with-unit input {
+  min-width: 0;
+  padding-right: 10px;
+  cursor: text;
+  font-variant-numeric: tabular-nums;
+}
+
+.sound-tuning-control select:hover {
+  border-color: #2563eb;
+}
+
+.sound-tuning-control select:focus-visible {
+  border-color: #2563eb;
+  outline: 3px solid #bfdbfe;
+  outline-offset: 1px;
+}
+
+.sound-threshold-error {
+  color: #b91c1c;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sound-threshold-equivalent {
+  min-height: 30px;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.25;
 }
 
 .gaze-test-card .sound-effect-status {
@@ -303,6 +458,11 @@ body.gaze-test-running {
 
   .gaze-test-card p {
     font-size: 16px;
+  }
+
+  .display-calibration-grid,
+  .sound-tuning-controls {
+    grid-template-columns: 1fr;
   }
 
   .jspsych-btn {

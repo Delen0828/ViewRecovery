@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:sound-curve": "node --test test/sound-frequency-curve.test.js",
+    "test:gaze": "node --test test/sound-frequency-curve.test.js test/visual-angle.test.js"
   },
   "devDependencies": {
     "vite": "^6.3.5"

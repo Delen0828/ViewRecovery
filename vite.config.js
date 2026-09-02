@@ -9,6 +9,7 @@ export default defineConfig({
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         gazeTest: fileURLToPath(new URL('./gaze-test/index.html', import.meta.url)),
+        soundTest: fileURLToPath(new URL('./sound-test/index.html', import.meta.url)),
       },
     },
   },

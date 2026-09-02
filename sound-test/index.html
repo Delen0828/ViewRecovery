@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gaze Sound Frequency Test</title>
+  </head>
+  <body>
+    <header class="readout" aria-live="polite">
+      <h1>Sound frequency test</h1>
+      <p class="instruction">Drag the black dot to simulate gaze distance from the center.</p>
+      <div class="measurements">
+        <div class="measurement">
+          <span class="measurement-label">Distance</span>
+          <output id="distance-output" for="distance-slider">0 px</output>
+        </div>
+        <div class="measurement-divider" aria-hidden="true"></div>
+        <div class="measurement">
+          <span class="measurement-label">Frequency</span>
+          <output id="frequency-output" for="distance-slider">0.83 Hz</output>
+        </div>
+      </div>
+      <p class="interval-readout" id="interval-output">One sound every 1,200 ms</p>
+    </header>
+
+    <main class="distance-stage">
+      <div class="track-wrap">
+        <span class="track-label track-label-left" id="left-distance-label">Max</span>
+        <span class="track-label track-label-center">0 px</span>
+        <span class="track-label track-label-right" id="right-distance-label">Max</span>
+        <span class="center-tick" aria-hidden="true"></span>
+        <input
+          id="distance-slider"
+          class="distance-slider"
+          type="range"
+          min="-1000"
+          max="1000"
+          step="1"
+          value="0"
+          aria-label="Simulated horizontal gaze distance"
+        />
+      </div>
+      <p class="curve-note" id="curve-note">The first 200 px stay at the slowest rate; after that, the square curve controls the rate.</p>
+
+      <section class="tuning-controls" aria-label="Sound frequency settings">
+        <label class="tuning-control" for="inner-zone-select">
+          <span>Sound within 500 px</span>
+          <select id="inner-zone-select">
+            <option value="play" selected>Play</option>
+            <option value="mute">Mute</option>
+          </select>
+        </label>
+
+        <label class="tuning-control" for="curve-select">
+          <span>Frequency curve</span>
+          <select id="curve-select">
+            <option value="linear">Linear</option>
+            <option value="square" selected>Square: x²</option>
+            <option value="exponential">Exponential: exp(x)</option>
+            <option value="logarithmic">Logarithmic: log(x)</option>
+          </select>
+        </label>
+      </section>
+    </main>
+
+    <footer class="sound-picker">
+      <fieldset class="sound-effect-fieldset" aria-describedby="sound-effect-help sound-effect-status">
+        <legend>Choose a sound</legend>
+        <p id="sound-effect-help">The selected sound repeats at the frequency shown above.</p>
+        <div class="sound-effect-options">
+          <label class="sound-effect-option">
+            <input type="radio" name="gaze-sound-effect" value="alert" />
+            <span class="sound-effect-option-body">
+              <span class="sound-effect-option-name">Alert</span>
+            </span>
+          </label>
+          <label class="sound-effect-option">
+            <input type="radio" name="gaze-sound-effect" value="ding" />
+            <span class="sound-effect-option-body">
+              <span class="sound-effect-option-name">Ding</span>
+            </span>
+          </label>
+          <label class="sound-effect-option">
+            <input type="radio" name="gaze-sound-effect" value="wooden-fish" />
+            <span class="sound-effect-option-body">
+              <span class="sound-effect-option-name">Wooden fish</span>
+            </span>
+          </label>
+          <label class="sound-effect-option">
+            <input type="radio" name="gaze-sound-effect" value="none" />
+            <span class="sound-effect-option-body">
+              <span class="sound-effect-option-name">None</span>
+            </span>
+          </label>
+        </div>
+        <p class="sound-effect-status" id="sound-effect-status" role="status" aria-live="polite">
+          Select a sound to begin playback.
+        </p>
+      </fieldset>
+    </footer>
+
+    <script type="module" src="../src/sound-frequency-test.js"></script>
+  </body>
+</html>

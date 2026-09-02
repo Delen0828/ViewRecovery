@@ -8,6 +8,17 @@ import webgazerValidate from '@jspsych/plugin-webgazer-validate';
 import webgazerExtension from '@jspsych/extension-webgazer';
 
 import './gaze-test.css';
+import {
+  MAX_INTERVAL_MS as GAZE_SOUND_MAX_INTERVAL_MS,
+  MIN_INTERVAL_MS as GAZE_SOUND_MIN_INTERVAL_MS,
+  intervalForDistance,
+  shouldPlaySoundAtDistance,
+} from './sound-frequency-curve.js';
+import {
+  DEFAULT_DISPLAY_INPUTS,
+  calculateDisplayCalibration,
+  degreesToPixels,
+} from './visual-angle.js';
 
 const CALIBRATION_POINTS = [
   [25, 25],
@@ -25,10 +36,7 @@ const SWEEP_LEFT_FRACTION = 0.1;
 const SWEEP_RIGHT_FRACTION = 0.9;
 const GAZE_AVERAGE_WINDOW_MS = 50;
 const GAZE_STALE_MS = 1000;
-const GAZE_CENTER_THRESHOLD_PX = 200;
-const GAZE_SOUND_MAX_INTERVAL_MS = 1200;
-const GAZE_SOUND_MIN_INTERVAL_MS = 200;
-const GAZE_SOUND_INTERVAL_MAPPING = 'quadratic';
+const DEFAULT_GAZE_THRESHOLD_DEGREES = 5;
 const SOUND_EFFECTS = {
   alert: {
     label: 'Alert',
@@ -54,6 +62,10 @@ let gazeListenerActive = false;
 let gazeStaleTimerId = null;
 let gazeSamples = [];
 let selectedSoundEffect = null;
+let selectedSoundCurve = 'square';
+let playSoundWithinInnerZone = true;
+let gazeThresholdDegrees = DEFAULT_GAZE_THRESHOLD_DEGREES;
+let displayCalibration = calculateDisplayCalibration(DEFAULT_DISPLAY_INPUTS);
 let gazeAudioContext = null;
 let soundBeatTimerId = null;
 let soundPlaybackActive = false;
@@ -178,16 +190,16 @@ function resumeGazeAudioContext() {
 
 function gazeSoundInterval(distanceFromCrosshair) {
   const maximumDistance = Math.hypot(window.innerWidth / 2, window.innerHeight / 2);
-  const scalableDistance = Math.max(maximumDistance - GAZE_CENTER_THRESHOLD_PX, 1);
-  const distanceProgress = Math.min(
-    1,
-    Math.max(0, (distanceFromCrosshair - GAZE_CENTER_THRESHOLD_PX) / scalableDistance),
+  return intervalForDistance(
+    distanceFromCrosshair,
+    maximumDistance,
+    selectedSoundCurve,
+    getGazeThresholdPx(),
   );
+}
 
-  return (
-    GAZE_SOUND_MAX_INTERVAL_MS -
-    (GAZE_SOUND_MAX_INTERVAL_MS - GAZE_SOUND_MIN_INTERVAL_MS) * distanceProgress ** 2
-  );
+function getGazeThresholdPx() {
+  return degreesToPixels(gazeThresholdDegrees, displayCalibration.pixelsPerDegree);
 }
 
 function clearSoundBeatTimer() {
@@ -290,7 +302,12 @@ function updateGazeSound(distanceFromCrosshair) {
   if (
     selectedSoundEffect === null ||
     selectedSoundEffect === 'none' ||
-    !soundBuffers.has(selectedSoundEffect)
+    !soundBuffers.has(selectedSoundEffect) ||
+    !shouldPlaySoundAtDistance(
+      distanceFromCrosshair,
+      playSoundWithinInnerZone,
+      getGazeThresholdPx(),
+    )
   ) {
     stopGazeSoundPlayback();
     return;
@@ -375,7 +392,7 @@ function updateGazeDisplay(data) {
   gazePoint.style.left = `${averagedPosition.x}px`;
   gazePoint.style.top = `${averagedPosition.y}px`;
   gazePoint.style.backgroundColor =
-    distanceFromCrosshair <= GAZE_CENTER_THRESHOLD_PX ? '#2563eb' : '#ef4444';
+    distanceFromCrosshair <= getGazeThresholdPx() ? '#2563eb' : '#ef4444';
   scheduleGazeStaleReset();
 
   if (!gazeIsOnScreen) {
@@ -471,6 +488,112 @@ const cameraInstructions = {
 
 const initializeCamera = {
   type: webgazerInitCamera,
+};
+
+const displayCalibrationTrial = {
+  type: htmlButtonResponse,
+  stimulus: card(
+    'Display calibration',
+    `
+      <p id="display-calibration-help">Enter the current display setup so gaze distance can be converted from pixels to visual degrees.</p>
+      <div class="display-calibration-grid" aria-describedby="display-calibration-help">
+        <fieldset class="display-calibration-group">
+          <legend>Screen resolution</legend>
+          <label>
+            <span>Width</span>
+            <span class="input-with-unit">
+              <input id="display-resolution-width" type="number" min="1" step="1" value="${DEFAULT_DISPLAY_INPUTS.resolutionWidthPx}" />
+              <span>px</span>
+            </span>
+          </label>
+          <label>
+            <span>Height</span>
+            <span class="input-with-unit">
+              <input id="display-resolution-height" type="number" min="1" step="1" value="${DEFAULT_DISPLAY_INPUTS.resolutionHeightPx}" />
+              <span>px</span>
+            </span>
+          </label>
+        </fieldset>
+        <fieldset class="display-calibration-group">
+          <legend>Screen dimensions</legend>
+          <label>
+            <span>Width</span>
+            <span class="input-with-unit">
+              <input id="display-width-cm" type="number" min="0.1" step="0.1" value="${DEFAULT_DISPLAY_INPUTS.screenWidthCm}" />
+              <span>cm</span>
+            </span>
+          </label>
+          <label>
+            <span>Height</span>
+            <span class="input-with-unit">
+              <input id="display-height-cm" type="number" min="0.1" step="0.1" value="${DEFAULT_DISPLAY_INPUTS.screenHeightCm}" />
+              <span>cm</span>
+            </span>
+          </label>
+        </fieldset>
+        <fieldset class="display-calibration-group">
+          <legend>Viewing distance</legend>
+          <label>
+            <span>Eyes to screen</span>
+            <span class="input-with-unit">
+              <input id="display-viewing-distance-cm" type="number" min="0.1" step="0.5" value="${DEFAULT_DISPLAY_INPUTS.viewingDistanceCm}" />
+              <span>cm</span>
+            </span>
+          </label>
+        </fieldset>
+      </div>
+      <div class="display-calibration-preview" role="status" aria-live="polite">
+        <span>Pixels per visual degree</span>
+        <strong id="display-pixels-per-degree">${displayCalibration.pixelsPerDegree.toFixed(2)}</strong>
+      </div>
+      <p class="display-calibration-error" id="display-calibration-error" hidden>Enter a positive number in every field.</p>
+    `,
+  ),
+  choices: ['Continue'],
+  button_html: (choice) => `<button class="jspsych-btn" id="continue-display-calibration">${choice}</button>`,
+  data: {
+    task: 'display-calibration',
+  },
+  on_load: () => {
+    const continueButton = document.getElementById('continue-display-calibration');
+    const preview = document.getElementById('display-pixels-per-degree');
+    const errorElement = document.getElementById('display-calibration-error');
+    const inputs = {
+      resolutionWidthPx: document.getElementById('display-resolution-width'),
+      resolutionHeightPx: document.getElementById('display-resolution-height'),
+      screenWidthCm: document.getElementById('display-width-cm'),
+      screenHeightCm: document.getElementById('display-height-cm'),
+      viewingDistanceCm: document.getElementById('display-viewing-distance-cm'),
+    };
+
+    const updateCalibration = () => {
+      const values = Object.fromEntries(
+        Object.entries(inputs).map(([name, input]) => [name, Number(input?.value)]),
+      );
+
+      try {
+        displayCalibration = calculateDisplayCalibration(values);
+        preview.textContent = displayCalibration.pixelsPerDegree.toFixed(2);
+        errorElement.hidden = true;
+        continueButton.disabled = false;
+        Object.values(inputs).forEach((input) => input.removeAttribute('aria-invalid'));
+      } catch {
+        preview.textContent = '—';
+        errorElement.hidden = false;
+        continueButton.disabled = true;
+        Object.values(inputs).forEach((input) => input.setAttribute('aria-invalid', 'true'));
+      }
+    };
+
+    Object.values(inputs).forEach((input) => input.addEventListener('input', updateCalibration));
+    updateCalibration();
+  },
+  on_finish: (data) => {
+    data.display_calibration = { ...displayCalibration };
+    jsPsych.data.addProperties({
+      display_calibration: { ...displayCalibration },
+    });
+  },
 };
 
 function enterFullscreenTrial(message) {
@@ -596,15 +719,40 @@ function setupSoundEffectSelector() {
   const soundInputs = Array.from(
     document.querySelectorAll('input[name="gaze-sound-effect"]'),
   );
+  const innerZoneSelect = document.getElementById('gaze-inner-zone-select');
+  const thresholdInput = document.getElementById('gaze-threshold-degrees');
+  const thresholdPixels = document.getElementById('gaze-threshold-pixels');
+  const thresholdError = document.getElementById('gaze-threshold-error');
+  const curveSelect = document.getElementById('gaze-curve-select');
   const startButton = document.querySelector(
     '#jspsych-html-button-response-btngroup button[data-choice="0"]',
   );
 
-  if (!fieldset || !statusElement || soundInputs.length === 0 || !startButton) {
+  if (
+    !fieldset ||
+    !statusElement ||
+    soundInputs.length === 0 ||
+    !innerZoneSelect ||
+    !thresholdInput ||
+    !thresholdPixels ||
+    !thresholdError ||
+    !curveSelect ||
+    !startButton
+  ) {
     return;
   }
 
   let selectionVersion = 0;
+  let soundSelectionReady = false;
+
+  const thresholdIsValid = () => {
+    const threshold = Number(thresholdInput.value);
+    return Number.isFinite(threshold) && threshold >= 0.1 && threshold <= 90;
+  };
+
+  const updateStartAvailability = () => {
+    startButton.disabled = !soundSelectionReady || !thresholdIsValid();
+  };
 
   const setStatus = (state, message) => {
     statusElement.classList.remove('is-loading', 'is-ready', 'is-error');
@@ -618,11 +766,13 @@ function setupSoundEffectSelector() {
   const applySelection = async (soundEffect) => {
     const currentSelectionVersion = ++selectionVersion;
     selectedSoundEffect = soundEffect;
-    startButton.disabled = true;
+    soundSelectionReady = false;
+    updateStartAvailability();
 
     if (soundEffect === 'none') {
       setStatus('ready', 'No sound feedback will play.');
-      startButton.disabled = false;
+      soundSelectionReady = true;
+      updateStartAvailability();
       return;
     }
 
@@ -634,7 +784,8 @@ function setupSoundEffectSelector() {
 
     if (soundBuffers.has(soundEffect)) {
       setStatus('ready', `${soundConfig.label} is ready.`);
-      startButton.disabled = false;
+      soundSelectionReady = true;
+      updateStartAvailability();
       return;
     }
 
@@ -668,10 +819,38 @@ function setupSoundEffectSelector() {
     }
 
     setStatus('ready', `${soundConfig.label} is ready.`);
-    startButton.disabled = false;
+    soundSelectionReady = true;
+    updateStartAvailability();
   };
 
   startButton.disabled = true;
+  innerZoneSelect.value = playSoundWithinInnerZone ? 'play' : 'mute';
+  thresholdInput.value = String(gazeThresholdDegrees);
+  curveSelect.value = selectedSoundCurve;
+
+  innerZoneSelect.addEventListener('change', () => {
+    playSoundWithinInnerZone = innerZoneSelect.value === 'play';
+  });
+
+  curveSelect.addEventListener('change', () => {
+    selectedSoundCurve = curveSelect.value;
+  });
+
+  thresholdInput.addEventListener('input', () => {
+    if (thresholdIsValid()) {
+      gazeThresholdDegrees = Number(thresholdInput.value);
+      thresholdPixels.textContent = `Equivalent to ${getGazeThresholdPx().toFixed(1)} px with this display calibration.`;
+      thresholdInput.removeAttribute('aria-invalid');
+      thresholdError.hidden = true;
+    } else {
+      thresholdPixels.textContent = '';
+      thresholdInput.setAttribute('aria-invalid', 'true');
+      thresholdError.hidden = false;
+    }
+    updateStartAvailability();
+  });
+  thresholdPixels.textContent = `Equivalent to ${getGazeThresholdPx().toFixed(1)} px with this display calibration.`;
+
   startButton.addEventListener('click', resumeGazeAudioContext, {
     capture: true,
   });
@@ -709,13 +888,40 @@ const pursuitInstructions = {
     'Horizontal eye-gaze test',
     `
       <p>Follow the moving black dot with your eyes. A black crosshair will remain fixed at screen center.</p>
-      <p>The red/blue dot shows the estimated gaze position. Its color is based only on distance from the center crosshair.</p>
+      <p>The gaze dot is blue inside the selected visual-angle threshold and red outside it. The same threshold controls sound feedback.</p>
       <p>Press <span class="keycap">SPACE</span> at any time to stop.</p>
       <fieldset class="sound-effect-fieldset" id="sound-effect-fieldset" aria-describedby="sound-effect-help sound-effect-status">
         <legend>Sound feedback</legend>
         <p class="secondary-copy" id="sound-effect-help">Choose one option before starting. Sounds repeat faster as gaze moves farther from the crosshair.</p>
         <div class="sound-effect-options">
           ${soundEffectOptionsMarkup()}
+        </div>
+        <div class="sound-tuning-controls">
+          <label class="sound-tuning-control" for="gaze-inner-zone-select">
+            <span>Sound inside threshold</span>
+            <select id="gaze-inner-zone-select">
+              <option value="play">Play</option>
+              <option value="mute">Mute</option>
+            </select>
+          </label>
+          <label class="sound-tuning-control" for="gaze-threshold-degrees">
+            <span>Threshold (visual degrees)</span>
+            <span class="threshold-input-with-unit">
+              <input id="gaze-threshold-degrees" type="number" min="0.1" max="90" step="0.1" value="${DEFAULT_GAZE_THRESHOLD_DEGREES}" aria-describedby="gaze-threshold-error" />
+              <span>°</span>
+            </span>
+            <small id="gaze-threshold-pixels" class="sound-threshold-equivalent"></small>
+            <small id="gaze-threshold-error" class="sound-threshold-error" hidden>Enter 0.1–90°.</small>
+          </label>
+          <label class="sound-tuning-control" for="gaze-curve-select">
+            <span>Frequency curve</span>
+            <select id="gaze-curve-select">
+              <option value="linear">Linear</option>
+              <option value="square">Square: x²</option>
+              <option value="exponential">Exponential: exp(x)</option>
+              <option value="logarithmic">Logarithmic: log(x)</option>
+            </select>
+          </label>
         </div>
         <p class="sound-effect-status" id="sound-effect-status" role="status" aria-live="polite">Select a sound option to continue.</p>
       </fieldset>
@@ -740,8 +946,12 @@ const pursuitTrial = {
     sound_effect: () => selectedSoundEffect,
     sound_interval_max_ms: GAZE_SOUND_MAX_INTERVAL_MS,
     sound_interval_min_ms: GAZE_SOUND_MIN_INTERVAL_MS,
-    sound_distance_threshold_px: GAZE_CENTER_THRESHOLD_PX,
-    sound_interval_mapping: GAZE_SOUND_INTERVAL_MAPPING,
+    sound_interval_mapping: () => selectedSoundCurve,
+    sound_inside_threshold: () => playSoundWithinInnerZone,
+    gaze_threshold_degrees: () => gazeThresholdDegrees,
+    gaze_threshold_px: () => getGazeThresholdPx(),
+    pixels_per_degree: () => displayCalibration.pixelsPerDegree,
+    threshold_affects: 'sound-gating-frequency-curve-and-gaze-point-color',
     sound_max_distance_basis: 'viewport-corner-radius',
   },
   on_load: startPursuitTest,
@@ -779,4 +989,9 @@ const repeatableTestSession = {
 };
 
 preloadSoundEffects();
-jsPsych.run([cameraInstructions, initializeCamera, repeatableTestSession]);
+jsPsych.run([
+  cameraInstructions,
+  initializeCamera,
+  displayCalibrationTrial,
+  repeatableTestSession,
+]);
