@@ -10,11 +10,51 @@ import jsPsychExtensionWebgazer from "@jspsych/extension-webgazer";
 // import imageButtonResponse from '@jspsych/plugin-image-button-response';
 
 import './style.css';
+import {
+  CONFIDENCE_LEVEL,
+  calculateGazeConfidenceEllipse,
+  confidenceShadeOpacity,
+} from './gaze-confidence.js';
+import {
+  advanceGazeSamplingClock,
+  shouldAcceptGazeSample,
+  trimGazeSamplesToWindow,
+} from './gaze-sampling.js';
+import {
+  MAX_INTERVAL_MS as GAZE_SOUND_MAX_INTERVAL_MS,
+  MIN_INTERVAL_MS as GAZE_SOUND_MIN_INTERVAL_MS,
+  intervalForDistance,
+  shouldPlaySoundAtDistance,
+} from './sound-frequency-curve.js';
 const GAZE_FEEDBACK_TRIAL_CLASS = 'gaze-feedback-trial';
+
+// Main-experiment gaze feedback parameters. Adjust these values to tune the design.
+const GAZE_TIME_WINDOW_MS = 300;
+const GAZE_SAMPLE_RATE_HZ = 60;
+const GAZE_CONFIDENCE_RADIUS_ENABLED = true;
+const GAZE_COLOR_CHANGE_ENABLED = false;
+const GAZE_SOUND_EFFECT = 'alert';
+const GAZE_SOUND_MUTED_INSIDE_THRESHOLD = true;
+const GAZE_THRESHOLD_DEGREES = 5;
+const GAZE_SOUND_CURVE = 'exponential';
+const GAZE_SAMPLE_STALE_MS = 1000;
+
+const GAZE_SOUND_SOURCES = {
+  alert: '/audio/alert.mp3',
+  ding: '/audio/ding.mp3',
+  'wooden-fish': '/audio/wooden-fish.mp3',
+  none: null,
+};
 
 const jsPsych = initJsPsych({
   extensions: [
-    {type: jsPsychExtensionWebgazer}
+    {
+      type: jsPsychExtensionWebgazer,
+      params: {
+        round_predictions: false,
+        sampling_interval: 1000 / GAZE_SAMPLE_RATE_HZ,
+      },
+    }
   ],
   on_trial_start: function(trial) {
     const cssClasses = Array.isArray(trial.css_classes)
@@ -28,6 +68,20 @@ const jsPsych = initJsPsych({
     }
   }
 });
+
+jsPsych.data.addProperties({
+  gaze_time_window_ms: GAZE_TIME_WINDOW_MS,
+  gaze_sample_rate_hz: GAZE_SAMPLE_RATE_HZ,
+  gaze_confidence_radius_enabled: GAZE_CONFIDENCE_RADIUS_ENABLED,
+  gaze_confidence_level: CONFIDENCE_LEVEL,
+  gaze_color_change_enabled: GAZE_COLOR_CHANGE_ENABLED,
+  gaze_sound_effect: GAZE_SOUND_EFFECT,
+  gaze_sound_muted_inside_threshold: GAZE_SOUND_MUTED_INSIDE_THRESHOLD,
+  gaze_threshold_degrees: GAZE_THRESHOLD_DEGREES,
+  gaze_sound_curve: GAZE_SOUND_CURVE,
+  gaze_sound_interval_min_ms: GAZE_SOUND_MIN_INTERVAL_MS,
+  gaze_sound_interval_max_ms: GAZE_SOUND_MAX_INTERVAL_MS,
+});
 const timeline = [];
 const screenWidth = window.innerWidth;
 const screenHeight = window.innerHeight;
@@ -38,11 +92,6 @@ const DURATION = 200; // 动画时长
 const PRE_STIMULUS_CH_DURATION = 1000;  // Part 1: Initial crosshair before stimulus
 const POST_STIMULUS_CH_DURATION = 500; // Part 3: Crosshair after stimulus  
 const FEEDBACK_CH_DURATION = 1000;      // Final: Colored feedback crosshair
-
-// Eye-tracking configuration
-const GAZE_DEVIATION_THRESHOLD = 200; // Pixels from center for gaze point color change
-const GAZE_POSITION_AVERAGE_WINDOW_MS = 50;
-const GAZE_SAMPLE_STALE_MS = 1000;
 
 // Task progress tracking
 const SHOW_TASK_PROGRESS = true; // Global flag to enable/disable task progress display
@@ -1069,11 +1118,215 @@ let continuousGazeTrackingStarted = false;
 let gazeFeedbackEnabled = false;
 let gazePositionSamples = [];
 let gazeSampleStaleTimer = null;
+let gazeSamplingClockTime = null;
+let gazeConfidenceBoundAvailable = false;
+let gazeThresholdPixels = null;
+let gazeAudioContext = null;
+let gazeSoundBuffer = null;
+let gazeSoundLoadPromise = null;
+let gazeSoundLoadError = null;
+let gazeSoundBeatTimer = null;
+let gazeSoundPlaybackActive = false;
+let currentGazeSoundIntervalMs = GAZE_SOUND_MAX_INTERVAL_MS;
+let lastGazeSoundBeatTime = null;
+
+const activeGazeSoundSources = new Set();
+
+function getGazeThresholdPixels() {
+  if (gazeThresholdPixels === null) {
+    gazeThresholdPixels = deg2Pixel(GAZE_THRESHOLD_DEGREES);
+  }
+  return gazeThresholdPixels;
+}
+
+function getGazeAudioContext() {
+  if (gazeAudioContext !== null) {
+    return gazeAudioContext;
+  }
+
+  const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextConstructor) {
+    throw new Error('This browser does not support the Web Audio API.');
+  }
+
+  gazeAudioContext = new AudioContextConstructor();
+  return gazeAudioContext;
+}
+
+function loadGazeSoundEffect() {
+  const soundSource = GAZE_SOUND_SOURCES[GAZE_SOUND_EFFECT];
+  if (!soundSource) {
+    return Promise.resolve(null);
+  }
+  if (gazeSoundBuffer !== null) {
+    return Promise.resolve(gazeSoundBuffer);
+  }
+  if (gazeSoundLoadPromise !== null) {
+    return gazeSoundLoadPromise;
+  }
+  if (gazeSoundLoadError !== null) {
+    return Promise.reject(gazeSoundLoadError);
+  }
+
+  gazeSoundLoadPromise = window.fetch(soundSource)
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`Could not load ${soundSource} (${response.status}).`);
+      }
+      return response.arrayBuffer();
+    })
+    .then((audioData) => getGazeAudioContext().decodeAudioData(audioData))
+    .then((audioBuffer) => {
+      gazeSoundBuffer = audioBuffer;
+      return audioBuffer;
+    })
+    .catch((error) => {
+      gazeSoundLoadError = error;
+      console.error(`Unable to load gaze sound effect "${GAZE_SOUND_EFFECT}".`, error);
+      throw error;
+    })
+    .finally(() => {
+      gazeSoundLoadPromise = null;
+    });
+
+  return gazeSoundLoadPromise;
+}
+
+function resumeGazeAudioContext() {
+  if (GAZE_SOUND_EFFECT === 'none') return;
+
+  loadGazeSoundEffect().catch(() => {
+    // The load error is logged once by loadGazeSoundEffect().
+  });
+
+  try {
+    const audioContext = getGazeAudioContext();
+    if (audioContext.state !== 'running') {
+      audioContext.resume().catch((error) => {
+        console.error('Unable to start gaze sound playback.', error);
+      });
+    }
+  } catch (error) {
+    console.error('Unable to initialize gaze sound playback.', error);
+  }
+}
+
+function clearGazeSoundBeatTimer() {
+  if (gazeSoundBeatTimer !== null) {
+    window.clearTimeout(gazeSoundBeatTimer);
+    gazeSoundBeatTimer = null;
+  }
+}
+
+function stopActiveGazeSoundSources() {
+  activeGazeSoundSources.forEach((source) => {
+    source.onended = null;
+    try {
+      source.stop();
+    } catch {
+      // A source that ended naturally no longer needs to be stopped.
+    }
+    source.disconnect();
+  });
+  activeGazeSoundSources.clear();
+}
+
+function stopGazeSoundPlayback() {
+  clearGazeSoundBeatTimer();
+  stopActiveGazeSoundSources();
+  gazeSoundPlaybackActive = false;
+  currentGazeSoundIntervalMs = GAZE_SOUND_MAX_INTERVAL_MS;
+  lastGazeSoundBeatTime = null;
+}
+
+function playGazeSoundBeat() {
+  if (!gazeSoundBuffer || !gazeAudioContext || gazeAudioContext.state !== 'running') {
+    return false;
+  }
+
+  const source = gazeAudioContext.createBufferSource();
+  source.buffer = gazeSoundBuffer;
+  source.connect(gazeAudioContext.destination);
+  source.onended = () => {
+    activeGazeSoundSources.delete(source);
+    source.disconnect();
+  };
+  activeGazeSoundSources.add(source);
+
+  try {
+    source.start();
+    lastGazeSoundBeatTime = performance.now();
+    return true;
+  } catch {
+    activeGazeSoundSources.delete(source);
+    source.onended = null;
+    source.disconnect();
+    return false;
+  }
+}
+
+function scheduleNextGazeSoundBeat() {
+  clearGazeSoundBeatTimer();
+  if (!gazeSoundPlaybackActive || lastGazeSoundBeatTime === null) return;
+
+  const elapsed = performance.now() - lastGazeSoundBeatTime;
+  const delay = Math.max(0, currentGazeSoundIntervalMs - elapsed);
+  gazeSoundBeatTimer = window.setTimeout(() => {
+    gazeSoundBeatTimer = null;
+    if (!gazeSoundPlaybackActive) return;
+    if (!playGazeSoundBeat()) {
+      stopGazeSoundPlayback();
+      return;
+    }
+    scheduleNextGazeSoundBeat();
+  }, delay);
+}
+
+function updateGazeSound(distanceFromCenter) {
+  const thresholdPixels = getGazeThresholdPixels();
+  const playSoundWithinThreshold = !GAZE_SOUND_MUTED_INSIDE_THRESHOLD;
+  if (
+    GAZE_SOUND_EFFECT === 'none' ||
+    !gazeSoundBuffer ||
+    !shouldPlaySoundAtDistance(
+      distanceFromCenter,
+      playSoundWithinThreshold,
+      thresholdPixels,
+    )
+  ) {
+    stopGazeSoundPlayback();
+    return;
+  }
+
+  const maximumDistance = Math.hypot(window.innerWidth / 2, window.innerHeight / 2);
+  currentGazeSoundIntervalMs = intervalForDistance(
+    distanceFromCenter,
+    maximumDistance,
+    GAZE_SOUND_CURVE,
+    thresholdPixels,
+  );
+
+  if (!gazeSoundPlaybackActive) {
+    gazeSoundPlaybackActive = true;
+    if (!playGazeSoundBeat()) {
+      gazeSoundPlaybackActive = false;
+      return;
+    }
+  }
+  scheduleNextGazeSoundBeat();
+}
 
 function setGazePointVisible(visible) {
   const gazePoint = document.getElementById('gaze-point');
   if (gazePoint) {
     gazePoint.style.display = visible ? 'block' : 'none';
+  }
+  const confidenceBound = document.getElementById('gaze-confidence-bound');
+  if (confidenceBound) {
+    confidenceBound.style.display =
+      visible && GAZE_CONFIDENCE_RADIUS_ENABLED && gazeConfidenceBoundAvailable
+        ? 'block'
+        : 'none';
   }
 }
 
@@ -1086,10 +1339,13 @@ function clearGazeSampleStaleTimer() {
 
 function resetGazeFeedbackWindow() {
   gazePositionSamples = [];
+  gazeSamplingClockTime = null;
+  gazeConfidenceBoundAvailable = false;
 }
 
 function resetGazeFeedback() {
   clearGazeSampleStaleTimer();
+  stopGazeSoundPlayback();
   resetGazeFeedbackWindow();
   setGazePointVisible(false);
 }
@@ -1110,27 +1366,65 @@ function scheduleStaleGazeReset() {
   }, GAZE_SAMPLE_STALE_MS);
 }
 
+function renderGazeConfidenceBound(confidenceEllipse, color) {
+  const confidenceBound = document.getElementById('gaze-confidence-bound');
+  if (!confidenceBound || confidenceEllipse.sampleCount < 2) {
+    gazeConfidenceBoundAvailable = false;
+    if (confidenceBound) confidenceBound.style.display = 'none';
+    return;
+  }
+
+  const maximumRenderRadius = Math.hypot(window.innerWidth, window.innerHeight) * 2;
+  const semiMajorRadius = Math.min(
+    confidenceEllipse.semiMajorRadius,
+    maximumRenderRadius,
+  );
+  const semiMinorRadius = Math.min(
+    confidenceEllipse.semiMinorRadius,
+    maximumRenderRadius,
+  );
+  const opacityReferenceRadius = Math.max(
+    1,
+    Math.min(window.innerWidth, window.innerHeight) * 0.25,
+  );
+  const shadeOpacity = confidenceShadeOpacity(
+    confidenceEllipse.semiMajorRadius,
+    opacityReferenceRadius,
+  );
+
+  confidenceBound.style.left = `${confidenceEllipse.mean.x}px`;
+  confidenceBound.style.top = `${confidenceEllipse.mean.y}px`;
+  confidenceBound.style.width = `${Math.max(2, semiMajorRadius * 2)}px`;
+  confidenceBound.style.height = `${Math.max(2, semiMinorRadius * 2)}px`;
+  confidenceBound.style.backgroundColor = color;
+  confidenceBound.style.transform = `translate(-50%, -50%) rotate(${confidenceEllipse.angleRadians}rad)`;
+  confidenceBound.style.setProperty('--gaze-confidence-opacity', String(shadeOpacity));
+  gazeConfidenceBoundAvailable = true;
+}
+
 function updateGazeFeedback(data) {
   if (!gazeFeedbackEnabled || !data || !Number.isFinite(data.x) || !Number.isFinite(data.y)) {
     setGazePointVisible(false);
+    stopGazeSoundPlayback();
     return;
   }
 
   const now = performance.now();
+  if (!shouldAcceptGazeSample(gazeSamplingClockTime, now, GAZE_SAMPLE_RATE_HZ)) {
+    return;
+  }
+  gazeSamplingClockTime = advanceGazeSamplingClock(
+    gazeSamplingClockTime,
+    now,
+    GAZE_SAMPLE_RATE_HZ,
+  );
   scheduleStaleGazeReset();
 
-  gazePositionSamples.push({ timestamp: now, x: data.x, y: data.y });
-  const windowStart = now - GAZE_POSITION_AVERAGE_WINDOW_MS;
-  while (gazePositionSamples.length > 0 && gazePositionSamples[0].timestamp < windowStart) {
-    gazePositionSamples.shift();
-  }
+  gazePositionSamples.push({ time: now, x: data.x, y: data.y });
+  trimGazeSamplesToWindow(gazePositionSamples, now, GAZE_TIME_WINDOW_MS);
 
-  const averagedPosition = gazePositionSamples.reduce(
-    (sum, sample) => ({ x: sum.x + sample.x, y: sum.y + sample.y }),
-    { x: 0, y: 0 }
-  );
-  averagedPosition.x /= gazePositionSamples.length;
-  averagedPosition.y /= gazePositionSamples.length;
+  const confidenceEllipse = calculateGazeConfidenceEllipse(gazePositionSamples);
+  const averagedPosition = confidenceEllipse.mean;
 
   const gazePoint = document.getElementById('gaze-point');
   if (!gazePoint) return;
@@ -1138,11 +1432,34 @@ function updateGazeFeedback(data) {
   const centerX = window.innerWidth / 2;
   const centerY = window.innerHeight / 2;
   const distance = Math.hypot(averagedPosition.x - centerX, averagedPosition.y - centerY);
+  const gazeIsOnScreen =
+    averagedPosition.x >= 0 &&
+    averagedPosition.x <= window.innerWidth &&
+    averagedPosition.y >= 0 &&
+    averagedPosition.y <= window.innerHeight;
+  const gazeColor =
+    GAZE_COLOR_CHANGE_ENABLED && distance > getGazeThresholdPixels()
+      ? '#ef4444'
+      : '#2563eb';
 
   gazePoint.style.left = `${averagedPosition.x}px`;
   gazePoint.style.top = `${averagedPosition.y}px`;
-  gazePoint.style.backgroundColor = distance > GAZE_DEVIATION_THRESHOLD ? 'red' : 'blue';
+  gazePoint.style.backgroundColor = gazeColor;
+
+  if (GAZE_CONFIDENCE_RADIUS_ENABLED) {
+    renderGazeConfidenceBound(confidenceEllipse, gazeColor);
+  } else {
+    gazeConfidenceBoundAvailable = false;
+  }
+
+  if (!gazeIsOnScreen) {
+    setGazePointVisible(false);
+    stopGazeSoundPlayback();
+    return;
+  }
+
   setGazePointVisible(true);
+  updateGazeSound(distance);
 }
 
 function startContinuousGazeTracking() {
@@ -1157,6 +1474,12 @@ function startContinuousGazeTracking() {
   // it does not request another camera stream or create another prediction loop.
   webgazer.resume();
 }
+
+document.addEventListener('pointerdown', resumeGazeAudioContext, true);
+document.addEventListener('keydown', resumeGazeAudioContext, true);
+loadGazeSoundEffect().catch(() => {
+  // The load error is logged once by loadGazeSoundEffect().
+});
 
 // Eye-tracking calibration sequence functions
 const cameraInstructions = {

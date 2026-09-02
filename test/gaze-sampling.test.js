@@ -24,6 +24,16 @@ test('default gaze sampling settings use a 50 ms window at 30 Hz', () => {
   assert.equal(settings.estimatedSamplesPerWindow, 1.5);
 });
 
+test('main experiment settings use an 18-sample target across 300 ms at 60 Hz', () => {
+  const settings = calculateGazeSamplingSettings({
+    timeWindowMs: 300,
+    sampleRateHz: 60,
+  });
+
+  assert.equal(settings.sampleIntervalMs, 1000 / 60);
+  assert.equal(settings.estimatedSamplesPerWindow, 18);
+});
+
 test('sample rate accepts the inclusive 20–1000 Hz range', () => {
   assert.doesNotThrow(() =>
     calculateGazeSamplingSettings({ timeWindowMs: 50, sampleRateHz: MIN_GAZE_SAMPLE_RATE_HZ }),
