@@ -5,6 +5,7 @@ import {
   MAX_INTERVAL_MS,
   MIN_INTERVAL_MS,
   applyCurve,
+  delayUntilNextNotification,
   intervalForDistance,
   shouldPlaySoundAtDistance,
 } from '../src/sound-frequency-curve.js';
@@ -65,4 +66,11 @@ test('the frequency curve accepts a calibrated custom center threshold', () => {
   assert.equal(intervalForDistance(175, 1000, 'linear', 175), MAX_INTERVAL_MS);
   assert.equal(intervalForDistance(1000, 1000, 'linear', 175), MIN_INTERVAL_MS);
   assert.ok(intervalForDistance(176, 1000, 'linear', 175) < MAX_INTERVAL_MS);
+});
+
+test('threshold re-entry waits for the calculated interval after the previous notification', () => {
+  assert.equal(delayUntilNextNotification(null, 1100, 1200), 0);
+  assert.equal(delayUntilNextNotification(1000, 1100, 1200), 1100);
+  assert.equal(delayUntilNextNotification(1000, 1700, 900), 200);
+  assert.equal(delayUntilNextNotification(1000, 2200, 1200), 0);
 });

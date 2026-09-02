@@ -23,6 +23,7 @@ import {
 import {
   MAX_INTERVAL_MS as GAZE_SOUND_MAX_INTERVAL_MS,
   MIN_INTERVAL_MS as GAZE_SOUND_MIN_INTERVAL_MS,
+  delayUntilNextNotification,
   intervalForDistance,
   shouldPlaySoundAtDistance,
 } from './sound-frequency-curve.js';
@@ -35,8 +36,8 @@ const GAZE_CONFIDENCE_RADIUS_ENABLED = true;
 const GAZE_COLOR_CHANGE_ENABLED = false;
 const GAZE_SOUND_EFFECT = 'alert';
 const GAZE_SOUND_MUTED_INSIDE_THRESHOLD = true;
-const GAZE_THRESHOLD_DEGREES = 5;
-const GAZE_SOUND_CURVE = 'exponential';
+const GAZE_THRESHOLD_DEGREES = 7;
+const GAZE_SOUND_CURVE = 'logarithmic';
 const GAZE_SAMPLE_STALE_MS = 1000;
 
 const GAZE_SOUND_SOURCES = {
@@ -1231,12 +1232,14 @@ function stopActiveGazeSoundSources() {
   activeGazeSoundSources.clear();
 }
 
-function stopGazeSoundPlayback() {
+function stopGazeSoundPlayback(preserveLastBeatTime = false) {
   clearGazeSoundBeatTimer();
   stopActiveGazeSoundSources();
   gazeSoundPlaybackActive = false;
   currentGazeSoundIntervalMs = GAZE_SOUND_MAX_INTERVAL_MS;
-  lastGazeSoundBeatTime = null;
+  if (!preserveLastBeatTime) {
+    lastGazeSoundBeatTime = null;
+  }
 }
 
 function playGazeSoundBeat() {
@@ -1269,8 +1272,11 @@ function scheduleNextGazeSoundBeat() {
   clearGazeSoundBeatTimer();
   if (!gazeSoundPlaybackActive || lastGazeSoundBeatTime === null) return;
 
-  const elapsed = performance.now() - lastGazeSoundBeatTime;
-  const delay = Math.max(0, currentGazeSoundIntervalMs - elapsed);
+  const delay = delayUntilNextNotification(
+    lastGazeSoundBeatTime,
+    performance.now(),
+    currentGazeSoundIntervalMs,
+  );
   gazeSoundBeatTimer = window.setTimeout(() => {
     gazeSoundBeatTimer = null;
     if (!gazeSoundPlaybackActive) return;
@@ -1287,14 +1293,20 @@ function updateGazeSound(distanceFromCenter) {
   const playSoundWithinThreshold = !GAZE_SOUND_MUTED_INSIDE_THRESHOLD;
   if (
     GAZE_SOUND_EFFECT === 'none' ||
-    !gazeSoundBuffer ||
+    !gazeSoundBuffer
+  ) {
+    stopGazeSoundPlayback();
+    return;
+  }
+
+  if (
     !shouldPlaySoundAtDistance(
       distanceFromCenter,
       playSoundWithinThreshold,
       thresholdPixels,
     )
   ) {
-    stopGazeSoundPlayback();
+    stopGazeSoundPlayback(true);
     return;
   }
 
@@ -1308,7 +1320,7 @@ function updateGazeSound(distanceFromCenter) {
 
   if (!gazeSoundPlaybackActive) {
     gazeSoundPlaybackActive = true;
-    if (!playGazeSoundBeat()) {
+    if (lastGazeSoundBeatTime === null && !playGazeSoundBeat()) {
       gazeSoundPlaybackActive = false;
       return;
     }
@@ -1343,9 +1355,9 @@ function resetGazeFeedbackWindow() {
   gazeConfidenceBoundAvailable = false;
 }
 
-function resetGazeFeedback() {
+function resetGazeFeedback(preserveLastSoundBeatTime = false) {
   clearGazeSampleStaleTimer();
-  stopGazeSoundPlayback();
+  stopGazeSoundPlayback(preserveLastSoundBeatTime);
   resetGazeFeedbackWindow();
   setGazePointVisible(false);
 }
@@ -1361,7 +1373,7 @@ function scheduleStaleGazeReset() {
   clearGazeSampleStaleTimer();
   gazeSampleStaleTimer = window.setTimeout(() => {
     if (gazeFeedbackEnabled) {
-      resetGazeFeedback();
+      resetGazeFeedback(true);
     }
   }, GAZE_SAMPLE_STALE_MS);
 }
@@ -1405,7 +1417,7 @@ function renderGazeConfidenceBound(confidenceEllipse, color) {
 function updateGazeFeedback(data) {
   if (!gazeFeedbackEnabled || !data || !Number.isFinite(data.x) || !Number.isFinite(data.y)) {
     setGazePointVisible(false);
-    stopGazeSoundPlayback();
+    stopGazeSoundPlayback(true);
     return;
   }
 
@@ -1454,7 +1466,7 @@ function updateGazeFeedback(data) {
 
   if (!gazeIsOnScreen) {
     setGazePointVisible(false);
-    stopGazeSoundPlayback();
+    stopGazeSoundPlayback(true);
     return;
   }
 
@@ -1523,7 +1535,9 @@ const calibrationInstructions = {
 const calibration = {
   type: jsPsychWebgazerCalibrate,
   calibration_points: [
-    [25,25],[75,25],[50,50],[25,75],[75,75]
+    [10,10],[50,10],[90,10],
+    [10,50],[50,50],[90,50],
+    [10,90],[50,90],[90,90]
   ],
   repetitions_per_point: 2,
   randomize_calibration_order: true,

@@ -55,3 +55,24 @@ export function shouldPlaySoundAtDistance(
 ) {
   return playWithinInnerZone || distancePx > innerRadiusPx;
 }
+
+export function delayUntilNextNotification(
+  lastNotificationTime,
+  currentTime,
+  calculatedIntervalMs,
+) {
+  if (!Number.isFinite(currentTime)) {
+    throw new TypeError('Current notification time must be finite.');
+  }
+  if (!Number.isFinite(calculatedIntervalMs) || calculatedIntervalMs < 0) {
+    throw new RangeError('Calculated notification interval must be non-negative.');
+  }
+  if (lastNotificationTime === null) {
+    return 0;
+  }
+  if (!Number.isFinite(lastNotificationTime)) {
+    throw new TypeError('Last notification time must be finite or null.');
+  }
+
+  return Math.max(0, calculatedIntervalMs - (currentTime - lastNotificationTime));
+}
