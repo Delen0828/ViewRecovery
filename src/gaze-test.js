@@ -24,6 +24,17 @@ import {
   calculateGazeConfidenceEllipse,
   confidenceShadeOpacity,
 } from './gaze-confidence.js';
+import {
+  DEFAULT_GAZE_SAMPLE_RATE_HZ,
+  DEFAULT_GAZE_TIME_WINDOW_MS,
+  MAX_GAZE_SAMPLE_RATE_HZ,
+  MIN_GAZE_SAMPLE_RATE_HZ,
+  MIN_GAZE_TIME_WINDOW_MS,
+  advanceGazeSamplingClock,
+  calculateGazeSamplingSettings,
+  shouldAcceptGazeSample,
+  trimGazeSamplesToWindow,
+} from './gaze-sampling.js';
 
 const CALIBRATION_POINTS = [
   [25, 25],
@@ -39,20 +50,8 @@ const MINIMUM_VALIDATION_PERCENT = 50;
 const SWEEP_DURATION_MS = 8000;
 const SWEEP_LEFT_FRACTION = 0.1;
 const SWEEP_RIGHT_FRACTION = 0.9;
-const GAZE_AVERAGE_WINDOW_MS = 50;
-const GAZE_CONFIDENCE_WINDOW_MS = 500;
 const GAZE_STALE_MS = 1000;
 const DEFAULT_GAZE_THRESHOLD_DEGREES = 5;
-const GAZE_RENDER_MODES = {
-  'threshold-shift': {
-    label: 'Blue/red threshold dot',
-    description: `${GAZE_AVERAGE_WINDOW_MS} ms average; blue inside the threshold and red outside it.`,
-  },
-  'confidence-bound': {
-    label: 'Average + confidence bound',
-    description: `${GAZE_CONFIDENCE_WINDOW_MS} ms average with a pale blue ${Math.round(CONFIDENCE_LEVEL * 100)}% confidence ellipse. Larger, lighter shading means more uncertainty.`,
-  },
-};
 const SOUND_EFFECTS = {
   alert: {
     label: 'Alert',
@@ -78,7 +77,11 @@ let gazeListenerActive = false;
 let gazeStaleTimerId = null;
 let gazeSamples = [];
 let confidenceBoundAvailable = false;
-let selectedGazeRenderMode = 'threshold-shift';
+let gazeSamplingClockTime = null;
+let gazeTimeWindowMs = DEFAULT_GAZE_TIME_WINDOW_MS;
+let gazeSampleRateHz = DEFAULT_GAZE_SAMPLE_RATE_HZ;
+let showConfidenceRadius = false;
+let enableGazeColorChange = true;
 let selectedSoundEffect = null;
 let selectedSoundCurve = 'square';
 let playSoundWithinInnerZone = true;
@@ -102,15 +105,16 @@ const jsPsych = initJsPsych({
       type: webgazerExtension,
       params: {
         round_predictions: false,
-        sampling_interval: 34,
+        sampling_interval: 1000 / DEFAULT_GAZE_SAMPLE_RATE_HZ,
       },
     },
   ],
 });
 
-function card(title, content) {
+function card(title, content, extraClass = '') {
+  const className = ['gaze-test-card', extraClass].filter(Boolean).join(' ');
   return `
-    <section class="gaze-test-card">
+    <section class="${className}">
       <h1>${title}</h1>
       ${content}
     </section>
@@ -350,7 +354,7 @@ function setGazePointVisible(visible) {
     .getElementById('gaze-confidence-bound')
     ?.classList.toggle(
       'is-visible',
-      visible && selectedGazeRenderMode === 'confidence-bound' && confidenceBoundAvailable,
+      visible && showConfidenceRadius && confidenceBoundAvailable,
     );
 }
 
@@ -366,6 +370,7 @@ function resetGazeDisplay() {
   stopGazeSoundPlayback();
   gazeSamples = [];
   confidenceBoundAvailable = false;
+  gazeSamplingClockTime = null;
   setGazePointVisible(false);
 }
 
@@ -374,7 +379,7 @@ function scheduleGazeStaleReset() {
   gazeStaleTimerId = window.setTimeout(resetGazeDisplay, GAZE_STALE_MS);
 }
 
-function renderConfidenceBound(confidenceEllipse) {
+function renderConfidenceBound(confidenceEllipse, color) {
   const confidenceBound = document.getElementById('gaze-confidence-bound');
   if (!confidenceBound || confidenceEllipse.sampleCount < 2) {
     confidenceBoundAvailable = false;
@@ -406,6 +411,7 @@ function renderConfidenceBound(confidenceEllipse) {
   confidenceBound.style.top = `${confidenceEllipse.mean.y}px`;
   confidenceBound.style.width = `${Math.max(2, semiMajorRadius * 2)}px`;
   confidenceBound.style.height = `${Math.max(2, semiMinorRadius * 2)}px`;
+  confidenceBound.style.backgroundColor = color;
   confidenceBound.style.transform = `translate(-50%, -50%) rotate(${confidenceEllipse.angleRadians}rad)`;
   confidenceBound.style.setProperty('--gaze-confidence-opacity', String(shadeOpacity));
   confidenceBoundAvailable = true;
@@ -419,17 +425,17 @@ function updateGazeDisplay(data) {
   }
 
   const now = performance.now();
-  const sampleWindowMs =
-    selectedGazeRenderMode === 'confidence-bound'
-      ? GAZE_CONFIDENCE_WINDOW_MS
-      : GAZE_AVERAGE_WINDOW_MS;
-  const sampleWindowStart = now - sampleWindowMs;
+  if (!shouldAcceptGazeSample(gazeSamplingClockTime, now, gazeSampleRateHz)) {
+    return;
+  }
+  gazeSamplingClockTime = advanceGazeSamplingClock(
+    gazeSamplingClockTime,
+    now,
+    gazeSampleRateHz,
+  );
 
   gazeSamples.push({ time: now, x: data.x, y: data.y });
-  // Keep only predictions received during the most recent time window.
-  while (gazeSamples.length > 0 && gazeSamples[0].time < sampleWindowStart) {
-    gazeSamples.shift();
-  }
+  trimGazeSamplesToWindow(gazeSamples, now, gazeTimeWindowMs);
 
   const confidenceEllipse = calculateGazeConfidenceEllipse(gazeSamples);
   const averagedPosition = confidenceEllipse.mean;
@@ -453,14 +459,17 @@ function updateGazeDisplay(data) {
   gazePoint.style.left = `${averagedPosition.x}px`;
   gazePoint.style.top = `${averagedPosition.y}px`;
 
-  if (selectedGazeRenderMode === 'confidence-bound') {
-    gazePoint.style.backgroundColor = '#2563eb';
-    renderConfidenceBound(confidenceEllipse);
+  const gazeColor =
+    enableGazeColorChange && distanceFromCrosshair > getGazeThresholdPx()
+      ? '#ef4444'
+      : '#2563eb';
+  gazePoint.style.backgroundColor = gazeColor;
+
+  if (showConfidenceRadius) {
+    renderConfidenceBound(confidenceEllipse, gazeColor);
   } else {
     confidenceBoundAvailable = false;
     document.getElementById('gaze-confidence-bound')?.classList.remove('is-visible');
-    gazePoint.style.backgroundColor =
-      distanceFromCrosshair <= getGazeThresholdPx() ? '#2563eb' : '#ef4444';
   }
   scheduleGazeStaleReset();
 
@@ -782,40 +791,83 @@ function soundEffectOptionsMarkup() {
     .join('');
 }
 
-function gazeRenderModeOptionsMarkup() {
-  return Object.entries(GAZE_RENDER_MODES)
-    .map(
-      ([value, config]) => `
-        <label class="gaze-render-option">
-          <input type="radio" name="gaze-render-mode" value="${value}" />
-          <span class="gaze-render-option-body">
-            <span class="gaze-render-option-preview gaze-render-option-preview--${value}" aria-hidden="true">
-              <span class="gaze-render-option-preview-bound"></span>
-              <span class="gaze-render-option-preview-dot"></span>
-            </span>
-            <span class="gaze-render-option-copy">
-              <span class="gaze-render-option-name">${config.label}</span>
-              <span class="gaze-render-option-description">${config.description}</span>
-            </span>
-          </span>
-        </label>
-      `,
-    )
-    .join('');
+function updatePursuitStartAvailability(startButton) {
+  startButton.disabled =
+    startButton.dataset.samplingControlsValid !== 'true' ||
+    startButton.dataset.soundControlsValid !== 'true';
 }
 
-function setupGazeRenderModeSelector() {
-  const renderModeInputs = Array.from(
-    document.querySelectorAll('input[name="gaze-render-mode"]'),
-  );
+function setupGazeSamplingControls(startButton) {
+  const timeWindowInput = document.getElementById('gaze-time-window-ms');
+  const sampleRateInput = document.getElementById('gaze-sample-rate-hz');
+  const samplingSummary = document.getElementById('gaze-sampling-summary');
+  const samplingError = document.getElementById('gaze-sampling-error');
 
-  renderModeInputs.forEach((input) => {
-    input.checked = input.value === selectedGazeRenderMode;
-    input.addEventListener('change', () => {
-      if (input.checked && GAZE_RENDER_MODES[input.value]) {
-        selectedGazeRenderMode = input.value;
-      }
-    });
+  if (!timeWindowInput || !sampleRateInput || !samplingSummary || !samplingError) {
+    return;
+  }
+
+  timeWindowInput.value = String(gazeTimeWindowMs);
+  sampleRateInput.value = String(gazeSampleRateHz);
+
+  const updateSamplingSettings = () => {
+    const timeWindowMs = Number(timeWindowInput.value);
+    const sampleRateHz = Number(sampleRateInput.value);
+    const timeWindowIsValid =
+      Number.isFinite(timeWindowMs) &&
+      timeWindowMs >= MIN_GAZE_TIME_WINDOW_MS;
+    const sampleRateIsValid =
+      Number.isFinite(sampleRateHz) &&
+      sampleRateHz >= MIN_GAZE_SAMPLE_RATE_HZ &&
+      sampleRateHz <= MAX_GAZE_SAMPLE_RATE_HZ;
+
+    timeWindowInput.toggleAttribute('aria-invalid', !timeWindowIsValid);
+    sampleRateInput.toggleAttribute('aria-invalid', !sampleRateIsValid);
+    samplingError.hidden = timeWindowIsValid && sampleRateIsValid;
+    startButton.dataset.samplingControlsValid = String(
+      timeWindowIsValid && sampleRateIsValid,
+    );
+
+    if (timeWindowIsValid && sampleRateIsValid) {
+      const settings = calculateGazeSamplingSettings({ timeWindowMs, sampleRateHz });
+      gazeTimeWindowMs = settings.timeWindowMs;
+      gazeSampleRateHz = settings.sampleRateHz;
+
+      const intervalLabel = settings.sampleIntervalMs.toLocaleString(undefined, {
+        maximumFractionDigits: 1,
+      });
+      const sampleCountLabel = settings.estimatedSamplesPerWindow.toLocaleString(undefined, {
+        maximumFractionDigits: 1,
+      });
+      samplingSummary.textContent = `Target interval: ${intervalLabel} ms; about ${sampleCountLabel} samples per window. Windows may overlap. The actual rate is limited by WebGazer’s prediction rate.`;
+    } else {
+      samplingSummary.textContent = '';
+    }
+
+    updatePursuitStartAvailability(startButton);
+  };
+
+  timeWindowInput.addEventListener('input', updateSamplingSettings);
+  sampleRateInput.addEventListener('input', updateSamplingSettings);
+  updateSamplingSettings();
+}
+
+function setupGazeFeedbackControls() {
+  const confidenceRadiusInput = document.getElementById('gaze-confidence-radius');
+  const colorChangeInput = document.getElementById('gaze-color-change');
+
+  if (!confidenceRadiusInput || !colorChangeInput) {
+    return;
+  }
+
+  confidenceRadiusInput.checked = showConfidenceRadius;
+  colorChangeInput.checked = enableGazeColorChange;
+
+  confidenceRadiusInput.addEventListener('change', () => {
+    showConfidenceRadius = confidenceRadiusInput.checked;
+  });
+  colorChangeInput.addEventListener('change', () => {
+    enableGazeColorChange = colorChangeInput.checked;
   });
 }
 
@@ -857,7 +909,10 @@ function setupSoundEffectSelector() {
   };
 
   const updateStartAvailability = () => {
-    startButton.disabled = !soundSelectionReady || !thresholdIsValid();
+    startButton.dataset.soundControlsValid = String(
+      soundSelectionReady && thresholdIsValid(),
+    );
+    updatePursuitStartAvailability(startButton);
   };
 
   const setStatus = (state, message) => {
@@ -929,7 +984,8 @@ function setupSoundEffectSelector() {
     updateStartAvailability();
   };
 
-  startButton.disabled = true;
+  startButton.dataset.soundControlsValid = 'false';
+  updatePursuitStartAvailability(startButton);
   innerZoneSelect.value = playSoundWithinInnerZone ? 'play' : 'mute';
   thresholdInput.value = String(gazeThresholdDegrees);
   curveSelect.value = selectedSoundCurve;
@@ -989,7 +1045,18 @@ function setupSoundEffectSelector() {
 }
 
 function setupPursuitOptions() {
-  setupGazeRenderModeSelector();
+  const startButton = document.querySelector(
+    '#jspsych-html-button-response-btngroup button[data-choice="0"]',
+  );
+  if (!startButton) {
+    return;
+  }
+
+  startButton.dataset.samplingControlsValid = 'false';
+  startButton.dataset.soundControlsValid = 'false';
+  startButton.disabled = true;
+  setupGazeSamplingControls(startButton);
+  setupGazeFeedbackControls();
   setupSoundEffectSelector();
 }
 
@@ -998,15 +1065,53 @@ const pursuitInstructions = {
   stimulus: card(
     'Horizontal eye-gaze test',
     `
-      <p>Follow the moving black dot with your eyes. A black crosshair will remain fixed at screen center.</p>
-      <p>Choose how the estimated gaze point is drawn. The visual-angle threshold continues to control sound feedback in both modes.</p>
-      <p>Press <span class="keycap">SPACE</span> at any time to stop.</p>
-      <fieldset class="gaze-render-fieldset">
-        <legend>Gaze point display</legend>
-        <div class="gaze-render-options">
-          ${gazeRenderModeOptionsMarkup()}
-        </div>
-      </fieldset>
+      <p class="pursuit-setup-intro">Follow the moving black dot with your eyes. A black crosshair remains fixed at screen center. Press <span class="keycap">SPACE</span> to stop.</p>
+      <div class="gaze-setup-grid">
+        <fieldset class="gaze-setup-section gaze-sampling-fieldset" aria-describedby="gaze-sampling-help gaze-sampling-summary gaze-sampling-error">
+          <legend>Gaze sampling</legend>
+          <p class="setup-section-help" id="gaze-sampling-help">The window controls which accepted samples contribute to both the average dot and confidence radius.</p>
+          <div class="gaze-sampling-controls">
+            <label class="gaze-setup-control" for="gaze-time-window-ms">
+              <span>Time window</span>
+              <span class="parameter-input-with-unit">
+                <input id="gaze-time-window-ms" type="number" min="${MIN_GAZE_TIME_WINDOW_MS}" step="1" value="${DEFAULT_GAZE_TIME_WINDOW_MS}" />
+                <span>ms</span>
+              </span>
+            </label>
+            <label class="gaze-setup-control" for="gaze-sample-rate-hz">
+              <span>Sample rate</span>
+              <span class="parameter-input-with-unit">
+                <input id="gaze-sample-rate-hz" type="number" min="${MIN_GAZE_SAMPLE_RATE_HZ}" max="${MAX_GAZE_SAMPLE_RATE_HZ}" step="1" value="${DEFAULT_GAZE_SAMPLE_RATE_HZ}" />
+                <span>Hz</span>
+              </span>
+            </label>
+          </div>
+          <p class="gaze-sampling-summary" id="gaze-sampling-summary" role="status" aria-live="polite"></p>
+          <p class="gaze-sampling-error" id="gaze-sampling-error" hidden>Use a time window of at least ${MIN_GAZE_TIME_WINDOW_MS} ms and a sample rate of ${MIN_GAZE_SAMPLE_RATE_HZ}–${MAX_GAZE_SAMPLE_RATE_HZ.toLocaleString()} Hz.</p>
+        </fieldset>
+        <fieldset class="gaze-setup-section gaze-feedback-fieldset">
+          <legend>Visual feedback</legend>
+          <p class="setup-section-help">These options are independent and can be used in any combination.</p>
+          <div class="gaze-feedback-options">
+            <label class="gaze-feedback-toggle" for="gaze-confidence-radius">
+              <span class="gaze-feedback-toggle-copy">
+                <strong>Confidence radius</strong>
+                <small>Show a pale blue ${Math.round(CONFIDENCE_LEVEL * 100)}% confidence ellipse.</small>
+              </span>
+              <input id="gaze-confidence-radius" type="checkbox" role="switch" />
+              <span class="gaze-toggle-control" aria-hidden="true"></span>
+            </label>
+            <label class="gaze-feedback-toggle" for="gaze-color-change">
+              <span class="gaze-feedback-toggle-copy">
+                <strong>Color change</strong>
+                <small>Change the dot and radius from blue to red outside the threshold.</small>
+              </span>
+              <input id="gaze-color-change" type="checkbox" role="switch" />
+              <span class="gaze-toggle-control" aria-hidden="true"></span>
+            </label>
+          </div>
+        </fieldset>
+      </div>
       <fieldset class="sound-effect-fieldset" id="sound-effect-fieldset" aria-describedby="sound-effect-help sound-effect-status">
         <legend>Sound feedback</legend>
         <p class="secondary-copy" id="sound-effect-help">Choose one option before starting. Sounds repeat faster as gaze moves farther from the crosshair.</p>
@@ -1043,6 +1148,7 @@ const pursuitInstructions = {
         <p class="sound-effect-status" id="sound-effect-status" role="status" aria-live="polite">Select a sound option to continue.</p>
       </fieldset>
     `,
+    'pursuit-setup-card',
   ),
   choices: ['Start Motion Test'],
   on_load: setupPursuitOptions,
@@ -1065,19 +1171,18 @@ const pursuitTrial = {
     sound_interval_min_ms: GAZE_SOUND_MIN_INTERVAL_MS,
     sound_interval_mapping: () => selectedSoundCurve,
     sound_inside_threshold: () => playSoundWithinInnerZone,
-    gaze_render_mode: () => selectedGazeRenderMode,
-    gaze_average_window_ms: () =>
-      selectedGazeRenderMode === 'confidence-bound'
-        ? GAZE_CONFIDENCE_WINDOW_MS
-        : GAZE_AVERAGE_WINDOW_MS,
-    gaze_confidence_level: () =>
-      selectedGazeRenderMode === 'confidence-bound' ? CONFIDENCE_LEVEL : null,
+    gaze_time_window_ms: () => gazeTimeWindowMs,
+    gaze_sample_rate_hz: () => gazeSampleRateHz,
+    gaze_sample_interval_ms: () => 1000 / gazeSampleRateHz,
+    gaze_confidence_radius_enabled: () => showConfidenceRadius,
+    gaze_confidence_level: () => (showConfidenceRadius ? CONFIDENCE_LEVEL : null),
+    gaze_color_change_enabled: () => enableGazeColorChange,
     gaze_threshold_degrees: () => gazeThresholdDegrees,
     gaze_threshold_px: () => getGazeThresholdPx(),
     pixels_per_degree: () => displayCalibration.pixelsPerDegree,
     threshold_affects: () =>
-      selectedGazeRenderMode === 'threshold-shift'
-        ? 'sound-gating-frequency-curve-and-gaze-point-color'
+      enableGazeColorChange
+        ? 'sound-gating-frequency-curve-and-gaze-feedback-color'
         : 'sound-gating-and-frequency-curve',
     sound_max_distance_basis: 'viewport-corner-radius',
   },
