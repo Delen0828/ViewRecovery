@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:sound-curve": "node --test test/sound-frequency-curve.test.js",
-    "test:gaze": "node --test test/sound-frequency-curve.test.js test/visual-angle.test.js"
+    "test:gaze": "node --test test/gaze-confidence.test.js test/sound-frequency-curve.test.js test/visual-angle.test.js"
   },
   "devDependencies": {
     "vite": "^6.3.5"

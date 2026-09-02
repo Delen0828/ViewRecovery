@@ -19,6 +19,11 @@ import {
   calculateDisplayCalibration,
   degreesToPixels,
 } from './visual-angle.js';
+import {
+  CONFIDENCE_LEVEL,
+  calculateGazeConfidenceEllipse,
+  confidenceShadeOpacity,
+} from './gaze-confidence.js';
 
 const CALIBRATION_POINTS = [
   [25, 25],
@@ -35,8 +40,19 @@ const SWEEP_DURATION_MS = 8000;
 const SWEEP_LEFT_FRACTION = 0.1;
 const SWEEP_RIGHT_FRACTION = 0.9;
 const GAZE_AVERAGE_WINDOW_MS = 50;
+const GAZE_CONFIDENCE_WINDOW_MS = 500;
 const GAZE_STALE_MS = 1000;
 const DEFAULT_GAZE_THRESHOLD_DEGREES = 5;
+const GAZE_RENDER_MODES = {
+  'threshold-shift': {
+    label: 'Blue/red threshold dot',
+    description: `${GAZE_AVERAGE_WINDOW_MS} ms average; blue inside the threshold and red outside it.`,
+  },
+  'confidence-bound': {
+    label: 'Average + confidence bound',
+    description: `${GAZE_CONFIDENCE_WINDOW_MS} ms average with a pale blue ${Math.round(CONFIDENCE_LEVEL * 100)}% confidence ellipse. Larger, lighter shading means more uncertainty.`,
+  },
+};
 const SOUND_EFFECTS = {
   alert: {
     label: 'Alert',
@@ -61,6 +77,8 @@ let animationFrameId = null;
 let gazeListenerActive = false;
 let gazeStaleTimerId = null;
 let gazeSamples = [];
+let confidenceBoundAvailable = false;
+let selectedGazeRenderMode = 'threshold-shift';
 let selectedSoundEffect = null;
 let selectedSoundCurve = 'square';
 let playSoundWithinInnerZone = true;
@@ -328,6 +346,12 @@ function updateGazeSound(distanceFromCrosshair) {
 
 function setGazePointVisible(visible) {
   document.getElementById('gaze-point')?.classList.toggle('is-visible', visible);
+  document
+    .getElementById('gaze-confidence-bound')
+    ?.classList.toggle(
+      'is-visible',
+      visible && selectedGazeRenderMode === 'confidence-bound' && confidenceBoundAvailable,
+    );
 }
 
 function clearGazeStaleTimer() {
@@ -341,12 +365,50 @@ function resetGazeDisplay() {
   clearGazeStaleTimer();
   stopGazeSoundPlayback();
   gazeSamples = [];
+  confidenceBoundAvailable = false;
   setGazePointVisible(false);
 }
 
 function scheduleGazeStaleReset() {
   clearGazeStaleTimer();
   gazeStaleTimerId = window.setTimeout(resetGazeDisplay, GAZE_STALE_MS);
+}
+
+function renderConfidenceBound(confidenceEllipse) {
+  const confidenceBound = document.getElementById('gaze-confidence-bound');
+  if (!confidenceBound || confidenceEllipse.sampleCount < 2) {
+    confidenceBoundAvailable = false;
+    confidenceBound?.classList.remove('is-visible');
+    return;
+  }
+
+  // Cap DOM dimensions for pathological off-screen predictions while still
+  // allowing the shade to extend well beyond the viewport.
+  const maximumRenderRadius = Math.hypot(window.innerWidth, window.innerHeight) * 2;
+  const semiMajorRadius = Math.min(
+    confidenceEllipse.semiMajorRadius,
+    maximumRenderRadius,
+  );
+  const semiMinorRadius = Math.min(
+    confidenceEllipse.semiMinorRadius,
+    maximumRenderRadius,
+  );
+  const opacityReferenceRadius = Math.max(
+    1,
+    Math.min(window.innerWidth, window.innerHeight) * 0.25,
+  );
+  const shadeOpacity = confidenceShadeOpacity(
+    confidenceEllipse.semiMajorRadius,
+    opacityReferenceRadius,
+  );
+
+  confidenceBound.style.left = `${confidenceEllipse.mean.x}px`;
+  confidenceBound.style.top = `${confidenceEllipse.mean.y}px`;
+  confidenceBound.style.width = `${Math.max(2, semiMajorRadius * 2)}px`;
+  confidenceBound.style.height = `${Math.max(2, semiMinorRadius * 2)}px`;
+  confidenceBound.style.transform = `translate(-50%, -50%) rotate(${confidenceEllipse.angleRadians}rad)`;
+  confidenceBound.style.setProperty('--gaze-confidence-opacity', String(shadeOpacity));
+  confidenceBoundAvailable = true;
 }
 
 function updateGazeDisplay(data) {
@@ -357,7 +419,11 @@ function updateGazeDisplay(data) {
   }
 
   const now = performance.now();
-  const sampleWindowStart = now - GAZE_AVERAGE_WINDOW_MS;
+  const sampleWindowMs =
+    selectedGazeRenderMode === 'confidence-bound'
+      ? GAZE_CONFIDENCE_WINDOW_MS
+      : GAZE_AVERAGE_WINDOW_MS;
+  const sampleWindowStart = now - sampleWindowMs;
 
   gazeSamples.push({ time: now, x: data.x, y: data.y });
   // Keep only predictions received during the most recent time window.
@@ -365,13 +431,8 @@ function updateGazeDisplay(data) {
     gazeSamples.shift();
   }
 
-  const averagedPosition = gazeSamples.reduce(
-    (total, sample) => ({ x: total.x + sample.x, y: total.y + sample.y }),
-    { x: 0, y: 0 },
-  );
-
-  averagedPosition.x /= gazeSamples.length;
-  averagedPosition.y /= gazeSamples.length;
+  const confidenceEllipse = calculateGazeConfidenceEllipse(gazeSamples);
+  const averagedPosition = confidenceEllipse.mean;
 
   const gazePoint = document.getElementById('gaze-point');
   if (!gazePoint) {
@@ -391,8 +452,16 @@ function updateGazeDisplay(data) {
 
   gazePoint.style.left = `${averagedPosition.x}px`;
   gazePoint.style.top = `${averagedPosition.y}px`;
-  gazePoint.style.backgroundColor =
-    distanceFromCrosshair <= getGazeThresholdPx() ? '#2563eb' : '#ef4444';
+
+  if (selectedGazeRenderMode === 'confidence-bound') {
+    gazePoint.style.backgroundColor = '#2563eb';
+    renderConfidenceBound(confidenceEllipse);
+  } else {
+    confidenceBoundAvailable = false;
+    document.getElementById('gaze-confidence-bound')?.classList.remove('is-visible');
+    gazePoint.style.backgroundColor =
+      distanceFromCrosshair <= getGazeThresholdPx() ? '#2563eb' : '#ef4444';
+  }
   scheduleGazeStaleReset();
 
   if (!gazeIsOnScreen) {
@@ -713,6 +782,43 @@ function soundEffectOptionsMarkup() {
     .join('');
 }
 
+function gazeRenderModeOptionsMarkup() {
+  return Object.entries(GAZE_RENDER_MODES)
+    .map(
+      ([value, config]) => `
+        <label class="gaze-render-option">
+          <input type="radio" name="gaze-render-mode" value="${value}" />
+          <span class="gaze-render-option-body">
+            <span class="gaze-render-option-preview gaze-render-option-preview--${value}" aria-hidden="true">
+              <span class="gaze-render-option-preview-bound"></span>
+              <span class="gaze-render-option-preview-dot"></span>
+            </span>
+            <span class="gaze-render-option-copy">
+              <span class="gaze-render-option-name">${config.label}</span>
+              <span class="gaze-render-option-description">${config.description}</span>
+            </span>
+          </span>
+        </label>
+      `,
+    )
+    .join('');
+}
+
+function setupGazeRenderModeSelector() {
+  const renderModeInputs = Array.from(
+    document.querySelectorAll('input[name="gaze-render-mode"]'),
+  );
+
+  renderModeInputs.forEach((input) => {
+    input.checked = input.value === selectedGazeRenderMode;
+    input.addEventListener('change', () => {
+      if (input.checked && GAZE_RENDER_MODES[input.value]) {
+        selectedGazeRenderMode = input.value;
+      }
+    });
+  });
+}
+
 function setupSoundEffectSelector() {
   const fieldset = document.getElementById('sound-effect-fieldset');
   const statusElement = document.getElementById('sound-effect-status');
@@ -882,14 +988,25 @@ function setupSoundEffectSelector() {
   }
 }
 
+function setupPursuitOptions() {
+  setupGazeRenderModeSelector();
+  setupSoundEffectSelector();
+}
+
 const pursuitInstructions = {
   type: htmlButtonResponse,
   stimulus: card(
     'Horizontal eye-gaze test',
     `
       <p>Follow the moving black dot with your eyes. A black crosshair will remain fixed at screen center.</p>
-      <p>The gaze dot is blue inside the selected visual-angle threshold and red outside it. The same threshold controls sound feedback.</p>
+      <p>Choose how the estimated gaze point is drawn. The visual-angle threshold continues to control sound feedback in both modes.</p>
       <p>Press <span class="keycap">SPACE</span> at any time to stop.</p>
+      <fieldset class="gaze-render-fieldset">
+        <legend>Gaze point display</legend>
+        <div class="gaze-render-options">
+          ${gazeRenderModeOptionsMarkup()}
+        </div>
+      </fieldset>
       <fieldset class="sound-effect-fieldset" id="sound-effect-fieldset" aria-describedby="sound-effect-help sound-effect-status">
         <legend>Sound feedback</legend>
         <p class="secondary-copy" id="sound-effect-help">Choose one option before starting. Sounds repeat faster as gaze moves farther from the crosshair.</p>
@@ -928,7 +1045,7 @@ const pursuitInstructions = {
     `,
   ),
   choices: ['Start Motion Test'],
-  on_load: setupSoundEffectSelector,
+  on_load: setupPursuitOptions,
 };
 
 const pursuitTrial = {
@@ -948,10 +1065,20 @@ const pursuitTrial = {
     sound_interval_min_ms: GAZE_SOUND_MIN_INTERVAL_MS,
     sound_interval_mapping: () => selectedSoundCurve,
     sound_inside_threshold: () => playSoundWithinInnerZone,
+    gaze_render_mode: () => selectedGazeRenderMode,
+    gaze_average_window_ms: () =>
+      selectedGazeRenderMode === 'confidence-bound'
+        ? GAZE_CONFIDENCE_WINDOW_MS
+        : GAZE_AVERAGE_WINDOW_MS,
+    gaze_confidence_level: () =>
+      selectedGazeRenderMode === 'confidence-bound' ? CONFIDENCE_LEVEL : null,
     gaze_threshold_degrees: () => gazeThresholdDegrees,
     gaze_threshold_px: () => getGazeThresholdPx(),
     pixels_per_degree: () => displayCalibration.pixelsPerDegree,
-    threshold_affects: 'sound-gating-frequency-curve-and-gaze-point-color',
+    threshold_affects: () =>
+      selectedGazeRenderMode === 'threshold-shift'
+        ? 'sound-gating-frequency-curve-and-gaze-point-color'
+        : 'sound-gating-and-frequency-curve',
     sound_max_distance_basis: 'viewport-corner-radius',
   },
   on_load: startPursuitTest,

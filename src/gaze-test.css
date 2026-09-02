@@ -170,6 +170,7 @@ body {
   font-weight: 600;
 }
 
+.gaze-render-fieldset,
 .sound-effect-fieldset {
   min-width: 0;
   margin: 26px 0 0;
@@ -179,11 +180,120 @@ body {
   text-align: left;
 }
 
+.gaze-render-fieldset legend,
 .sound-effect-fieldset legend {
   padding: 0 8px;
   color: #111827;
   font-size: 18px;
   font-weight: 700;
+}
+
+.gaze-render-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.gaze-render-option {
+  position: relative;
+  cursor: pointer;
+}
+
+.gaze-render-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.gaze-render-option-body {
+  box-sizing: border-box;
+  display: flex;
+  min-height: 112px;
+  padding: 14px;
+  border: 2px solid #d1d5db;
+  border-radius: 9px;
+  align-items: center;
+  gap: 13px;
+  background: #ffffff;
+  color: #374151;
+  text-align: left;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.gaze-render-option:hover .gaze-render-option-body {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.gaze-render-option input:checked + .gaze-render-option-body {
+  border-color: #2563eb;
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.gaze-render-option input:focus-visible + .gaze-render-option-body {
+  outline: 3px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+.gaze-render-option-preview {
+  position: relative;
+  width: 52px;
+  height: 40px;
+  flex: 0 0 52px;
+}
+
+.gaze-render-option-preview-bound,
+.gaze-render-option-preview-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.gaze-render-option-preview-dot {
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+}
+
+.gaze-render-option-preview--threshold-shift .gaze-render-option-preview-dot {
+  background: linear-gradient(90deg, #2563eb 50%, #ef4444 50%);
+}
+
+.gaze-render-option-preview--confidence-bound .gaze-render-option-preview-bound {
+  width: 50px;
+  height: 30px;
+  background: rgb(37 99 235 / 16%);
+  transform: translate(-50%, -50%) rotate(-12deg);
+}
+
+.gaze-render-option-preview--confidence-bound .gaze-render-option-preview-dot {
+  background: #2563eb;
+}
+
+.gaze-render-option-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.gaze-render-option-name {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.gaze-render-option-description {
+  color: #4b5563;
+  font-size: 13px;
+  line-height: 1.35;
 }
 
 .sound-effect-fieldset #sound-effect-help {
@@ -446,8 +556,25 @@ body.gaze-test-running {
   will-change: left, top, background-color;
 }
 
+#gaze-confidence-bound {
+  position: fixed;
+  z-index: 9998;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: #2563eb;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  will-change: left, top, width, height, opacity, transform;
+}
+
 #gaze-point.is-visible {
   opacity: 1;
+}
+
+#gaze-confidence-bound.is-visible {
+  opacity: var(--gaze-confidence-opacity, 0.18);
 }
 
 @media (max-width: 600px) {
@@ -461,6 +588,7 @@ body.gaze-test-running {
   }
 
   .display-calibration-grid,
+  .gaze-render-options,
   .sound-tuning-controls {
     grid-template-columns: 1fr;
   }
