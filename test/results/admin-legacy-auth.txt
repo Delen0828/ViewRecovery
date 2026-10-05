@@ -1,0 +1,12 @@
+✔ username normalization and return routes cannot grant roles or redirect offsite (0.9516ms)
+✔ unknown usernames prompt registration, bad passwords are generic, valid login returns a session (15.895241ms)
+✔ registration reserves usernames and never passes role/link/study authority from submitted fields (0.987327ms)
+✔ limits, request sizes, origins, methods and recovery responses are enforced (1.097456ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21.222148

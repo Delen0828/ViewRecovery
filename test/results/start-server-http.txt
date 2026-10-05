@@ -1,0 +1,22 @@
+▶ built static server serves deep routes, compiled portal and assets from dist only
+  ✔ / (2.173722ms)
+  ✔ /dashboard (1.594636ms)
+  ✔ /auth/login (1.153562ms)
+  ✔ /auth/recovery (1.033375ms)
+  ✔ /Motion (1.081546ms)
+  ✔ /settings (1.208586ms)
+  ✔ data-portal/index.html (1.280973ms)
+  ✔ data-portal/users.html (1.223405ms)
+  ✔ data-portal/preview.html (1.86067ms)
+  ✔ compiled JavaScript asset and HEAD (4.030045ms)
+  ✔ private env/source and legacy PHP are not served (2.845302ms)
+✔ built static server serves deep routes, compiled portal and assets from dist only (93.043452ms)
+✔ occupied port fails without silently opening a different port (40.191956ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 178.453943

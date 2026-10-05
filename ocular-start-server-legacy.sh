@@ -1,68 +1,28 @@
-#!/bin/bash
-
-SESSION="ViewRecover-legacy"
-PORT=8002
-TUNNEL_NAME="ViewRecover-legacy"
+#!/usr/bin/env bash
+set -euo pipefail
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ORIGIN_URL="http://localhost:$PORT"
+SESSION="${SESSION:-ViewRecover-legacy}"
+TUNNEL_NAME="${TUNNEL_NAME:-ViewRecover-legacy}"
+HOST="${HOST:-127.0.0.1}"
+PORT="${PORT:-8002}"
+source "$APP_DIR/scripts/server-common.sh"
+require_command tmux
+require_command cloudflared
+prepare_server
+ORIGIN_URL="http://$HOST:$PORT"
 
-echo "Killing old tmux session if exists..."
-tmux kill-session -t $SESSION 2>/dev/null
-
-echo "Building Node project..."
-# 用 npx，确保本地 node_modules vite 可用
-cd "$APP_DIR" || exit 1
-
-# Preserve legacy server-saved data before Vite rebuilds dist.
-if [ -d "dist/data" ]; then
-    CURRENT_TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
-    BACKUP_DIR="data/$CURRENT_TIMESTAMP"
-    if mkdir -p "$BACKUP_DIR" && cp -a dist/data/. "$BACKUP_DIR/"; then
-        echo "Backed up dist/data to $BACKUP_DIR"
-    else
-        echo "[Error] Failed to back up dist/data; aborting before build."
-        exit 1
-    fi
-else
-    echo "No dist/data directory found; skipping data backup."
+# Preserve the named tunnel/session configuration; replace only after build succeeds.
+if tmux has-session -t "=$SESSION" 2>/dev/null; then
+    tmux kill-session -t "=$SESSION"
 fi
-
-npx vite build
-if [ $? -ne 0 ]; then
-    echo "[Error] Vite build failed, aborting"
+# tmux invokes a shell: quote every argument, including paths containing spaces.
+printf -v SERVER_CMD '%q ' env "HOST=$HOST" "PORT=$PORT" "$NODE_BIN" "$SERVE_BIN"
+printf -v TUNNEL_CMD '%q ' "$(command -v cloudflared)" tunnel run --url "$ORIGIN_URL" "$TUNNEL_NAME"
+tmux new-session -d -s "$SESSION" -c "$APP_DIR" "exec $SERVER_CMD"
+if ! tmux split-window -h -t "=$SESSION" -c "$APP_DIR" "exec $TUNNEL_CMD"; then
+    tmux kill-session -t "=$SESSION"
     exit 1
 fi
-
-echo "Ensuring dist exists..."
-mkdir -p dist
-
-echo "Copying PHP files..."
-cp save_data.php dist/
-cp router.php dist/
-cp data_portal.php dist/
-cp -R data-portal dist/
-
-echo "Starting tmux session: $SESSION..."
-tmux new-session -d -s $SESSION
-
-if command -v php >/dev/null 2>&1; then
-    SERVER_CMD="php -S 0.0.0.0:$PORT -t dist dist/router.php"
-    echo "Starting PHP server on 0.0.0.0:$PORT..."
-else
-    SERVER_CMD="python3 -m http.server $PORT --directory dist"
-    echo "[Warning] php not found; using python3 static server on 0.0.0.0:$PORT."
-    echo "[Warning] save_data.php will not execute until php is installed."
-fi
-
-tmux send-keys -t $SESSION "cd $APP_DIR && $SERVER_CMD" C-m
-
-sleep 2
-
-echo "Starting Cloudflare tunnel to $ORIGIN_URL..."
-tmux split-window -h -t $SESSION
-tmux send-keys -t $SESSION "cloudflared tunnel run --url $ORIGIN_URL $TUNNEL_NAME" C-m
-
-tmux select-layout -t $SESSION tiled
-
-echo "[Succeed] ViewRecover started in tmux session: $SESSION"
-echo "Attach with: tmux attach -t $SESSION"
+tmux select-layout -t "=$SESSION" tiled
+echo "ViewRecovery and tunnel launched in tmux session: $SESSION"
+echo "Attach to inspect startup: tmux attach -t '$SESSION'"

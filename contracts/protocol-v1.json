@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "protocol_version": "legacy-2026-10-04",
+  "username": {"normalization": "trim and lowercase", "pattern": "^[a-z0-9][a-z0-9_-]{2,31}$"},
+  "tasks": ["Motion", "Orientation", "Centrality", "Bar"],
+  "hidden_portal_tasks": ["Orientation", "Bar"],
+  "total_trials": 256,
+  "chunk_size": 32,
+  "catch_proportion": 0.05,
+  "staircase": {"correct_to_increase": 3, "incorrect_to_decrease": 1},
+  "max_batch_events": 100,
+  "max_batch_bytes": 262144,
+  "outbox_limit_bytes": 20971520,
+  "timestamp_storage": "UTC",
+  "chart_timezone": "America/New_York",
+  "restricted_enrollment": true,
+  "legacy_link_requires": "admin or assigned researcher with independently verified identity"
+}

@@ -1,0 +1,17 @@
+✔ migrations enforce anonymous denial, owner isolation, researcher scope and no self-grants (10.151014ms)
+✔ settings reject missing and offscreen geometry, scope owners, bind immutable versioned snapshots (19.702564ms)
+✔ ingestion commits atomically, acknowledges retries, rejects conflicts and false completion (11.054674ms)
+✔ private storage exposes only authorized artifact objects (4.645649ms)
+✔ username reservations are unique, transactional, expire, and never grant legacy or study access (7.530176ms)
+✔ durable rate limit survives requests and expires by database time (2.030471ms)
+✔ interruption excludes a response, replay gets a new identity, all 256 responses are required (94.668826ms)
+✔ database catch slots exactly match the current scientific task generator (1.768847ms)
+✔ admin directory, legacy artifacts and settings enforce admin/owner isolation (6.869847ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 164.937661

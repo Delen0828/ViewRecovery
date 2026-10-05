@@ -1,0 +1,4 @@
+import {defineConfig} from '@playwright/test';
+const report=process.env.VIEWRECOVERY_STATIC==='1'?'admin-legacy-browser-static':process.env.VIEWRECOVERY_PREVIEW==='1'?'step-03-browser-preview':'step-03-browser';
+const command=process.env.VIEWRECOVERY_STATIC==='1'?'HOST=127.0.0.1 PORT=5173 node scripts/serve-built.mjs':process.env.VIEWRECOVERY_PREVIEW==='1'?'node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 5173 --strictPort':'node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5173 --strictPort';
+export default defineConfig({testDir:'./browser',workers:1,fullyParallel:false,retries:0,reporter:[['list'],['json',{outputFile:`${process.cwd()}/test/results/${report}.json`}]],outputDir:process.cwd()+'/test/results/browser-artifacts',use:{baseURL:'http://localhost:5173',headless:true,trace:'off',screenshot:'only-on-failure'},webServer:{cwd:process.cwd(),command,url:'http://localhost:5173',reuseExistingServer:false,timeout:30000}});

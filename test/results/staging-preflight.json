@@ -1,0 +1,43 @@
+{
+  "checks": [
+    {
+      "name": "Configuration",
+      "passed": true
+    },
+    {
+      "name": "Auth API / publishable key",
+      "passed": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "Email authentication enabled",
+      "passed": true
+    },
+    {
+      "name": "Email confirmation required",
+      "passed": true
+    },
+    {
+      "name": "Storage API / server key",
+      "passed": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "Private bucket legacy-archive",
+      "passed": true
+    },
+    {
+      "name": "Private bucket exports",
+      "passed": true
+    },
+    {
+      "name": "PostgreSQL connection",
+      "passed": true
+    },
+    {
+      "name": "Research schema applied",
+      "passed": true
+    }
+  ],
+  "passed": true
+}

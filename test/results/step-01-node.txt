@@ -1,0 +1,13 @@
+✔ each task keeps 3-correct up, 1-incorrect down, and bounds (1.011113ms)
+✔ forced pause restores scientific state and truncates the interrupted attempt (0.468216ms)
+✔ catch slots remain deterministic and replace 13 of the 256 numbered trials (2.345437ms)
+✔ portal fixture preserves blank-category response detection, accuracy and Eastern date grouping (0.364109ms)
+✔ portal durations separate trial phases and scheduled/manual rest (0.214576ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15.667691

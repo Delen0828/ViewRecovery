@@ -1,0 +1,49 @@
+{
+  "checks": [
+    {
+      "name": "Anonymous Data API and identity lookup are denied",
+      "passed": true
+    },
+    {
+      "name": "Concurrent username reservation has exactly one winner",
+      "passed": true
+    },
+    {
+      "name": "Controlled Auth identity creation assigns no admin or enrollment rights",
+      "passed": true
+    },
+    {
+      "name": "Deployed username endpoint returns registration prompt and generic password errors",
+      "passed": true
+    },
+    {
+      "name": "Username login establishes a real verified Supabase session",
+      "passed": true
+    },
+    {
+      "name": "Data API isolates participant profiles and denies role changes",
+      "passed": true
+    },
+    {
+      "name": "Private Storage downloads require an authorized artifact record",
+      "passed": true
+    },
+    {
+      "name": "Real session refresh preserves owner identity",
+      "passed": true
+    },
+    {
+      "name": "Recovery link generation, verification and password update work without sending email",
+      "passed": true
+    },
+    {
+      "name": "Logout clears the local session and protected reads fail",
+      "passed": true
+    },
+    {
+      "name": "Synthetic fixture cleanup",
+      "passed": true
+    }
+  ],
+  "passed": true
+}

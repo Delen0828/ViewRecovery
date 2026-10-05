@@ -1,0 +1,12 @@
+[WebServer] (node:2181897) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 3 tests using 1 worker
+
+(node:2181909) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 test/browser/staging-auth.spec.mjs:9:1 › real staging login, dashboard reads, reload, portal navigation, password recovery and logout (5.9s)
+  ✓  2 test/browser/staging-auth.spec.mjs:57:1 › real imported legacy user signs in with its ID and can browse private historical files (3.9s)
+  ✓  3 test/browser/staging-auth.spec.mjs:69:1 › real administrator sees all imported users and original historical data (5.4s)
+
+  3 passed (15.8s)

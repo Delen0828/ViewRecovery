@@ -1,0 +1,11 @@
+✔ valid staging config supports new server secret keys and rejects partial database credentials (0.828687ms)
+✔ configuration rejects exposed secrets and mismatched client keys (0.144032ms)
+✔ local env parser reads quotes without evaluating shell expressions (1.017184ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5.090701

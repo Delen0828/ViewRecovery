@@ -1,0 +1,128 @@
+{
+  "config": {
+    "argv": [
+      "/home/delen/.vscode-server/cli/servers/Stable-07f806f999227108933c2e30515b26eecc1fda74/server/node",
+      "/home/delen/ViewRecovery/node_modules/playwright/cli.js",
+      "test",
+      "-c",
+      "test/playwright.config.mjs",
+      "staging-auth.spec.mjs"
+    ],
+    "configFile": "/home/delen/ViewRecovery/test/playwright.config.mjs",
+    "rootDir": "/home/delen/ViewRecovery/test/browser",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/home/delen/ViewRecovery/test/results/browser-artifacts",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "/home/delen/ViewRecovery/test/browser",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test/results/step-03-browser-preview.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.63.0",
+    "workers": 1,
+    "webServer": {
+      "cwd": "/home/delen/ViewRecovery",
+      "command": "node node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 5173 --strictPort",
+      "url": "http://localhost:5173",
+      "reuseExistingServer": false,
+      "timeout": 30000
+    }
+  },
+  "suites": [
+    {
+      "title": "staging-auth.spec.mjs",
+      "file": "staging-auth.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "real staging login, dashboard reads, reload, portal navigation, password recovery and logout",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 9473,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-04T20:33:32.297Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "5e0e790286be0a9bf85b-e716b94ddaaaeaad9428",
+          "file": "staging-auth.spec.mjs",
+          "line": 8,
+          "column": 1
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-04T20:33:31.937Z",
+    "duration": 9916.104,
+    "expected": 1,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

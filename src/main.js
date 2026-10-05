@@ -1,3 +1,10 @@
+import {getVerifiedSession} from './services/auth.js';
+import {getRunContext} from './experiment/context.js';
+const experimentContext=getRunContext();
+const experimentSession=await getVerifiedSession();
+if(!experimentSession || experimentSession.user.id!==experimentContext.ownerId) {
+  throw new Error('Sign in with the owner of this run before starting the experiment.');
+}
 import { initJsPsych } from "jspsych";
 import htmlKeyboardResponse from "@jspsych/plugin-html-keyboard-response";
 import jsPsychVirtualChinrest from "@jspsych/plugin-virtual-chinrest";
@@ -3884,125 +3891,11 @@ timeline.push({
   button_html: (choice) => `<div class="my-btn-container"><button class="jspsych-btn">${choice}</button></div>`
 });
 
-// User ID input trial
-timeline.push({
-  type: jsPsychHtmlButtonResponse,
-  stimulus: `
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 0;
-        background-color: #ccc;
-        overflow: hidden;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-      }
-      .user-id-container {
-        text-align: center;
-        color: black;
-        padding: 0 24px;
-        width: 100%;
-        box-sizing: border-box;
-      }
-      .user-id-title {
-        font-size: 32px;
-        margin-bottom: 18px;
-        font-weight: bold;
-      }
-      .user-id-input {
-        font-size: 20px;
-        padding: 12px 14px;
-        margin: 12px 0 8px 0;
-        border: 2px solid #8f8f8f;
-        border-radius: 6px;
-        width: min(280px, 85vw);
-        background: #e4e4e4;
-        color: black;
-        text-align: center;
-      }
-      .user-id-input::placeholder {
-        color: #5a5a5a;
-      }
-      .user-id-instruction {
-        font-size: 20px;
-        margin: 0 0 12px 0;
-        color: black;
-      }
-      .error-message {
-        color: #8b0000;
-        font-size: 16px;
-        margin-top: 10px;
-        display: none;
-      }
-    </style>
-    <div class="user-id-container">
-      <div class="user-id-title">Enter Your User ID</div>
-      <div class="user-id-instruction">Please enter your participant ID</div>
-      <input type="text" id="user-id-input" class="user-id-input" placeholder="e.g., A123" maxlength="10">
-      <div id="error-message" class="error-message">Letters and numbers only</div>
-    </div>
-  `,
-  choices: ['Continue'],
-  button_html: (choice) => `<div class="my-btn-container"><button class="jspsych-btn" id="continue-btn">${choice}</button></div>`,
-  on_load: function() {
-    const continueBtn = document.getElementById('continue-btn');
-    const userIdInput = document.getElementById('user-id-input');
-    const errorMessage = document.getElementById('error-message');
-    
-    // Disable continue button initially
-    continueBtn.disabled = true;
-    continueBtn.style.opacity = '0.5';
-    
-    const participantIdPattern = /^[A-Za-z0-9]+$/;
-
-    // Store user ID value in a variable that persists
-    let currentUserId = '';
-    
-    // Validate input on each keystroke
-    userIdInput.addEventListener('input', function() {
-      const value = this.value;
-      const isValid = participantIdPattern.test(value);
-      currentUserId = value; // Store the current value
-      
-      if (isValid) {
-        errorMessage.style.display = 'none';
-        continueBtn.disabled = false;
-        continueBtn.style.opacity = '1';
-      } else {
-        if (value.length > 0) {
-          errorMessage.style.display = 'block';
-        } else {
-          errorMessage.style.display = 'none';
-        }
-        continueBtn.disabled = true;
-        continueBtn.style.opacity = '0.5';
-      }
-    });
-    
-    // Store the user ID when continue button is clicked
-    continueBtn.addEventListener('click', function() {
-      if (participantIdPattern.test(currentUserId)) {
-        // Store user ID in jsPsych data for all subsequent trials
-        jsPsych.data.addProperties({
-          user_id: currentUserId
-        });
-      }
-    });
-    
-    // Focus on input field
-    userIdInput.focus();
-  },
-  on_finish: function(data) {
-    // The user ID should already be stored in jsPsych data from the button click
-    const allData = jsPsych.data.get();
-    const userIdFromData = allData.values()[0]?.user_id;
-    if (userIdFromData) {
-      data.user_id = userIdFromData;
-    }
-  }
+// Research identity comes from the server-created run, never a typed participant ID.
+jsPsych.data.addProperties({
+  user_id:experimentContext.run.participant_id,
+  auth_user_id:experimentSession.user.id,
+  run_id:experimentContext.run.id
 });
 
 // Visual Angle Calculator UI

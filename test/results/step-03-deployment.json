@@ -1,0 +1,13 @@
+{
+  "checks": [
+    {
+      "name": "Staging auth secrets",
+      "passed": true
+    },
+    {
+      "name": "Staging username-auth deployment",
+      "passed": true
+    }
+  ],
+  "passed": true
+}

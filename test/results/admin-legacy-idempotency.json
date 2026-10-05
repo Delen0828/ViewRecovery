@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "name": "Rerun preserves all account/password hashes, file identities and ownership links",
+      "passed": true
+    },
+    {
+      "name": "No duplicate accounts/files; all 421 stored objects verified again",
+      "passed": true
+    }
+  ]
+}

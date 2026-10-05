@@ -1,0 +1,13 @@
+vite v6.3.5 building for production...
+transforming...
+✓ 59 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                    0.47 kB │ gzip:  0.33 kB
+dist/data-portal/preview.html      0.68 kB │ gzip:  0.38 kB
+dist/data-portal/index.html        0.69 kB │ gzip:  0.39 kB
+dist/data-portal/users.html        0.69 kB │ gzip:  0.39 kB
+dist/assets/app-D8Fuo6Pr.css       1.45 kB │ gzip:  0.68 kB
+dist/assets/styles-20aFRmzq.css    7.98 kB │ gzip:  2.33 kB
+dist/assets/app-C9Btql8g.js      247.96 kB │ gzip: 65.93 kB
+✓ built in 364ms

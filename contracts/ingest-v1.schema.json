@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "run_id", "batch_key", "events"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_id": {"type": "string", "format": "uuid"},
+    "batch_key": {"type": "string", "format": "uuid"},
+    "events": {"type": "array", "minItems": 1, "maxItems": 100, "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "sequence", "phase", "payload"],
+      "properties": {
+        "id": {"type": "string", "format": "uuid"},
+        "sequence": {"type": "integer", "minimum": 0},
+        "attempt_id": {"type": ["string", "null"], "format": "uuid"},
+        "logical_trial": {"type": ["integer", "null"], "minimum": 1},
+        "attempt_number": {"type": ["integer", "null"], "minimum": 1},
+        "phase": {"type": "string", "minLength": 1, "maxLength": 80},
+        "payload": {"type": "object"}
+      }
+    }}
+  }
+}

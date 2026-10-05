@@ -1,0 +1,11 @@
+PASS Anonymous Data API and identity lookup are denied
+PASS Concurrent username reservation has exactly one winner
+PASS Controlled Auth identity creation assigns no admin or enrollment rights
+PASS Deployed username endpoint returns registration prompt and generic password errors
+PASS Username login establishes a real verified Supabase session
+PASS Data API isolates participant profiles and denies role changes
+PASS Private Storage downloads require an authorized artifact record
+PASS Real session refresh preserves owner identity
+PASS Recovery link generation, verification and password update work without sending email
+PASS Logout clears the local session and protected reads fail
+PASS synthetic fixture cleanup

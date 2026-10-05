@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "legacy_accounts": 13,
+  "admin_accounts": 1,
+  "private_archive_entries": 419,
+  "verified_objects": 421,
+  "primary_rows_preserved": 144369,
+  "backup_rows_preserved": 2576,
+  "identity_conflicts_admin_only": 9,
+  "rerun_created_accounts": 0,
+  "rerun_uploaded_files": 0,
+  "password_hashes_unchanged": true,
+  "live_staging_checks": 5,
+  "browser_checks_passed": 12
+}

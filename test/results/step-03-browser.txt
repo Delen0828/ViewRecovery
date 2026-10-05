@@ -1,0 +1,15 @@
+[WebServer] (node:2169156) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 6 tests using 1 worker
+
+(node:2169178) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 test/browser/auth.spec.mjs:17:1 › signed-out direct experiment and portal routes require sign-in and preserve return route (421ms)
+  ✓  2 test/browser/auth.spec.mjs:24:1 › unknown username opens registration with a prefilled label (274ms)
+  ✓  3 test/browser/auth.spec.mjs:29:1 › registration checks confirmation and reports verification without starting a task (260ms)
+  ✓  4 test/browser/auth.spec.mjs:36:1 › verified account dashboard and portal share session; logout protects direct routes again (493ms)
+  ✓  5 test/browser/auth.spec.mjs:43:1 › typing in auth fields does not trigger experiment keyboard shortcuts; offsite returns are rejected (176ms)
+  ✓  6 test/browser/staging-auth.spec.mjs:8:1 › real staging login, dashboard reads, reload, portal navigation, password recovery and logout (6.0s)
+
+  6 passed (8.2s)

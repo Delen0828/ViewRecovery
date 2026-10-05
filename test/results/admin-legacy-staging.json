@@ -1,0 +1,25 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "name": "Imported one-character ID password works through deployed username login",
+      "passed": true
+    },
+    {
+      "name": "Administrator hash import authenticates and server role permits all-user directory",
+      "passed": true
+    },
+    {
+      "name": "Participant metadata does not grant administrator access",
+      "passed": true
+    },
+    {
+      "name": "Private historical file can be signed by owner/admin but not anonymous",
+      "passed": true
+    },
+    {
+      "name": "Password update replaces ID password; short new passwords remain denied",
+      "passed": true
+    }
+  ]
+}

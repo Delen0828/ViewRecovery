@@ -1,0 +1,15 @@
+{
+  "archive_sha256": "a69fafd86db8bec2cae5a212b77f18a18d200f332a0231b4740706e20ce5badf",
+  "file_count": 419,
+  "uncompressed_bytes": 225727596,
+  "types": {
+    ".bak": 9,
+    ".csv": 406,
+    ".json": 1,
+    ".txt": 2,
+    "extensionless": 1
+  },
+  "primary_rows": 144369,
+  "backup_rows": 2576,
+  "primary_header_variants": 14
+}

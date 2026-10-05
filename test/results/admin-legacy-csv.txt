@@ -1,0 +1,11 @@
+✔ CSV preserves multiline HTML, escaped quotes, CRLF, blanks and BOM as text (0.777651ms)
+✔ CSV rejects malformed cells and duplicate headers without hiding raw records (0.203906ms)
+✔ legacy login accepts short identifiers while new registration keeps its minimum (0.178939ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4.439859

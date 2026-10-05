@@ -1,0 +1,4 @@
+PASS 202610040001_foundation.sql: already applied
+PASS 202610040002_transactions.sql: already applied
+PASS 202610040003_identity.sql: already applied
+PASS 202610040004_admin_legacy.sql: applied

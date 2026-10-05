@@ -1,0 +1,12 @@
+test_all_launchers_build_from_any_directory_and_preserve_legacy_data (test_start_servers.StartServerTests.test_all_launchers_build_from_any_directory_and_preserve_legacy_data) ... ok
+test_backup_failure_prevents_build_and_restart (test_start_servers.StartServerTests.test_backup_failure_prevents_build_and_restart) ... ok
+test_existing_managers_replaced_after_build_and_custom_options_quoted (test_start_servers.StartServerTests.test_existing_managers_replaced_after_build_and_custom_options_quoted) ... ok
+test_failed_build_does_not_stop_services_or_launch_server (test_start_servers.StartServerTests.test_failed_build_does_not_stop_services_or_launch_server) ... ok
+test_incomplete_build_prevents_restart (test_start_servers.StartServerTests.test_incomplete_build_prevents_restart) ... ok
+test_invalid_ports_rejected_before_build (test_start_servers.StartServerTests.test_invalid_ports_rejected_before_build) ... ok
+test_missing_dependencies_prevent_build (test_start_servers.StartServerTests.test_missing_dependencies_prevent_build) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.785s
+
+OK

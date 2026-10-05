@@ -1,0 +1,13 @@
+{
+  "checks": [
+    {
+      "name": "Private bucket legacy-archive",
+      "passed": true
+    },
+    {
+      "name": "Private bucket exports",
+      "passed": true
+    }
+  ],
+  "passed": true
+}

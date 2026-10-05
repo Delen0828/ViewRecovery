@@ -1,0 +1,9 @@
+test_case_collisions_rejected_before_extracting (test_legacy_access.LegacyAccessTests.test_case_collisions_rejected_before_extracting) ... ok
+test_identity_conflicts_are_admin_only_and_not_silently_assigned (test_legacy_access.LegacyAccessTests.test_identity_conflicts_are_admin_only_and_not_silently_assigned) ... ok
+test_matching_short_ids_and_full_raw_bytes_preserved (test_legacy_access.LegacyAccessTests.test_matching_short_ids_and_full_raw_bytes_preserved) ... ok
+test_unsafe_paths_and_missing_identity_do_not_create_accounts (test_legacy_access.LegacyAccessTests.test_unsafe_paths_and_missing_identity_do_not_create_accounts) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.002s
+
+OK

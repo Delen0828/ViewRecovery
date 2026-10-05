@@ -26,3 +26,20 @@ dist-ssr
 
 # Private key
 *.pem
+
+# Migration artifacts contain participant identifiers
+server-data.zip
+__pycache__/
+.env
+.env.*
+!.env.example
+.private-migration/
+
+# Local credentials
+env/*
+!env/*.example
+!env/README.md
+
+# Supabase CLI local project/cache state
+supabase/.temp/
+supabase/.branches/

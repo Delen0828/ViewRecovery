@@ -1,0 +1,6 @@
+PASS Imported one-character ID password works through deployed username login
+PASS Administrator hash import authenticates and server role permits all-user directory
+PASS Participant metadata does not grant administrator access
+PASS Private historical file can be signed by owner/admin but not anonymous
+PASS Password update replaces ID password; short new passwords remain denied
+PASS synthetic fixture cleanup

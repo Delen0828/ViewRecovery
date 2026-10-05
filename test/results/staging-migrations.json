@@ -1,0 +1,21 @@
+{
+  "migrations": [
+    {
+      "version": "202610040001_foundation.sql",
+      "status": "already applied"
+    },
+    {
+      "version": "202610040002_transactions.sql",
+      "status": "already applied"
+    },
+    {
+      "version": "202610040003_identity.sql",
+      "status": "already applied"
+    },
+    {
+      "version": "202610040004_admin_legacy.sql",
+      "status": "applied"
+    }
+  ],
+  "passed": true
+}

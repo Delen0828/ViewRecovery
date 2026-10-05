@@ -1,0 +1,21 @@
+{
+  "checks": [
+    {
+      "name": "Staging site URL",
+      "passed": true
+    },
+    {
+      "name": "Exact Auth callback allowed",
+      "passed": true
+    },
+    {
+      "name": "Auth password minimum enforced",
+      "passed": true
+    },
+    {
+      "name": "Email confirmation required",
+      "passed": true
+    }
+  ],
+  "passed": true
+}
