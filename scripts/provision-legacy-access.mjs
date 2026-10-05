@@ -9,6 +9,7 @@ import bcrypt from 'bcryptjs';
 import {createClient} from '@supabase/supabase-js';
 import {readLocalEnv,validateStagingEnv} from './lib/local-env.mjs';
 import {stagingDatabaseConfig} from './lib/staging-db.mjs';
+import {storeArtifactMetrics} from './lib/portal-metrics.mjs';
 
 const env=readLocalEnv();
 if(validateStagingEnv(env).length) throw new Error('INVALID_STAGING_CONFIG');
@@ -70,6 +71,10 @@ async function preserveFile({objectKey,bytes,sha256,originalPath,participantId=n
  // Verify the actual stored bytes on both first import and rerun.
  const {data,error:readError}=await admin.storage.from('legacy-archive').download(objectKey);
  if(readError || hash(Buffer.from(await data.arrayBuffer()))!==sha256)error('ARCHIVE_VERIFICATION_FAILED');
+ if(['.csv','.bak'].includes(kind)) {
+  const artifact=(await db.query("select a.id,a.sha256,a.task from public.artifacts a where bucket='legacy-archive' and object_key=$1 and not exists(select 1 from public.session_metrics m where m.artifact_id=a.id and m.source_sha256=a.sha256 and m.metrics_version=1)",[objectKey])).rows[0];
+  if(artifact)await storeArtifactMetrics(db,artifact,bytes);
+ }
  report.verified_files++;
 }
 try {

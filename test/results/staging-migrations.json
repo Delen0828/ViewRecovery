@@ -14,6 +14,10 @@
     },
     {
       "version": "202610040004_admin_legacy.sql",
+      "status": "already applied"
+    },
+    {
+      "version": "202610050001_portal_metrics.sql",
       "status": "applied"
     }
   ],

@@ -1,10 +1,7 @@
 import {getVerifiedSession} from './services/auth.js';
 import {getRunContext} from './experiment/context.js';
-const experimentContext=getRunContext();
-const experimentSession=await getVerifiedSession();
-if(!experimentSession || experimentSession.user.id!==experimentContext.ownerId) {
-  throw new Error('Sign in with the owner of this run before starting the experiment.');
-}
+import {createRunSync} from './experiment/sync.js';
+import * as d3 from 'd3';
 import { initJsPsych } from "jspsych";
 import htmlKeyboardResponse from "@jspsych/plugin-html-keyboard-response";
 import jsPsychVirtualChinrest from "@jspsych/plugin-virtual-chinrest";
@@ -14,6 +11,12 @@ import jsPsychFullscreen from "@jspsych/plugin-fullscreen";
 
 import './style.css';
 import { CENTRAL_FIXATION_TASK_CONFIG } from './experiment-config.js';
+export async function startExperiment() {
+const experimentContext=getRunContext();
+const experimentSession=await getVerifiedSession();
+if(!experimentSession || experimentSession.user.id!==experimentContext.ownerId) {
+  throw new Error('Sign in with the owner of this run before starting the experiment.');
+}
 const FULLSCREEN_PROMPT_ID = 'fullscreen-return-prompt';
 const FULLSCREEN_STATUS_ID = 'fullscreen-return-status';
 let fullscreenPromptVisible = false;
@@ -566,16 +569,44 @@ function handleInteractionDataUpdate(record) {
     if (fullscreenPromptVisible) {
       hideFullscreenPrompt();
     }
-    jsPsych.resumeExperiment();
+    if(matchesConfirmedDisplay())jsPsych.resumeExperiment();
   }
 }
 
 function handleExperimentFinish() {
   fullscreenMonitoringEnabled = false;
   hideFullscreenPrompt();
+  window.removeEventListener('resize',checkRunDisplay);
 }
 
+function matchesConfirmedDisplay() {
+  const d=experimentContext.run.parameter_snapshot.display;
+  return innerWidth===d.viewport_width && innerHeight===d.viewport_height && screen.width===d.screen_width && screen.height===d.screen_height && devicePixelRatio===d.dpr && Boolean(document.fullscreenElement);
+}
+function checkRunDisplay() {
+  if(!fullscreenMonitoringEnabled)return;
+  if(matchesConfirmedDisplay()) {hideFullscreenPrompt();jsPsych.resumeExperiment();return;}
+  jsPsych.pauseExperiment();showFullscreenPrompt();
+  const status=document.getElementById(FULLSCREEN_STATUS_ID);
+  if(status)status.innerHTML='Restore your confirmed display size, zoom and fullscreen to continue, or <a href="/dashboard">return to your dashboard</a> to configure a new run.';
+}
+
+const runSync=createRunSync(experimentContext.run,experimentContext.ownerId);
+const experimentRoot=document.getElementById('app') || document.getElementById('portal');
+experimentRoot.replaceChildren();
+document.body.style.padding='0';
+document.body.classList.add('experiment-active');
+experimentRoot.style.cssText='width:100vw;min-height:100vh;max-width:none;margin:0;padding:0;background:#ccc;outline:none;';
 const jsPsych = initJsPsych({
+  display_element: experimentRoot,
+  on_data_update: data => {
+    runSync.record(data);
+    // jsPsych skips on_timeline_finish when abortCurrentTimeline is called.
+    if(data.manual_pause_interrupted) {
+      runSync.endAttempt(true);
+      runSync.flush().catch(()=>{});
+    }
+  },
   on_interaction_data_update: handleInteractionDataUpdate,
   on_finish: handleExperimentFinish
 });
@@ -586,10 +617,19 @@ const DEFAULT_STIMULUS_POSITION_OFFSET_DEGREES = {
   x: 5,
   y: 5
 };
-let latestCalculatorData = null;
+const confirmedDisplay=experimentContext.run.parameter_snapshot.display;
+const confirmedGeometry=experimentContext.run.parameter_snapshot.geometry;
+let latestCalculatorData = {
+  resolution:[confirmedDisplay.screen_width,confirmedDisplay.screen_height],
+  screenSizeCm:[confirmedDisplay.width_cm,confirmedDisplay.height_cm],
+  viewingDistanceCm:confirmedDisplay.distance_cm,
+  pixelsPerCmX:confirmedGeometry.pixels_per_cm_x,
+  pixelsPerCmY:confirmedGeometry.pixels_per_cm_y,
+  pixelsPerDegree:confirmedGeometry.pixels_per_degree
+};
 const stimulusPositionSettings = {
-  xOffsetDeg: DEFAULT_STIMULUS_POSITION_OFFSET_DEGREES.x,
-  yOffsetDeg: DEFAULT_STIMULUS_POSITION_OFFSET_DEGREES.y,
+  xOffsetDeg: experimentContext.run.parameter_snapshot.training.x_deg,
+  yOffsetDeg: experimentContext.run.parameter_snapshot.training.y_deg,
   xOffsetPx: null,
   yOffsetPx: null
 };
@@ -939,6 +979,7 @@ function ensureManualPauseKeyboardListener() {
 }
 
 function beginManualPauseTrialAttempt(taskType, trialNum, totalTrials) {
+  runSync.beginAttempt(trialNum);
   ensureManualPauseKeyboardListener();
   manualPauseState.isTrialAttemptActive = true;
   manualPauseState.pauseRequested = false;
@@ -1866,53 +1907,6 @@ function playFeedbackSound(isCorrect, trialCategory = '') {
 }
 
 // Function to save data to server
-function saveDataToServer(filename, csvData, options = {}) {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/save_data.php', true);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    
-    xhr.onreadystatechange = function() {
-      if (xhr.readyState === 4) {
-        // XHR Response received
-        
-        if (xhr.status === 200) {
-          try {
-            const response = JSON.parse(xhr.responseText);
-            if (response.success) {
-              resolve(response);
-            } else {
-              reject(new Error(response.error || 'Server save failed'));
-            }
-          } catch (e) {
-            console.error('JSON Parse Error:', e);
-            reject(new Error(`Invalid server response: ${xhr.responseText.substring(0, 100)}`));
-          }
-        } else {
-          reject(new Error(`Server error: ${xhr.status} - ${xhr.responseText}`));
-        }
-      }
-    };
-    
-    xhr.onerror = function() {
-      reject(new Error('Network error'));
-    };
-    
-    const postData = {
-      filename: filename,
-      filedata: csvData,
-      overwrite: Boolean(options.overwrite)
-    };
-    
-    xhr.send(JSON.stringify(postData));
-  });
-}
-
-function isServerSaveDisabledForDevelopment() {
-  return window.location.port === '5173'
-    || (window.location.hostname === 'localhost' && window.location.port !== '8000');
-}
-
 function sanitizeFilenameSegment(value, fallback = 'unknown') {
   const cleaned = String(value ?? '')
     .trim()
@@ -2011,30 +2005,7 @@ function addSaveMetadata(rows, prefix, options = {}) {
 }
 
 function saveRowsWithPrefix(prefix, rows, options = {}) {
-  const filename = buildDataFilename(prefix, options);
-  const csvData = rowsToCsv(addSaveMetadata(rows, prefix, options));
-
-  if (!csvData) {
-    return Promise.resolve({
-      success: false,
-      skipped: true,
-      filename,
-      message: 'No data rows were available to save.'
-    });
-  }
-
-  if (isServerSaveDisabledForDevelopment()) {
-    console.log(`[Data Save] Development mode: would save ${filename}`);
-    return Promise.resolve({
-      success: true,
-      skipped: true,
-      development: true,
-      filename,
-      message: 'Development mode: server save disabled.'
-    });
-  }
-
-  return saveDataToServer(filename, csvData, { overwrite: Boolean(options.overwrite) });
+  return runSync.flush(prefix===DATA_SAVE_PREFIX.finalComplete);
 }
 
 function getSessionChunkCount(taskType) {
@@ -3898,659 +3869,9 @@ jsPsych.data.addProperties({
   run_id:experimentContext.run.id
 });
 
-// Visual Angle Calculator UI
-timeline.push({
-  type: jsPsychHtmlButtonResponse,
-  stimulus: `
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 0;
-        background-color: #ccc;
-        overflow: auto;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 100vh;
-      }
-      .calculator-container {
-        text-align: center;
-        color: black;
-        padding: 24px 28px;
-        width: 100%;
-        box-sizing: border-box;
-      }
-      .calculator-title {
-        font-size: 32px;
-        margin-bottom: 8px;
-        color: black;
-        font-weight: bold;
-      }
-      .calculator-subtitle {
-        font-size: 20px;
-        color: black;
-        margin-bottom: 18px;
-      }
-      .input-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
-        gap: 15px;
-        margin: 15px 0;
-      }
-      .input-section {
-        background: #bdbdbd;
-        padding: 12px;
-        border-radius: 8px;
-      }
-      .section-title {
-        font-size: 18px;
-        font-weight: bold;
-        color: black;
-        margin-bottom: 8px;
-      }
-      .input-group {
-        margin: 8px 0;
-        text-align: left;
-      }
-      .input-label {
-        display: block;
-        font-size: 14px;
-        color: black;
-        margin-bottom: 3px;
-        font-weight: 500;
-      }
-      .calculator-input {
-        width: 100%;
-        padding: 8px;
-        border: none;
-        border-radius: 4px;
-        font-size: 16px;
-        text-align: center;
-        box-sizing: border-box;
-        background: #e0e0e0;
-        color: black;
-      }
-      .calculator-input:focus {
-        outline: 2px solid #555;
-      }
-      .calculator-input.invalid {
-        outline: 2px solid #e74c3c;
-      }
-      .unit-label {
-        font-size: 12px;
-        color: #3f3f3f;
-        margin-top: 3px;
-      }
-      .error-message {
-        color: #e74c3c;
-        font-size: 12px;
-        margin-top: 5px;
-        display: none;
-      }
-      .preview-section {
-        background: #c4c4c4;
-        padding: 10px;
-        border-radius: 6px;
-        margin: 10px 0;
-      }
-      .preview-title {
-        font-size: 16px;
-        font-weight: bold;
-        color: black;
-        margin-bottom: 6px;
-      }
-      .preview-text {
-        font-size: 14px;
-        color: black;
-        margin: 3px 0;
-      }
-      .instructions {
-        background: #c8c8c8;
-        padding: 8px;
-        border-radius: 4px;
-        margin: 10px 0;
-        font-size: 14px;
-        color: black;
-        text-align: center;
-      }
-    </style>
-    <div class="calculator-container">
-      <div class="calculator-title">Visual Angle Calculator</div>
-      <div class="calculator-subtitle">Enter your display setup parameters for accurate visual angle calculations</div>
-      
-      <div class="instructions">
-        Enter your display parameters for accurate visual angle calculations
-      </div>
-      
-      <div class="input-grid">
-        <div class="input-section">
-          <div class="section-title">Screen Resolution</div>
-          <div class="input-group">
-            <label class="input-label">Width (pixels)</label>
-            <input type="number" id="resolution-width" class="calculator-input" placeholder="1920" value="1920">
-          </div>
-          <div class="input-group">
-            <label class="input-label">Height (pixels)</label>
-            <input type="number" id="resolution-height" class="calculator-input" placeholder="1080" value="1080">
-          </div>
-        </div>
-        
-        <div class="input-section">
-          <div class="section-title">Screen Dimensions</div>
-          <div class="input-group">
-            <label class="input-label">Width (cm)</label>
-            <input type="number" id="screen-width" class="calculator-input" placeholder="47.6" step="0.1" value="47.6">
-            <div class="unit-label">Visible screen width</div>
-          </div>
-          <div class="input-group">
-            <label class="input-label">Height (cm)</label>
-            <input type="number" id="screen-height" class="calculator-input" placeholder="26.8" step="0.1" value="26.8">
-            <div class="unit-label">Visible screen height</div>
-          </div>
-        </div>
-
-        <div class="input-section">
-          <div class="section-title">Viewing Distance</div>
-          <div class="input-group">
-            <label class="input-label">Distance (cm)</label>
-            <input type="number" id="viewing-distance" class="calculator-input" placeholder="50" step="0.5" value="50">
-            <div class="unit-label">Eye to screen distance</div>
-          </div>
-        </div>
-      </div>
-      
-      <div class="preview-section">
-        <div class="preview-title">Calculated Values</div>
-        <div class="preview-text">Pixels per degree: <span id="preview-ppd">--</span></div>
-        <div class="preview-text">Pixels per cm (X): <span id="preview-ppcm-x">--</span></div>
-        <div class="preview-text">Pixels per cm (Y): <span id="preview-ppcm-y">--</span></div>
-      </div>
-    </div>
-  `,
-  choices: ['Continue'],
-  button_html: (choice) => `<div class="my-btn-container"><button class="jspsych-btn" id="continue-calc-btn">${choice}</button></div>`,
-  on_load: function() {
-    const continueBtn = document.getElementById('continue-calc-btn');
-    const inputs = {
-      resWidth: document.getElementById('resolution-width'),
-      resHeight: document.getElementById('resolution-height'),
-      screenWidth: document.getElementById('screen-width'),
-      screenHeight: document.getElementById('screen-height'),
-      viewingDistance: document.getElementById('viewing-distance')
-    };
-    
-    const previews = {
-      ppd: document.getElementById('preview-ppd'),
-      ppcmX: document.getElementById('preview-ppcm-x'),
-      ppcmY: document.getElementById('preview-ppcm-y')
-    };
-    
-    // Disable continue button initially
-    continueBtn.disabled = true;
-    continueBtn.style.opacity = '0.5';
-    
-    function validateInput(input, min = 1, max = 10000) {
-      const value = parseFloat(input.value);
-      return !isNaN(value) && value >= min && value <= max;
-    }
-    
-    function updateCalculations() {
-      const values = {
-        resWidth: parseFloat(inputs.resWidth.value),
-        resHeight: parseFloat(inputs.resHeight.value),
-        screenWidth: parseFloat(inputs.screenWidth.value),
-        screenHeight: parseFloat(inputs.screenHeight.value),
-        viewingDistance: parseFloat(inputs.viewingDistance.value)
-      };
-      
-      // Check if all values are valid
-      const allValid = Object.values(values).every(v => !isNaN(v) && v > 0);
-      
-      if (allValid) {
-        // Calculate pixels per cm
-        const pixelsPerCmX = values.resWidth / values.screenWidth;
-        const pixelsPerCmY = values.resHeight / values.screenHeight;
-        
-        // Calculate pixels per degree
-        // For 1 degree visual angle: tan(1°) * viewing distance = cm
-        const cmPerDegree = Math.tan(Math.PI / 180) * values.viewingDistance;
-        const pixelsPerDegree = (pixelsPerCmX + pixelsPerCmY) / 2 * cmPerDegree;
-        
-        // Update previews
-        previews.ppd.textContent = pixelsPerDegree.toFixed(2);
-        previews.ppcmX.textContent = pixelsPerCmX.toFixed(2);
-        previews.ppcmY.textContent = pixelsPerCmY.toFixed(2);
-        
-        // Enable continue button
-        continueBtn.disabled = false;
-        continueBtn.style.opacity = '1';
-      } else {
-        previews.ppd.textContent = '--';
-        previews.ppcmX.textContent = '--';
-        previews.ppcmY.textContent = '--';
-        
-        continueBtn.disabled = true;
-        continueBtn.style.opacity = '0.5';
-      }
-    }
-    
-    // Add validation and calculation for all inputs
-    Object.values(inputs).forEach(input => {
-      input.addEventListener('input', function() {
-        const isValid = validateInput(this);
-        this.classList.toggle('invalid', !isValid);
-        updateCalculations();
-      });
-    });
-    
-    // Store the calculated parameters when continue is clicked
-    continueBtn.addEventListener('click', function() {
-	      const calculatorData = {
-	        resolution: [parseFloat(inputs.resWidth.value), parseFloat(inputs.resHeight.value)],
-	        screenSizeCm: [parseFloat(inputs.screenWidth.value), parseFloat(inputs.screenHeight.value)],
-	        viewingDistanceCm: parseFloat(inputs.viewingDistance.value),
-	        pixelsPerCmX: parseFloat(inputs.resWidth.value) / parseFloat(inputs.screenWidth.value),
-	        pixelsPerCmY: parseFloat(inputs.resHeight.value) / parseFloat(inputs.screenHeight.value),
-	        pixelsPerDegree: parseFloat(previews.ppd.textContent)
-	      };
-	      latestCalculatorData = calculatorData;
-
-	      // Store in jsPsych data
-	      jsPsych.data.addProperties({
-	        calculator_data: calculatorData
-	      });
-    });
-    
-    // Initial calculation
-    updateCalculations();
-  },
-  on_finish: function(data) {
-    // Data is already stored in jsPsych via the button click event
-  }
-});
-
-// Stimulus position editor
-timeline.push({
-  type: jsPsychHtmlButtonResponse,
-  stimulus: function() {
-    const taskLabel = escapeHtml(TASK_LINK_CONFIG[selectedTask]?.label || selectedTask || 'Selected Task');
-    const xMinAttribute = selectedTask === 'Bar' ? 'min="0"' : '';
-    const barValidationNote = selectedTask === 'Bar'
-      ? '<p class="position-note">For bar comparison, x offset must be 0 or greater.</p>'
-      : '';
-
-    return `
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          margin: 0;
-          padding: 0;
-          background-color: #ccc;
-          overflow: auto;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          min-height: 100vh;
-          color: black;
-        }
-        .position-editor {
-          width: min(980px, calc(100vw - 48px));
-          margin: 0 auto;
-          padding: 28px 0;
-          box-sizing: border-box;
-          color: black;
-          text-align: center;
-        }
-        .position-title {
-          margin: 0 0 8px;
-          font-size: 32px;
-          font-weight: bold;
-          color: black;
-        }
-        .position-subtitle {
-          margin: 0 0 20px;
-          font-size: 20px;
-          color: #333;
-        }
-        .position-preview-wrap {
-          margin: 0 auto 18px;
-          width: min(860px, 100%);
-        }
-        .position-preview {
-          display: block;
-          width: 100%;
-          height: min(48vh, 430px);
-          min-height: 280px;
-          border: 2px solid #7f7f7f;
-          background: #d9d9d9;
-          box-sizing: border-box;
-        }
-        .position-controls {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(180px, 1fr));
-          gap: 18px;
-          width: min(620px, 100%);
-          margin: 0 auto 12px;
-        }
-        .position-field {
-          text-align: left;
-        }
-        .position-label {
-          display: block;
-          margin-bottom: 6px;
-          font-size: 17px;
-          font-weight: 700;
-          color: black;
-        }
-        .position-input {
-          width: 100%;
-          box-sizing: border-box;
-          border: 2px solid #8f8f8f;
-          border-radius: 6px;
-          background: #e4e4e4;
-          color: black;
-          font-size: 20px;
-          padding: 10px 12px;
-          text-align: center;
-        }
-        .position-input.invalid {
-          border-color: #991b1b;
-          outline: 2px solid #991b1b;
-        }
-        .position-readout {
-          margin: 6px 0;
-          font-size: 17px;
-          color: #222;
-        }
-        .position-note {
-          margin: 6px 0;
-          font-size: 16px;
-          color: #333;
-        }
-        .position-error {
-          min-height: 22px;
-          margin: 8px 0 0;
-          color: #7f1d1d;
-          font-size: 16px;
-          font-weight: 700;
-        }
-        @media (max-width: 680px) {
-          .position-controls {
-            grid-template-columns: 1fr;
-          }
-          .position-title {
-            font-size: 28px;
-          }
-          .position-subtitle {
-            font-size: 18px;
-          }
-        }
-      </style>
-      <main class="position-editor">
-        <h1 class="position-title">Stimulus Position</h1>
-        <p class="position-subtitle">${taskLabel}</p>
-        <div class="position-preview-wrap">
-          <svg id="stimulus-position-preview" class="position-preview" role="img" aria-label="Stimulus position preview"></svg>
-        </div>
-        <div class="position-controls">
-          <label class="position-field">
-            <span class="position-label">X offset</span>
-            <input type="number" id="stimulus-x-offset" class="position-input" step="0.1" value="${stimulusPositionSettings.xOffsetDeg}" ${xMinAttribute}>
-          </label>
-          <label class="position-field">
-            <span class="position-label">Y offset</span>
-            <input type="number" id="stimulus-y-offset" class="position-input" step="0.1" value="${stimulusPositionSettings.yOffsetDeg}">
-          </label>
-        </div>
-        <p class="position-readout">Pixel offset: <span id="stimulus-position-readout">--</span></p>
-        ${barValidationNote}
-        <div id="stimulus-position-error" class="position-error" aria-live="polite"></div>
-      </main>
-    `;
-  },
-  choices: ['Continue'],
-  button_html: (choice) => `<div class="my-btn-container"><button class="jspsych-btn" id="continue-position-btn">${choice}</button></div>`,
-  data: {
-    trial_category: 'stimulus_position_editor',
-    task_type: selectedTask
-  },
-  on_load: function() {
-    const svg = document.getElementById('stimulus-position-preview');
-    const xInput = document.getElementById('stimulus-x-offset');
-    const yInput = document.getElementById('stimulus-y-offset');
-    const readout = document.getElementById('stimulus-position-readout');
-    const errorMessage = document.getElementById('stimulus-position-error');
-    const continueBtn = document.getElementById('continue-position-btn');
-    const svgNamespace = 'http://www.w3.org/2000/svg';
-
-    function appendSvgElement(name, attributes = {}, text = '') {
-      const element = document.createElementNS(svgNamespace, name);
-      Object.entries(attributes).forEach(([key, value]) => {
-        element.setAttribute(key, String(value));
-      });
-      if (text) {
-        element.textContent = text;
-      }
-      svg.appendChild(element);
-      return element;
-    }
-
-    function validateInputs() {
-      const xOffsetDeg = Number(xInput.value);
-      const yOffsetDeg = Number(yInput.value);
-      const xValid = Number.isFinite(xOffsetDeg) && (selectedTask !== 'Bar' || xOffsetDeg >= 0);
-      const yValid = Number.isFinite(yOffsetDeg);
-
-      xInput.classList.toggle('invalid', !xValid);
-      yInput.classList.toggle('invalid', !yValid);
-
-      return {
-        valid: xValid && yValid,
-        xOffsetDeg,
-        yOffsetDeg
-      };
-    }
-
-    function getPreviewCenters(xOffsetPx, yOffsetPx) {
-      const positions = getStimulusPositionsForTask(selectedTask);
-      const centers = [];
-
-      if (selectedTask === 'Bar') {
-        positions.forEach((position) => {
-          const barCenters = getBarStimulusCentersFromPixels(position, screenWidth, screenHeight, xOffsetPx, yOffsetPx);
-          centers.push({
-            x: barCenters.lostViewCenterX,
-            y: barCenters.lostViewCenterY,
-            label: `${position} left bar`
-          });
-          centers.push({
-            x: barCenters.goodViewCenterX,
-            y: barCenters.goodViewCenterY,
-            label: `${position} right bar`
-          });
-        });
-        return centers;
-      }
-
-      positions.forEach((position) => {
-        const center = getStimulusCenterForPositionFromPixels(position, screenWidth, screenHeight, xOffsetPx, yOffsetPx);
-        centers.push({
-          x: center.x,
-          y: center.y,
-          label: position.replace('_', ' ')
-        });
-      });
-
-      return centers;
-    }
-
-    function drawPreview() {
-      const inputState = validateInputs();
-      svg.innerHTML = '';
-      svg.setAttribute('viewBox', `0 0 ${screenWidth} ${screenHeight}`);
-      svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-
-      appendSvgElement('rect', {
-        x: 0,
-        y: 0,
-        width: screenWidth,
-        height: screenHeight,
-        fill: '#d9d9d9'
-      });
-      appendSvgElement('line', {
-        x1: screenWidth / 2,
-        y1: 0,
-        x2: screenWidth / 2,
-        y2: screenHeight,
-        stroke: '#6f6f6f',
-        'stroke-width': 2,
-        'vector-effect': 'non-scaling-stroke'
-      });
-      appendSvgElement('line', {
-        x1: 0,
-        y1: screenHeight / 2,
-        x2: screenWidth,
-        y2: screenHeight / 2,
-        stroke: '#6f6f6f',
-        'stroke-width': 2,
-        'vector-effect': 'non-scaling-stroke'
-      });
-      appendSvgElement('circle', {
-        cx: screenWidth / 2,
-        cy: screenHeight / 2,
-        r: Math.max(6, Math.min(screenWidth, screenHeight) * 0.008),
-        fill: '#111'
-      });
-      appendSvgElement('text', {
-        x: 18,
-        y: 32,
-        fill: '#222',
-        'font-size': Math.max(18, Math.min(screenWidth, screenHeight) * 0.026)
-      }, 'Left Upper');
-      appendSvgElement('text', {
-        x: screenWidth - 18,
-        y: 32,
-        fill: '#222',
-        'font-size': Math.max(18, Math.min(screenWidth, screenHeight) * 0.026),
-        'text-anchor': 'end'
-      }, 'Right Upper');
-      appendSvgElement('text', {
-        x: 18,
-        y: screenHeight - 18,
-        fill: '#222',
-        'font-size': Math.max(18, Math.min(screenWidth, screenHeight) * 0.026)
-      }, 'Left Lower');
-      appendSvgElement('text', {
-        x: screenWidth - 18,
-        y: screenHeight - 18,
-        fill: '#222',
-        'font-size': Math.max(18, Math.min(screenWidth, screenHeight) * 0.026),
-        'text-anchor': 'end'
-      }, 'Right Lower');
-
-      if (!inputState.valid) {
-        readout.textContent = '--';
-        errorMessage.textContent = selectedTask === 'Bar' && Number(inputState.xOffsetDeg) < 0
-          ? 'For the bar comparison task, x offset must be 0 or greater.'
-          : 'Enter valid numeric x and y offsets.';
-        continueBtn.disabled = true;
-        continueBtn.style.opacity = '0.5';
-        return;
-      }
-
-      const xOffsetPx = deg2PixelForAxis(inputState.xOffsetDeg, 'x');
-      const yOffsetPx = deg2PixelForAxis(inputState.yOffsetDeg, 'y');
-      setStimulusOffsetSettings(inputState.xOffsetDeg, inputState.yOffsetDeg);
-
-      const markerRadius = Math.max(9, Math.min(screenWidth, screenHeight) * 0.014);
-      getPreviewCenters(xOffsetPx, yOffsetPx).forEach((center) => {
-        const visible = center.x >= 0 && center.x <= screenWidth && center.y >= 0 && center.y <= screenHeight;
-        const markerX = Math.min(Math.max(center.x, markerRadius), screenWidth - markerRadius);
-        const markerY = Math.min(Math.max(center.y, markerRadius), screenHeight - markerRadius);
-        appendSvgElement('line', {
-          x1: screenWidth / 2,
-          y1: screenHeight / 2,
-          x2: markerX,
-          y2: markerY,
-          stroke: visible ? '#1f2933' : '#991b1b',
-          'stroke-width': 2,
-          'stroke-dasharray': '8 7',
-          'vector-effect': 'non-scaling-stroke'
-        });
-        appendSvgElement('circle', {
-          cx: markerX,
-          cy: markerY,
-          r: markerRadius,
-          fill: visible ? '#111' : '#991b1b',
-          stroke: '#fff',
-          'stroke-width': 2,
-          'vector-effect': 'non-scaling-stroke'
-        });
-        if (selectedTask !== 'Motion') {
-          appendSvgElement('text', {
-            x: markerX,
-            y: markerY - markerRadius - 8,
-            fill: visible ? '#111' : '#991b1b',
-            'font-size': Math.max(16, Math.min(screenWidth, screenHeight) * 0.022),
-            'text-anchor': 'middle'
-          }, center.label);
-        }
-      });
-
-      readout.textContent = `x ${xOffsetPx.toFixed(1)} px, y ${yOffsetPx.toFixed(1)} px`;
-      errorMessage.textContent = '';
-      continueBtn.disabled = false;
-      continueBtn.style.opacity = '1';
-    }
-
-    xInput.addEventListener('input', drawPreview);
-    yInput.addEventListener('input', drawPreview);
-    continueBtn.addEventListener('click', function() {
-      const inputState = validateInputs();
-      if (!inputState.valid) {
-        return;
-      }
-
-      const settings = setStimulusOffsetSettings(inputState.xOffsetDeg, inputState.yOffsetDeg);
-      jsPsych.data.addProperties({
-        stimulus_position_data: {
-          xOffsetDeg: settings.xOffsetDeg,
-          yOffsetDeg: settings.yOffsetDeg,
-          xOffsetPx: settings.xOffsetPx,
-          yOffsetPx: settings.yOffsetPx
-        },
-        stimulus_x_offset_deg: settings.xOffsetDeg,
-        stimulus_y_offset_deg: settings.yOffsetDeg,
-        stimulus_x_offset_px: settings.xOffsetPx,
-        stimulus_y_offset_px: settings.yOffsetPx
-      });
-    });
-
-    drawPreview();
-  },
-  on_finish: function(data) {
-    const settings = getStimulusOffsetSettings();
-    data.stimulus_position_data = {
-      xOffsetDeg: settings.xOffsetDeg,
-      yOffsetDeg: settings.yOffsetDeg,
-      xOffsetPx: settings.xOffsetPx,
-      yOffsetPx: settings.yOffsetPx
-    };
-    data.stimulus_x_offset_deg = settings.xOffsetDeg;
-    data.stimulus_y_offset_deg = settings.yOffsetDeg;
-    data.stimulus_x_offset_px = settings.xOffsetPx;
-    data.stimulus_y_offset_px = settings.yOffsetPx;
-  }
-});
-
-// Original chinrest trial (commented out for manual visual angle calculation)
-// var chinrestTrial = {
-// 	type: jsPsychVirtualChinrest,
-// 	blindspot_reps: 3,
-// 	resize_units: "none"
-// };
-// timeline.push(chinrestTrial);
+// Setup is confirmed before run creation. The renderer consumes the immutable
+// server snapshot; editable calculator/position screens cannot mutate an active run.
+jsPsych.data.addProperties({calculator_data:latestCalculatorData});
 
 // Clinic version uses the combination generation functions below
 
@@ -4654,6 +3975,8 @@ function createPauseReplayTrialNode(taskType, trialNum, totalTrials, trialSequen
         },
         on_timeline_finish: function() {
           endManualPauseTrialAttempt();
+          runSync.endAttempt(manualPauseState.pauseRequested);
+          runSync.flush().catch(()=>{});
         }
       },
       {
@@ -5100,10 +4423,10 @@ timeline.push({
           saveStatusIcon.textContent = 'Error';
           serverStatus.classList.add('error');
           console.error('Server save errors:', failures);
-          if (finishBtn) {
-            finishBtn.disabled = false;
-            finishBtn.style.opacity = '1';
-            finishBtn.style.cursor = 'pointer';
+          if (!document.getElementById('retry-sync')) {
+            const retry=document.createElement('button');retry.id='retry-sync';retry.textContent='Retry synchronization';
+            retry.onclick=()=>{retry.disabled=true;runSync.flush(true).then(()=>{saveStatusText.textContent='All trial events synchronized. Run completed in Supabase.';retry.remove();if(finishBtn)finishBtn.disabled=false;}).catch(error=>{saveStatusText.textContent=error.message;retry.disabled=false;});};
+            serverStatus.appendChild(retry);
           }
           return;
         }
@@ -5120,7 +4443,7 @@ timeline.push({
           return;
         }
 
-        saveStatusText.textContent = 'Final data and session files saved to server.';
+        saveStatusText.textContent = 'All trial events synchronized. Run completed in Supabase.';
         saveStatusIcon.textContent = 'Saved';
         serverStatus.classList.add('success');
         console.log('Server saves successful:', results.map((result) => result.value));
@@ -5147,5 +4470,10 @@ timeline.push({
   }
 });
 
+// Setup already entered fullscreen; begin with the legacy startup/instructions.
+if(document.fullscreenElement)timeline.shift();
+window.addEventListener('resize',checkRunDisplay);
 jsPsych.run(timeline);
+}
+
 }

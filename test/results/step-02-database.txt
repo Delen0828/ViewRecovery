@@ -1,17 +1,94 @@
-✔ migrations enforce anonymous denial, owner isolation, researcher scope and no self-grants (10.142077ms)
-✔ settings reject missing and offscreen geometry, scope owners, bind immutable versioned snapshots (19.928792ms)
-✔ ingestion commits atomically, acknowledges retries, rejects conflicts and false completion (11.012484ms)
-✔ private storage exposes only authorized artifact objects (5.312209ms)
-✔ username reservations are unique, transactional, expire, and never grant legacy or study access (5.881437ms)
-✔ durable rate limit survives requests and expires by database time (1.980025ms)
-✔ interruption excludes a response, replay gets a new identity, all 256 responses are required (94.544362ms)
-✔ database catch slots exactly match the current scientific task generator (1.768265ms)
-✔ admin directory, legacy artifacts and settings enforce admin/owner isolation (6.416719ms)
-ℹ tests 9
-ℹ suites 0
-ℹ pass 9
-ℹ fail 0
-ℹ cancelled 0
-ℹ skipped 0
-ℹ todo 0
-ℹ duration_ms 163.61439
+TAP version 13
+# Subtest: migrations enforce anonymous denial, owner isolation, researcher scope and no self-grants
+ok 1 - migrations enforce anonymous denial, owner isolation, researcher scope and no self-grants
+  ---
+  duration_ms: 11.433181
+  type: 'test'
+  ...
+# Subtest: settings reject missing and offscreen geometry, scope owners, bind immutable versioned snapshots
+ok 2 - settings reject missing and offscreen geometry, scope owners, bind immutable versioned snapshots
+  ---
+  duration_ms: 30.116751
+  type: 'test'
+  ...
+# Subtest: ingestion commits atomically, acknowledges retries, rejects conflicts and false completion
+ok 3 - ingestion commits atomically, acknowledges retries, rejects conflicts and false completion
+  ---
+  duration_ms: 15.415035
+  type: 'test'
+  ...
+# Subtest: private storage exposes only authorized artifact objects
+ok 4 - private storage exposes only authorized artifact objects
+  ---
+  duration_ms: 4.264278
+  type: 'test'
+  ...
+# Subtest: username reservations are unique, transactional, expire, and never grant legacy or study access
+ok 5 - username reservations are unique, transactional, expire, and never grant legacy or study access
+  ---
+  duration_ms: 6.560893
+  type: 'test'
+  ...
+# Subtest: durable rate limit survives requests and expires by database time
+ok 6 - durable rate limit survives requests and expires by database time
+  ---
+  duration_ms: 2.062863
+  type: 'test'
+  ...
+# Subtest: interruption excludes a response, replay gets a new identity, all 256 responses are required
+ok 7 - interruption excludes a response, replay gets a new identity, all 256 responses are required
+  ---
+  duration_ms: 125.354773
+  type: 'test'
+  ...
+# Subtest: database catch slots exactly match the current scientific task generator
+ok 8 - database catch slots exactly match the current scientific task generator
+  ---
+  duration_ms: 2.07679
+  type: 'test'
+  ...
+# Subtest: admin directory, legacy artifacts and settings enforce admin/owner isolation
+ok 9 - admin directory, legacy artifacts and settings enforce admin/owner isolation
+  ---
+  duration_ms: 8.029683
+  type: 'test'
+  ...
+# Subtest: SQL summaries reconcile response, duration, catch, replay and empty-session definitions
+ok 10 - SQL summaries reconcile response, duration, catch, replay and empty-session definitions
+  ---
+  duration_ms: 47.507605
+  type: 'test'
+  ...
+# Subtest: recorded summary updates atomically on ingestion/completion and follows source authorization
+ok 11 - recorded summary updates atomically on ingestion/completion and follows source authorization
+  ---
+  duration_ms: 7.165287
+  type: 'test'
+  ...
+# Subtest: one dashboard RPC preserves account access, selected-user isolation and run pagination
+ok 12 - one dashboard RPC preserves account access, selected-user isolation and run pagination
+  ---
+  duration_ms: 7.37839
+  type: 'test'
+  ...
+# Subtest: historical SQL selection supersedes chunks, excludes backups and rejects stale or cross-account summaries
+ok 13 - historical SQL selection supersedes chunks, excludes backups and rejects stale or cross-account summaries
+  ---
+  duration_ms: 16.6855
+  type: 'test'
+  ...
+# Subtest: backfill verifies byte checksums and retains invalid files without inventing metrics
+ok 14 - backfill verifies byte checksums and retains invalid files without inventing metrics
+  ---
+  duration_ms: 13.280647
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 303.940169

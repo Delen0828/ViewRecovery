@@ -13,6 +13,12 @@ data
 dist-ssr
 *.local
 
+# Tests and test artifacts
+test/
+tests/
+**/*.test.*
+**/*.spec.*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -43,3 +49,19 @@ env/*
 # Supabase CLI local project/cache state
 supabase/.temp/
 supabase/.branches/
+
+# SQL portal regression sources; generated reports and screenshots stay ignored.
+!test/
+test/*
+!test/portal-sql-parity.mjs
+!test/portal-sql.config.mjs
+!test/portal-sql-live.config.mjs
+!test/browser/
+test/browser/*
+!test/browser/portal.spec.mjs
+!test/browser/navigation.spec.mjs
+!test/browser/staging-navigation.spec.mjs
+!test/browser/staging-portal.spec.mjs
+!test/browser/fixtures/
+test/browser/fixtures/*
+!test/browser/fixtures/portal.mjs

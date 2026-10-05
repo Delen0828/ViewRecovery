@@ -165,3 +165,7 @@ button:hover {
 }
 
 /* 按钮样式优化 */
+body.experiment-active #stimulus {position:fixed;inset:0;display:block;background:#ccc;outline:none}
+body.experiment-active .jspsych-display-element {outline:none}
+body.experiment-active .jspsych-content-wrapper {width:100%;min-height:100vh;display:flex;align-items:center;justify-content:center}
+body.experiment-active .jspsych-content {width:100%}

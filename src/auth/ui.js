@@ -2,11 +2,11 @@ import {authAction} from '../services/auth.js';
 import {requireClient} from '../services/supabase.js';
 import {authPath} from './routes.js';
 export const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-export function renderAuth(root,{mode,returnPath,username='',recovery=false}) {
+export function renderAuth(root,{mode,returnPath,username='',recovery=false,embedded=false}) {
  const register=mode==='register',recover=mode==='recover',reset=mode==='reset',change=mode==='change';
  const title=change?'Change your password':reset?'Choose a new password':register?'Create an account':recover?'Reset your password':'Sign in';
- root.innerHTML=`<section class="account-card"><h1>${title}</h1>
-  <p>${register?'Your account starts with participant access. Study enrollment is managed by study staff.':recover?'Enter the email address used for your account.':'Use your account to manage setup and view authorized study results.'}</p>
+ root.innerHTML=`${embedded?'<div class="password-settings"><h2>':'<section class="account-card"><h1>'}${title}${embedded?'</h2>':'</h1>'}
+  ${embedded?'':`<p>${register?'Your account starts with participant access. Study enrollment is managed by study staff.':recover?'Enter the email address used for your account.':'Use your account to manage setup and view authorized study results.'}</p>`}
   <form id="account-form">
   ${!recover&&!reset&&!change?`<label>Username<input name="username" autocomplete="username" required minlength="${register?3:1}" maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9_-]{${register?2:0},31}" value="${escapeHtml(username)}"></label>`:''}
   ${register||recover?'<label>Email<input name="email" type="email" autocomplete="email" required maxlength="254"></label>':''}
@@ -17,8 +17,8 @@ export function renderAuth(root,{mode,returnPath,username='',recovery=false}) {
   <button type="submit">${register?'Create account':recover?'Send recovery link':reset||change?'Save password':'Sign in'}</button>
   <p id="auth-status" role="status" aria-live="polite"></p>
   </form>
-  <nav>${change?'<a href="/dashboard">Back to dashboard</a>':register||recover||reset?`<a href="${escapeHtml(authPath('login',returnPath))}">Back to sign in</a>`:`<a href="${escapeHtml(authPath('register',returnPath))}">Create an account</a> <a href="${escapeHtml(authPath('recover',returnPath))}">Forgot password?</a> <a href="/admin/login">Admin sign in</a>`}</nav>
- </section>`;
+  ${embedded?'':`<nav>${change?'<a href="/dashboard">My progress</a>':register||recover||reset?`<a href="${escapeHtml(authPath('login',returnPath))}">Back to sign in</a>`:`<a href="${escapeHtml(authPath('register',returnPath))}">Create an account</a> <a href="${escapeHtml(authPath('recover',returnPath))}">Forgot password?</a> <a href="/admin/login">Admin sign in</a>`}</nav>`}
+ ${embedded?'</div>':'</section>'}`;
  const form=root.querySelector('form'),status=root.querySelector('#auth-status'),button=form.querySelector('button');
  const usernameInput=form.querySelector('[name=username]');
  usernameInput?.addEventListener('blur',()=>{usernameInput.value=usernameInput.value.trim();});

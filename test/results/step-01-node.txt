@@ -1,13 +1,40 @@
-✔ each task keeps 3-correct up, 1-incorrect down, and bounds (1.011113ms)
-✔ forced pause restores scientific state and truncates the interrupted attempt (0.468216ms)
-✔ catch slots remain deterministic and replace 13 of the 256 numbered trials (2.345437ms)
-✔ portal fixture preserves blank-category response detection, accuracy and Eastern date grouping (0.364109ms)
-✔ portal durations separate trial phases and scheduled/manual rest (0.214576ms)
-ℹ tests 5
-ℹ suites 0
-ℹ pass 5
-ℹ fail 0
-ℹ cancelled 0
-ℹ skipped 0
-ℹ todo 0
-ℹ duration_ms 15.667691
+TAP version 13
+# Subtest: each task keeps 3-correct up, 1-incorrect down, and bounds
+ok 1 - each task keeps 3-correct up, 1-incorrect down, and bounds
+  ---
+  duration_ms: 1.550544
+  type: 'test'
+  ...
+# Subtest: forced pause restores scientific state and truncates the interrupted attempt
+ok 2 - forced pause restores scientific state and truncates the interrupted attempt
+  ---
+  duration_ms: 0.555561
+  type: 'test'
+  ...
+# Subtest: catch slots remain deterministic and replace 13 of the 256 numbered trials
+ok 3 - catch slots remain deterministic and replace 13 of the 256 numbered trials
+  ---
+  duration_ms: 2.390533
+  type: 'test'
+  ...
+# Subtest: portal fixture preserves blank-category response detection, accuracy and Eastern date grouping
+ok 4 - portal fixture preserves blank-category response detection, accuracy and Eastern date grouping
+  ---
+  duration_ms: 0.459379
+  type: 'test'
+  ...
+# Subtest: portal durations separate trial phases and scheduled/manual rest
+ok 5 - portal durations separate trial phases and scheduled/manual rest
+  ---
+  duration_ms: 0.320927
+  type: 'test'
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 20.186994

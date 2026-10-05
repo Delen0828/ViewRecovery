@@ -15,6 +15,6 @@ test_invalid_ports_rejected_before_build (test_start_servers.StartServerTests.te
 test_missing_dependencies_prevent_build (test_start_servers.StartServerTests.test_missing_dependencies_prevent_build) ... ok
 
 ----------------------------------------------------------------------
-Ran 15 tests in 2.583s
+Ran 15 tests in 2.604s
 
 OK

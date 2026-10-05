@@ -1,22 +1,95 @@
-▶ built static server serves deep routes, compiled portal and assets from dist only
-  ✔ / (2.173722ms)
-  ✔ /dashboard (1.594636ms)
-  ✔ /auth/login (1.153562ms)
-  ✔ /auth/recovery (1.033375ms)
-  ✔ /Motion (1.081546ms)
-  ✔ /settings (1.208586ms)
-  ✔ data-portal/index.html (1.280973ms)
-  ✔ data-portal/users.html (1.223405ms)
-  ✔ data-portal/preview.html (1.86067ms)
-  ✔ compiled JavaScript asset and HEAD (4.030045ms)
-  ✔ private env/source and legacy PHP are not served (2.845302ms)
-✔ built static server serves deep routes, compiled portal and assets from dist only (93.043452ms)
-✔ occupied port fails without silently opening a different port (40.191956ms)
-ℹ tests 13
-ℹ suites 0
-ℹ pass 13
-ℹ fail 0
-ℹ cancelled 0
-ℹ skipped 0
-ℹ todo 0
-ℹ duration_ms 178.453943
+TAP version 13
+# Subtest: built static server serves deep routes, compiled portal and assets from dist only
+    # Subtest: /
+    ok 1 - /
+      ---
+      duration_ms: 3.478932
+      type: 'test'
+      ...
+    # Subtest: /dashboard
+    ok 2 - /dashboard
+      ---
+      duration_ms: 2.102658
+      type: 'test'
+      ...
+    # Subtest: /auth/login
+    ok 3 - /auth/login
+      ---
+      duration_ms: 1.425558
+      type: 'test'
+      ...
+    # Subtest: /auth/recovery
+    ok 4 - /auth/recovery
+      ---
+      duration_ms: 1.556835
+      type: 'test'
+      ...
+    # Subtest: /Motion
+    ok 5 - /Motion
+      ---
+      duration_ms: 1.007246
+      type: 'test'
+      ...
+    # Subtest: /settings
+    ok 6 - /settings
+      ---
+      duration_ms: 1.293036
+      type: 'test'
+      ...
+    # Subtest: /account
+    ok 7 - /account
+      ---
+      duration_ms: 1.767885
+      type: 'test'
+      ...
+    # Subtest: data-portal/index.html
+    ok 8 - data-portal/index.html
+      ---
+      duration_ms: 2.184222
+      type: 'test'
+      ...
+    # Subtest: data-portal/users.html
+    ok 9 - data-portal/users.html
+      ---
+      duration_ms: 1.343001
+      type: 'test'
+      ...
+    # Subtest: data-portal/preview.html
+    ok 10 - data-portal/preview.html
+      ---
+      duration_ms: 1.013257
+      type: 'test'
+      ...
+    # Subtest: compiled JavaScript asset and HEAD
+    ok 11 - compiled JavaScript asset and HEAD
+      ---
+      duration_ms: 5.055765
+      type: 'test'
+      ...
+    # Subtest: private env/source and legacy PHP are not served
+    ok 12 - private env/source and legacy PHP are not served
+      ---
+      duration_ms: 7.084033
+      type: 'test'
+      ...
+    1..12
+ok 1 - built static server serves deep routes, compiled portal and assets from dist only
+  ---
+  duration_ms: 160.678927
+  type: 'test'
+  ...
+# Subtest: occupied port fails without silently opening a different port
+ok 2 - occupied port fails without silently opening a different port
+  ---
+  duration_ms: 111.928951
+  type: 'test'
+  ...
+1..2
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 382.150653

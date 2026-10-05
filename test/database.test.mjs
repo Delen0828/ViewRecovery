@@ -5,6 +5,8 @@ import { PGlite } from '@electric-sql/pglite';
 import pg from 'pg';
 import {readLocalEnv,validateStagingEnv} from '../scripts/lib/local-env.mjs';
 import {stagingDatabaseConfig} from '../scripts/lib/staging-db.mjs';
+import {analyzeRows} from '../src/portal-metrics.js';
+import {metricsMatch,summaryMetrics,storeArtifactMetrics} from '../scripts/lib/portal-metrics.mjs';
 const live=process.env.VIEWRECOVERY_LIVE_DATABASE==='1';
 let db;
 if(live) {
@@ -27,7 +29,7 @@ if(live) {
 const ids = {a:'10000000-0000-0000-0000-000000000001',b:'10000000-0000-0000-0000-000000000002',r:'10000000-0000-0000-0000-000000000003',admin:'10000000-0000-0000-0000-000000000004',pa:'20000000-0000-0000-0000-000000000001',pb:'20000000-0000-0000-0000-000000000002',s:'30000000-0000-0000-0000-000000000001',other:'30000000-0000-0000-0000-000000000002'};
 const display = {viewport_width:1920,viewport_height:1080,screen_width:1920,screen_height:1080,width_cm:47.6,height_cm:26.8,distance_cm:50,dpr:1,fullscreen:true};
 const settings = {x_deg:5,y_deg:5,positions:['left_upper']};
-const q = (sql,params=[]) => db.query(sql,live?params.map(value=>value && typeof value==='object'?JSON.stringify(value):value):params);
+const q = (sql,params=[]) => db.query(sql,live?params.map((value,index)=>value && typeof value==='object'&&!sql.includes(`$${index+1}::uuid[]`)?JSON.stringify(value):value):params);
 async function as(user,fn,role='authenticated') {
   await db.exec(`set role ${role}`);
   await q("select set_config('request.jwt.claim.sub',$1,false)",[user??'']);
@@ -224,6 +226,110 @@ test('admin directory, legacy artifacts and settings enforce admin/owner isolati
     assert.ok((await q('select count(*)::int n from public.display_profiles')).rows[0].n>0);
   });
   await as(null,async()=>assert.rejects(q('select public.account_access()'),/permission/),'anon');
+});
+
+test('SQL summaries reconcile response, duration, catch, replay and empty-session definitions',async()=>{
+ const cases=[[],[
+  {time_elapsed:'0',task_type:'Motion'},
+  {overall_trial_number:'1',attempt_number:'1',task_type:'Motion',time_elapsed:'500',rt:'100'},
+  {overall_trial_number:'1',attempt_number:'1',task_type:'Motion',time_elapsed:'900',correct:'yes',difficulty_level:'0',rt:'250'},
+  {overall_trial_number:'2',task_type:'Motion',time_elapsed:'1800',correct:'false',difficulty_level:'2',rt:'300'},
+  {trial_category:'scheduled_break',time_elapsed:'6800'},
+  {overall_trial_number:'3',task_type:'Motion',time_elapsed:'7300',trial_category:'fixation_catch_response',correct:'true',rt:'200'},
+  {overall_trial_number:'4',task_type:'Bar',time_elapsed:'200',correct:'true',difficulty_level:'7',rt:'100'},
+  {overall_trial_number:'5',correct_direction:'vertical',time_elapsed:'',correct:'0',difficulty_level:'1',rt:'NaN'},
+  {overall_trial_number:'6',task_type:'Motion',time_elapsed:'900',correct:'incorrect',difficulty_level:'',fixation_catch_trial:'true',correct_direction:'x',fixation_response_key:'x'},
+  {overall_trial_number:'7',attempt_number:1,time_elapsed:'1000',task_type:'Motion',correct:true,difficulty_level:3,rt:100},
+  {overall_trial_number:'7',attempt_number:1,time_elapsed:'1100',manual_pause_interrupted:true},
+  {overall_trial_number:'7',attempt_number:2,time_elapsed:'1300',task_type:'Motion',correct:false,difficulty_level:3,rt:200},
+  {trial_category:'manual_pause_screen',time_elapsed:'1400'},
+  {overall_trial_number:'8',task_type:'Orientation',time_elapsed:'1600',correct:true,difficulty_level:2,attempt_state:'interrupted'}
+ ],Array.from({length:600},(_,i)=>({task_type:'Centrality',overall_trial_number:Math.floor(i/3)+1,
+  attempt_number:1,time_elapsed:i*123.5,...(i%3===2?{correct:i%2===0,difficulty_level:i%8,rt:100}:{} )}))];
+ for(const rows of cases)for(const exclude of [false,true]){
+  const interrupted=new Set(rows.filter(r=>r.manual_pause_interrupted).map(r=>`${r.overall_trial_number}|${r.attempt_number}`));
+  const filtered=exclude?rows.filter(r=>!interrupted.has(`${r.overall_trial_number}|${r.attempt_number}`)):rows;
+  const actual=(await q('select private.summarize_portal_rows($1,\'Motion\',$2) as metrics',[rows,exclude])).rows[0].metrics;
+  actual.levels.sort((a,b)=>a.level.localeCompare(b.level,undefined,{numeric:true}));
+  assert.ok(metricsMatch(actual,summaryMetrics(analyzeRows(filtered,'Motion'),'Motion')),JSON.stringify({actual,expected:summaryMetrics(analyzeRows(filtered,'Motion'),'Motion')}));
+ }
+});
+
+test('recorded summary updates atomically on ingestion/completion and follows source authorization',async()=>{
+ const rows=(await q('select payload from public.experiment_events where run_id=$1 order by client_sequence',[run.id])).rows.map(e=>e.payload);
+ const interrupted=new Set(rows.filter(r=>r.manual_pause_interrupted).map(r=>`${r.overall_trial_number}|${r.attempt_number}`));
+ const expected=summaryMetrics(analyzeRows(rows.filter(r=>!interrupted.has(`${r.overall_trial_number}|${r.attempt_number}`)),'Motion'),'Motion');
+ const actual=(await q('select metrics from public.session_metrics where run_id=$1',[run.id])).rows[0].metrics;
+ assert.ok(metricsMatch(actual,expected));
+ await as(ids.a,async()=>{
+  assert.ok((await q("select * from public.portal_sessions where source='recorded' and id=$1",[run.id])).rowCount===1);
+  await assert.rejects(q("update public.session_metrics set metrics='{}' where run_id=$1",[run.id]),/permission/);
+  await assert.rejects(q('select private.refresh_run_metrics($1)',[run.id]),/permission/);
+ });
+ await as(ids.b,async()=>assert.equal((await q('select * from public.session_metrics where run_id=$1',[run.id])).rowCount,0));
+ await as(ids.r,async()=>assert.equal((await q('select * from public.session_metrics where run_id=$1',[run.id])).rowCount,1));
+ await as(null,async()=>assert.rejects(q('select * from public.portal_sessions'),/permission/),'anon');
+});
+
+test('one dashboard RPC preserves account access, selected-user isolation and run pagination',async()=>{
+ await q("insert into public.profiles(auth_user_id,display_username) values($1,'OtherOwner'),($2,'AdminOwner') on conflict do nothing",[ids.b,ids.admin]);
+ await as(ids.a,async()=>{
+  const dashboard=(await q('select public.portal_dashboard() as data')).rows[0].data;
+  assert.equal(dashboard.access,'participant');assert.equal(dashboard.participant.id,ids.pa);
+  assert.equal(dashboard.studies.length,1);assert.equal(dashboard.enrollments.length,1);
+  assert.equal(dashboard.totalRuns,Number((await q('select count(*) as n from public.experiment_runs')).rows[0].n));
+  assert.ok(dashboard.runs.some(r=>r.id===run.id));
+  assert.equal((await q('select public.portal_dashboard(null,null,25) as data')).rows[0].data.runs.length,0);
+  await assert.rejects(q('select public.portal_dashboard(null,$1)',[ids.pb]),/unavailable/);
+  await assert.rejects(q('select public.portal_dashboard($1)',[ids.b]),/unavailable/);
+  await assert.rejects(q('select public.portal_dashboard(null,null,-1)'),/Invalid/);
+ });
+ await as(ids.admin,async()=>{
+  const selected=(await q('select public.portal_dashboard(null,$1) as data',[ids.pa])).rows[0].data;
+  const expected=(await q('select display_username from public.profiles where auth_user_id=$1',[ids.a])).rows[0].display_username;
+  assert.equal(selected.access,'admin');assert.equal(selected.participant.id,ids.pa);assert.equal(selected.profile.display_username,expected);
+ });
+ await as(null,async()=>assert.rejects(q('select public.portal_dashboard()'),/permission/),'anon');
+});
+
+test('historical SQL selection supersedes chunks, excludes backups and rejects stale or cross-account summaries',async()=>{
+ const asset=crypto.randomUUID(),chunk=crypto.randomUUID(),backup=crypto.randomUUID(),standalone=crypto.randomUUID();
+ for(const [id,name] of [[asset,'final_complete_user_Test_Motion_2026-10-01T14-30-00.csv'],[chunk,'session_chunk_complete_user_Test_Motion_2026-10-01T14-30-00.csv'],[backup,'final_complete_user_Test_Motion_2026-10-01T14-30-00.bak'],[standalone,'session_chunk_complete_user_Test_Motion_2026-10-02T14-30-00.csv']]){
+  await q("insert into public.artifacts(id,study_id,participant_id,bucket,object_key,sha256,original_path,kind,task) values($1::uuid,$2,$3,'legacy-archive',$1::uuid::text,'hash',$4,$5,'Motion')",[id,ids.s,ids.pa,name,name.endsWith('.bak')?'.bak':'.csv']);
+  await q('select private.refresh_artifact_metrics($1,\'hash\',$2)',[id,[{task_type:'Motion',overall_trial_number:1,correct:true,difficulty_level:1,rt:250}]]);
+ }
+ await as(ids.a,async()=>{
+  const sessions=(await q('select id,metrics from public.portal_sessions where id=any($1::uuid[])',[ [asset,chunk,backup,standalone] ])).rows;
+  assert.deepEqual(sessions.map(s=>s.id).sort(),[asset,standalone].sort());
+  assert.ok(sessions.every(s=>s.metrics.total===1));
+  await assert.rejects(q('select private.refresh_artifact_metrics($1,\'hash\',$2)',[asset,[]]),/permission/);
+  await assert.rejects(q('insert into public.session_metrics(artifact_id,source_sha256,metrics) values($1,\'hash\',\'{}\')',[crypto.randomUUID()]),/permission/);
+ });
+ await as(ids.b,async()=>assert.equal((await q('select * from public.portal_artifacts where id=$1',[asset])).rowCount,0));
+ await as(ids.admin,async()=>assert.equal((await q('select * from public.session_metrics where artifact_id=$1',[asset])).rowCount,1));
+ await as(ids.r,async()=>assert.equal((await q('select * from public.portal_sessions where id=$1',[asset])).rowCount,1));
+ await q("update public.artifacts set sha256='changed' where id=$1",[asset]);
+ assert.equal((await q('select metrics from public.portal_sessions where id=$1',[asset])).rows[0].metrics,null);
+ await assert.rejects(q('select private.refresh_artifact_metrics($1,\'hash\',$2)',[asset,[]]),/changed/);
+ await q('delete from public.artifacts where id=any($1::uuid[])',[[asset,chunk,backup,standalone]]);
+ assert.equal((await q('select * from public.session_metrics where artifact_id=any($1::uuid[])',[[asset,chunk,backup,standalone]])).rowCount,0);
+});
+
+test('backfill verifies byte checksums and retains invalid files without inventing metrics',async()=>{
+ const id=crypto.randomUUID(),content=Buffer.from('task_type,correct,difficulty_level,rt\nMotion,true,1,250\n');
+ const sha=await crypto.subtle.digest('SHA-256',content).then(b=>Buffer.from(b).toString('hex'));
+ await q("insert into public.artifacts(id,participant_id,bucket,object_key,sha256,original_path,kind,task) values($1::uuid,$2,'legacy-archive',$1::uuid::text,$3,'user_Backfill.csv','.csv','Motion')",[id,ids.pa,sha]);
+ // Live acceptance already owns a rollback-only transaction; never commit it.
+ const adapter={query:(sql,params)=>live&&['begin','commit','rollback'].includes(sql)?Promise.resolve({rows:[]}):q(sql,params)};
+ await assert.rejects(storeArtifactMetrics(adapter,{id,sha256:'wrong',task:'Motion'},content),/Checksum/);
+ assert.equal((await q('select * from public.session_metrics where artifact_id=$1',[id])).rowCount,0);
+ assert.deepEqual(await storeArtifactMetrics(adapter,{id,sha256:sha,task:'Motion'},content),{valid:true});
+ const malformed=Buffer.from('duplicate,duplicate\n1,2\n'),badHash=await crypto.subtle.digest('SHA-256',malformed).then(b=>Buffer.from(b).toString('hex'));
+ await q('update public.artifacts set sha256=$2 where id=$1',[id,badHash]);
+ assert.deepEqual(await storeArtifactMetrics(adapter,{id,sha256:badHash,task:'Motion'},malformed),{valid:false});
+ const metric=(await q('select metrics,error_code from public.portal_sessions where id=$1',[id])).rows[0];
+ assert.deepEqual(metric,{metrics:null,error_code:'INVALID_CSV'});
+ await q('delete from public.artifacts where id=$1',[id]);
 });
 
 test.after(()=>db.close());

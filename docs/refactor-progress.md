@@ -66,3 +66,28 @@ existing login/recovery/logout flow. Temporary acceptance accounts were removed.
 The full provisioning rerun verified all 421 stored objects again, created no
 accounts or files, and left account password hashes, artifact identities and
 ownership links unchanged. Evidence is archived in `test/results/admin-legacy-*`.
+
+## Portal parity and personalized training
+
+The file overview, checksum-verified preview, user summaries and legacy chart
+types are now restored on Supabase-backed routes. Personal display/task settings
+load and save through the existing controlled RPCs, with live geometry preview,
+fullscreen confirmation and immutable run snapshots. The renderer now runs from
+confirmed settings and uploads acknowledged events through a persistent browser
+outbox. Recorded runs also have paginated preview and CSV export. See the
+[parity report](portal-parity.md) for the feature mapping and verification.
+
+Historical scientific reconciliation, large-data performance gates and
+production cutover remain pending. Earlier step descriptions above record the
+state at those milestones; task setup and charts are no longer placeholders.
+
+## Simplified role-specific navigation
+
+Participants now have My progress, Training settings and Account. Administrators
+have User progress, Training settings, Account and File download. Searchable,
+paged user dropdowns scope the admin charts and saved configuration; the selected
+user carries across progress, settings and files. Account always changes the
+signed-in user's password. Other users' measured settings are shown for admins,
+with confirmation/editing retained in each user's own account. See the
+[interface details](simplified-interface.md) and
+[verification evidence](../test/results/navigation-verification.md).

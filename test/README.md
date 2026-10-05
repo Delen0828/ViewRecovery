@@ -1,5 +1,15 @@
 # Sequential verification archive
 
+The current chart pipeline is [SQL-backed](../docs/portal-sql-pipeline.md).
+`portal-sql-parity.mjs` compares SQL metrics with the previous definitions for
+all 415 preserved CSV/backup files and is included in `npm test`. SQL acceptance
+also covers summary visibility, write denial, invalidation, run ingestion updates,
+final/chunk selection and the combined dashboard RPC. Use
+`VIEWRECOVERY_STATIC=1 npx playwright test -c test/portal-sql.config.mjs` for the
+compiled browser checks on port 5197. The live config reuses localhost:5173:
+`VIEWRECOVERY_LIVE_BROWSER=1 npx playwright test -c test/portal-sql-live.config.mjs
+--grep 'real Supabase file charts|real participant and administrator menus'`.
+
 Run `npm ci`, then `npm test` from the repository root. Requires Node 22+ and Python 3. The runner stops on the first failure and stores each command's output in `test/results/`. `npm test` includes the production Vite build. All fixtures are synthetic; the real ZIP is read only by the inventory check and is never extracted into a public directory. Do not commit source filenames or participant cells as test output.
 
 - `test_inventory.py`: exact supplied-archive inventory, multiline CSV parsing, separate backup counts, malformed shape retention, unsafe paths and expansion limits.
@@ -7,6 +17,29 @@ Run `npm ci`, then `npm test` from the repository root. Requires Node 22+ and Py
 - `database.test.mjs`: applies all migrations to PGlite's PostgreSQL engine; exercises SQL under anonymous, authenticated owner, other participant, and researcher roles. Tests settings versions/snapshots, storage visibility, transactional username reservations, durable rate limits, atomic batches/retries/conflicts, interruption/replay, incomplete completion denial, and successful 256-response completion.
 
 The PGlite harness supplies minimal `auth.users`, `auth.uid()`, and Storage tables. It tests real PostgreSQL policies/functions/constraints but cannot verify Supabase's HTTP APIs, JWT processing, Auth configuration, email delivery, Storage server, or concurrent database connections. Those remain staging gates, not passing mocked integration tests.
+
+## Restored portal and training configuration
+
+See [parity report](../docs/portal-parity.md). `portal-metrics.test.mjs` checks
+response/catch/rest definitions, full-trial duration, overlapping-save selection
+and Eastern dates. `run-sync.test.mjs` checks persistent retries, account isolation,
+interrupted drafts and completion failure. `browser/portal.spec.mjs` exercises
+file overview/filtering/pagination, CSV previews, five charts and their controls,
+saved configuration and task execution, including mobile screenshots.
+`browser/staging-portal.spec.mjs` repeats the workflows against real Supabase with
+temporary synthetic fixtures and tests all 256 trials, interruption/replay,
+acknowledged completion and CSV export. Enable it with
+`VIEWRECOVERY_LIVE_BROWSER=1`; fixtures are deleted afterward.
+
+`browser/navigation.spec.mjs` verifies the simplified participant/admin menus,
+user search and directory pagination, selected-user isolation, saved settings,
+own-account password management, file views and mobile layout. The corresponding
+`browser/staging-navigation.spec.mjs` uses temporary real participant/admin
+accounts, an enrolled study and four private synthetic CSVs to verify scoped
+charts, configuration persistence, actual original-file download and password
+change. Its teardown removes all fixtures. Current evidence uses
+`test/results/navigation-*`; screenshots are in
+`test/results/navigation-screenshots/`.
 
 ## Current gates
 

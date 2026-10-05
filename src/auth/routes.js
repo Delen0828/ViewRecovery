@@ -6,7 +6,7 @@ export function safeReturnPath(value,origin) {
   if(url.origin!==origin || url.hash || url.username || url.password) return '/dashboard';
   const decoded=decodeURIComponent(url.pathname);
   if(decoded.includes('//') || decoded.includes('\\') || decoded.split('/').includes('..')) return '/dashboard';
-  if(!['/','/dashboard','/admin',...tasks.map(t=>`/${t}`),'/data-portal','/data-portal/','/data-portal/index.html','/data-portal/users.html','/data-portal/preview.html','/settings'].includes(url.pathname)) return '/dashboard';
+  if(!['/','/dashboard','/admin',...tasks.map(t=>`/${t}`),'/data-portal','/data-portal/','/data-portal/index.html','/data-portal/users.html','/data-portal/preview.html','/settings','/account'].includes(url.pathname)) return '/dashboard';
   return url.pathname+url.search;
  } catch {return '/dashboard';}
 }

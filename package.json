@@ -26,6 +26,7 @@
     "@jspsych/plugin-virtual-chinrest": "^3.1.0",
     "@supabase/supabase-js": "^2.117.2",
     "bcryptjs": "^3.0.3",
+    "d3": "^7.9.0",
     "jspsych": "^8.2.1",
     "serve-handler": "^6.1.7"
   },

@@ -1,9 +1,16 @@
-✔ experiment entry requires a confirmed run and isolates its snapshot from editable defaults (0.612278ms)
-ℹ tests 1
-ℹ suites 0
-ℹ pass 1
-ℹ fail 0
-ℹ cancelled 0
-ℹ skipped 0
-ℹ todo 0
-ℹ duration_ms 3.492397
+TAP version 13
+# Subtest: experiment entry requires a confirmed run and isolates its snapshot from editable defaults
+ok 1 - experiment entry requires a confirmed run and isolates its snapshot from editable defaults
+  ---
+  duration_ms: 1.167318
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6.478637

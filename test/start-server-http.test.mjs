@@ -44,7 +44,7 @@ test('built static server serves deep routes, compiled portal and assets from di
     }
   }
   const index = await readFile(new URL('dist/index.html', root), 'utf8');
-  for (const route of ['/', '/dashboard', '/auth/login', '/auth/recovery', '/Motion', '/settings']) {
+  for (const route of ['/', '/dashboard', '/auth/login', '/auth/recovery', '/Motion', '/settings', '/account']) {
     await t.test(route, async () => {
       const response = await fetch(base + route);
       assert.equal(response.status, 200);
