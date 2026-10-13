@@ -15,6 +15,12 @@ Experiment: `http://127.0.0.1:8000/Motion` (also `/Orientation`, `/Centrality`, 
 Data portal: `http://127.0.0.1:8000/data-portal/` (charts, previews, and downloads).
 Database viewer: `http://127.0.0.1:8000/database`.
 
+The portal uses Better Auth with User/Admin password login. Existing users are
+migrated at startup; users without a password use their exact User ID as their
+initial password, and the admin password is preserved. New user signup requires
+invitation code `bright`. Email verification and third-party login are disabled.
+For public hosting, set `BETTER_AUTH_URL` to the public web origin.
+
 Import the supplied historical archive separately, once:
 
 ```bash

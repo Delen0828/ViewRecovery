@@ -20,8 +20,9 @@
   const portal = d3.select(portalNode);
   const API = {
     session: '/data-portal/api/session',
-    login: '/data-portal/login',
-    logout: '/data-portal/logout',
+    login: '/data-portal/auth/sign-in/username',
+    signup: '/data-portal/auth/sign-up/email',
+    logout: '/data-portal/auth/sign-out',
     files: '/data-portal/api/files',
     userTrends: '/data-portal/api/user-trends',
     preview: '/data-portal/api/preview',
@@ -56,7 +57,8 @@
 
   const state = {
     authenticated: false,
-    csrfToken: '',
+    authView: 'login',
+    loginMode: 'user',
     account: {
       role: '',
       userId: '',
@@ -123,7 +125,6 @@
 
       const data = await response.json();
       state.authenticated = Boolean(data.authenticated);
-      state.csrfToken = data.csrf_token || '';
       state.account.role = data.role || '';
       state.account.userId = data.user_id || '';
       state.account.label = data.user_label || '';
@@ -320,7 +321,10 @@
   function renderLogin() {
     portal.html('');
     const card = portal.append('section').attr('class', 'card');
-    appendHeader(card, 'Data Portal Login', 'Admins use their password. Users can enter their participant ID.');
+    const signingUp = state.authView === 'signup';
+    appendHeader(card, signingUp ? 'Create User Account' : 'Data Portal Login', signingUp
+      ? 'Register with your participant ID and invitation code.'
+      : 'Select your login mode and enter your username and password.');
 
     if (state.loginError) {
       card.append('p').attr('class', 'message error').text(state.loginError);
@@ -329,57 +333,85 @@
     const form = card
       .append('form')
       .attr('class', 'form-grid')
-      .attr('autocomplete', 'off');
+      .attr('autocomplete', 'on');
 
-    form
-      .append('input')
-      .attr('type', 'hidden')
-      .attr('name', 'csrf_token')
-      .attr('value', state.csrfToken);
+    if (!signingUp) {
+      const field = form.append('div').attr('class', 'field');
+      field.append('label').attr('for', 'login-mode').text('Login mode');
+      const select = field.append('select').attr('id', 'login-mode').attr('name', 'mode');
+      select.append('option').attr('value', 'user').text('User');
+      select.append('option').attr('value', 'admin').text('Admin');
+      select.property('value', state.loginMode).on('change', event => {
+        state.loginMode = event.currentTarget.value;
+        state.loginError = '';
+        renderLogin();
+      });
+    }
 
     appendInput(form, {
       id: 'username',
       name: 'username',
-      label: 'Admin username or User ID',
+      label: signingUp || state.loginMode === 'user' ? 'User ID' : 'Admin username',
       required: true
-    });
+    }).attr('autocomplete', 'username');
+
+    if (signingUp) {
+      appendInput(form, {id: 'email', name: 'email', label: 'Email', type: 'email', required: true})
+        .attr('autocomplete', 'email');
+    }
 
     appendInput(form, {
       id: 'password',
       name: 'password',
       label: 'Password',
       type: 'password',
-      placeholder: 'Required for admins'
-    });
+      required: true,
+      placeholder: signingUp ? 'At least 8 characters' : ''
+    }).attr('autocomplete', signingUp ? 'new-password' : 'current-password')
+      .attr('minlength', signingUp ? 8 : null).attr('maxlength', 128);
+
+    if (signingUp) {
+      appendInput(form, {id: 'invitation-code', name: 'invitationCode', label: 'Invitation code', required: true});
+    }
 
     const status = form.append('p').attr('class', 'muted').attr('role', 'status');
-    const submitButton = form.append('button').attr('type', 'submit').text('Sign In');
+    const submitButton = form.append('button').attr('type', 'submit').text(signingUp ? 'Create Account' : 'Sign In');
+    card.append('button').attr('type', 'button').attr('class', 'secondary auth-switch')
+      .text(signingUp ? 'Back to Sign In' : 'Create User Account')
+      .on('click', () => {
+        state.authView = signingUp ? 'login' : 'signup';
+        state.loginError = '';
+        renderLogin();
+      });
 
     form.on('submit', async function (event) {
       event.preventDefault();
       state.loginError = '';
-      status.text('Signing in...');
-      setButtonBusy(submitButton, true, 'Signing In...');
+      status.text(signingUp ? 'Creating account...' : 'Signing in...');
+      setButtonBusy(submitButton, true, signingUp ? 'Creating Account...' : 'Signing In...');
 
       const formData = new FormData(this);
-      formData.set('csrf_token', state.csrfToken);
+      const body = Object.fromEntries(formData);
+      if (signingUp) body.name = `User ${body.username}`;
 
       try {
-        const response = await fetch(API.login, {
+        const response = await fetch(signingUp ? API.signup : API.login, {
           method: 'POST',
-          body: new URLSearchParams(formData),
+          body: JSON.stringify(body),
           credentials: 'same-origin',
-          headers: { Accept: 'application/json' }
+          headers: { Accept: 'application/json', 'Content-Type': 'application/json' }
         });
         const data = await readJson(response);
 
         if (!response.ok || data.success === false) {
-          throw new Error(data.error || 'Sign in failed.');
+          throw new Error(data.message || data.error || 'Authentication failed.');
         }
 
+        state.authView = 'login';
+        if (signingUp) state.loginMode = 'user';
         await loadSession();
       } catch (error) {
-        state.loginError = error.message || 'Sign in failed.';
+        state.loginError = error.message || 'Authentication failed.';
         renderLogin();
       }
     });
@@ -648,26 +680,26 @@
       event.preventDefault();
       setButtonBusy(button, true, 'Logging Out...');
 
-      const body = new URLSearchParams();
-      body.set('csrf_token', state.csrfToken);
-
       try {
-        await fetch(API.logout, {
+        const response = await fetch(API.logout, {
           method: 'POST',
-          body,
+          body: JSON.stringify({}),
           credentials: 'same-origin',
           headers: {
             Accept: 'application/json',
-            'Content-Type': 'application/x-www-form-urlencoded'
+            'Content-Type': 'application/json'
           }
         });
-      } finally {
+        if (!response.ok) throw new Error('Could not log out. Please try again.');
         state.authenticated = false;
         state.account.role = '';
         state.account.userId = '';
         state.account.label = '';
         state.files = [];
         await loadSession();
+      } catch (error) {
+        setButtonBusy(button, false, 'Log Out');
+        header.append('p').attr('class', 'message error').text(error.message);
       }
     });
   }

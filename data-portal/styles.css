@@ -16,7 +16,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -80,6 +81,10 @@ h2 {
   max-width: 420px;
 }
 
+.auth-switch {
+  margin-top: 16px;
+}
+
 .toolbar {
   grid-template-columns: minmax(220px, 1.5fr) repeat(2, minmax(150px, 0.7fr)) auto;
   align-items: end;
@@ -97,7 +102,8 @@ label {
   font-weight: 700;
 }
 
-input {
+input,
+select {
   width: 100%;
   min-height: 40px;
   border: 1px solid #bfcbda;
@@ -112,7 +118,8 @@ input[type="checkbox"] {
   min-height: 0;
 }
 
-input:focus {
+input:focus,
+select:focus {
   border-color: #0b6b61;
   box-shadow: 0 0 0 3px rgba(11, 107, 97, 0.14);
   outline: none;

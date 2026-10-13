@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:dc="http://purl.org/dc/elements/1.1/" width="1800" height="3504" viewBox="0 0 1800 3504" role="img" aria-labelledby="card-title card-description" xml:lang="en">
+<title id="card-title">Accessible experiment interface — editable design-system card</title>
+<desc id="card-description">A light-gray design card with black text, white form fields and status banners, blue primary buttons with an underlined hover label, black secondary buttons, green information icons, red warning icons for errors and offline status, and raised grayscale keyboard keycaps. Information uses exact crosshair green #008000; warnings use exact crosshair red #FF0000. All icon symbols are white, 26 px bold, and have no rims or strokes. Arial is used for headings and controls; Verdana sans-serif is used for explanations and messages. The primary action accent is #0047AB and the exact canvas is #CCCCCC. Eight sections demonstrate primary buttons, button containers, page titles, form inputs, validation, supporting text, status messages, and keyboard hints. Text and shapes are editable; there are no embedded raster images.</desc>
+<metadata><dc:title>Accessible experiment UI design system</dc:title><dc:description>Native SVG shapes and editable text. Canvas #CCCCCC. Blue action accent #0047AB. Exact crosshair colors: black #000000, information green #008000, warning red #FF0000. Both i and ! glyphs are white on solid colored circles without rims or strokes. White status banners give the pure-red icon sufficient adjacent contrast. Arial headings/controls; Verdana sans-serif explanations/messages. Keyboard keycaps use only white and grayscale shades. Contrast uses WCAG relative luminance; white/red symbols are 26 px bold, with a 3:1 large-symbol threshold. Static examples illustrate implementation requirements; the card is not an accessibility certification of an application.</dc:description></metadata>
+<rect id="canvas-background" x="0" y="0" width="1800" height="3504" rx="0" fill="#CCCCCC"/>
+<g id="masthead" role="group" aria-label="Design principles">
+<rect x="64" y="64" width="1672" height="252" rx="4" fill="#E6E6E6"/>
+<text x="104" y="112" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#000000" text-anchor="start">EXPERIMENT INTERFACE / DESIGN SYSTEM</text>
+<text x="104" y="207" font-family="Arial, Helvetica, sans-serif" font-size="84" font-weight="700" fill="#000000" text-anchor="start">Clarity first.</text>
+<text x="108" y="267" font-family="Verdana, Geneva, sans-serif" font-size="30" font-weight="400" fill="#333333" text-anchor="start">Large type. Quiet surfaces. Blue actions; crosshair status colors.</text>
+<text x="1668" y="210" font-family="Arial, Helvetica, sans-serif" font-size="124" font-weight="700" fill="#000000" text-anchor="end">08</text>
+<text x="1664" y="267" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="400" fill="#333333" text-anchor="end">component families</text>
+</g>
+<g id="foundations" role="group" aria-label="Palette, typography, and layout">
+<text x="64" y="376" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#000000" text-anchor="start">PALETTE</text>
+<rect x="64" y="400" width="82" height="56" rx="4" fill="#000000"/>
+<text x="64" y="488" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Ink</text>
+<text x="64" y="520" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#000000" text-anchor="start">000000</text>
+<rect x="154" y="400" width="82" height="56" rx="4" fill="#333333"/>
+<text x="154" y="488" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Text</text>
+<text x="154" y="520" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#000000" text-anchor="start">333333</text>
+<rect x="244" y="400" width="82" height="56" rx="4" fill="#CCCCCC"/>
+<text x="285" y="438" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="700" fill="#000000" text-anchor="middle">C</text>
+<text x="244" y="488" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Canvas</text>
+<text x="244" y="520" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#000000" text-anchor="start">CCCCCC</text>
+<rect x="334" y="400" width="82" height="56" rx="4" fill="#E6E6E6"/>
+<text x="334" y="488" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Panel</text>
+<text x="334" y="520" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#000000" text-anchor="start">E6E6E6</text>
+<rect x="424" y="400" width="82" height="56" rx="4" fill="#0047AB"/>
+<text x="424" y="488" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Accent</text>
+<text x="424" y="520" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#000000" text-anchor="start">0047AB</text>
+<g id="palette-information-icon" role="group" aria-label="Information icon">
+<circle cx="84" cy="570" r="18" fill="#008000"/>
+<text x="84" y="579" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="700" fill="#FFFFFF" text-anchor="middle">i</text>
+</g>
+<text x="116" y="578" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#000000" text-anchor="start">#008000</text>
+<text x="116" y="612" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Info · i</text>
+<g id="palette-warning-icon" role="group" aria-label="Warning icon">
+<circle cx="342" cy="570" r="18" fill="#FF0000"/>
+<text x="342" y="579" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="700" fill="#FFFFFF" text-anchor="middle">!</text>
+</g>
+<text x="374" y="578" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#000000" text-anchor="start">#FF0000</text>
+<text x="374" y="612" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Warning · !</text>
+<text x="636" y="376" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#000000" text-anchor="start">TYPE</text>
+<text x="636" y="435" font-family="Arial, Helvetica, sans-serif" font-size="44" font-weight="700" fill="#000000" text-anchor="start">Aa 44 / 54</text>
+<text x="636" y="474" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#333333" text-anchor="start">Arial · titles and controls</text>
+<text x="636" y="524" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Verdana 24 / 36 · body</text>
+<text x="636" y="566" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Arial 22 / 30 · labels</text>
+<text x="636" y="606" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#333333" text-anchor="start">Verdana: explanations / messages</text>
+<text x="1212" y="376" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#000000" text-anchor="start">LAYOUT</text>
+<text x="1212" y="424" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">8 px base · 16 px control gap</text>
+<text x="1212" y="460" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">32 px section gap · 24 px inset</text>
+<text x="1212" y="496" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Content max 960 px · text max 68ch</text>
+<text x="1212" y="532" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Radius 4 px · raised gray keycaps</text>
+<text x="1212" y="568" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Fields: 3 px gray bottom edge.</text>
+<text x="1212" y="604" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Focus: 4 px ring + 4 px clear gap</text>
+</g>
+<g id="primary-buttons" role="group" aria-label="Primary buttons">
+<rect x="64" y="680" width="820" height="588" rx="4" fill="#E6E6E6"/>
+<text x="96" y="735" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="700" fill="#000000" text-anchor="start">01  Primary buttons</text>
+<text x="96" y="786" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="600" fill="#000000" text-anchor="start">Default</text>
+<text x="488" y="786" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="600" fill="#000000" text-anchor="start">Hover · underline label</text>
+<rect x="96" y="804" width="320" height="64" rx="4" fill="#0047AB"/>
+<text x="256.0" y="845" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#FFFFFF" text-anchor="middle">Continue</text>
+<rect x="488" y="804" width="320" height="64" rx="4" fill="#0047AB"/>
+<text x="648.0" y="845" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#FFFFFF" text-anchor="middle" text-decoration="underline">Continue</text>
+<text x="96" y="904" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="600" fill="#000000" text-anchor="start">Keyboard focus</text>
+<text x="488" y="904" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="600" fill="#000000" text-anchor="start">Disabled · unavailable</text>
+<rect x="88" y="914" width="336" height="80" rx="8" fill="#0047AB"/>
+<rect x="92" y="918" width="328" height="72" rx="4" fill="#E6E6E6"/>
+<rect x="96" y="922" width="320" height="64" rx="4" fill="#0047AB"/>
+<text x="256.0" y="963" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#FFFFFF" text-anchor="middle">Continue</text>
+<rect x="488" y="922" width="320" height="64" rx="4" fill="#B3B3B3"/>
+<text x="648.0" y="963" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#333333" text-anchor="middle">Continue</text>
+<text x="96" y="1030" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="600" fill="#000000" text-anchor="start">Finish variant</text>
+<rect x="96" y="1048" width="320" height="64" rx="4" fill="#0047AB"/>
+<text x="256.0" y="1089" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#FFFFFF" text-anchor="middle">Finish study</text>
+<text x="488" y="1064" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Same dimensions;</text>
+<text x="488" y="1094" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">use a clear final-action label.</text>
+<text x="96" y="1144" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">64 px high · 24 px label · 24 px inset · Enter / Space</text>
+<text x="96" y="1178" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.jspsych-btn · .jspsych-btn:hover</text>
+<text x="96" y="1208" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.jspsych-btn:focus-visible · .jspsych-btn:disabled</text>
+<text x="96" y="1238" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.result-finish-btn</text>
+</g>
+<g id="button-containers" role="group" aria-label="Button containers">
+<rect x="916" y="680" width="820" height="588" rx="4" fill="#E6E6E6"/>
+<text x="948" y="735" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="700" fill="#000000" text-anchor="start">02  Button containers</text>
+<text x="948" y="786" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="600" fill="#000000" text-anchor="start">Wide layout</text>
+<rect x="948" y="804" width="756" height="112" rx="4" fill="#CCCCCC"/>
+<rect x="972" y="828" width="346" height="64" rx="4" fill="#000000"/>
+<text x="1145.0" y="869" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#FFFFFF" text-anchor="middle">Back</text>
+<rect x="1334" y="828" width="346" height="64" rx="4" fill="#0047AB"/>
+<text x="1507.0" y="869" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#FFFFFF" text-anchor="middle">Continue</text>
+<text x="948" y="968" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="600" fill="#000000" text-anchor="start">Narrow layout</text>
+<rect x="948" y="988" width="378" height="192" rx="4" fill="#CCCCCC"/>
+<rect x="972" y="1012" width="330" height="64" rx="4" fill="#000000"/>
+<text x="1137.0" y="1053" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#FFFFFF" text-anchor="middle">Back</text>
+<rect x="972" y="1092" width="330" height="64" rx="4" fill="#0047AB"/>
+<text x="1137.0" y="1133" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#FFFFFF" text-anchor="middle">Continue</text>
+<text x="1366" y="1024" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Secondary buttons: black.</text>
+<text x="1366" y="1058" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Stack full width &lt; 600 px.</text>
+<text x="1366" y="1092" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">16 px gap · 24 px inset.</text>
+<text x="1366" y="1126" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Preserve DOM / tab order.</text>
+<text x="1366" y="1160" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Reserve room for focus.</text>
+<text x="948" y="1208" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.my-btn-container</text>
+<text x="948" y="1238" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">#jspsych-html-button-response-btngroup</text>
+</g>
+<g id="page-titles" role="group" aria-label="Page titles">
+<rect x="64" y="1300" width="820" height="548" rx="4" fill="#E6E6E6"/>
+<text x="96" y="1355" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="700" fill="#000000" text-anchor="start">03  Page titles</text>
+<text x="96" y="1448" font-family="Arial, Helvetica, sans-serif" font-size="44" font-weight="700" fill="#000000" text-anchor="start">Study results</text>
+<text x="96" y="1494" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#333333" text-anchor="start">Your session is complete.</text>
+<text x="92" y="1596" font-family="Arial, Helvetica, sans-serif" font-size="88" font-weight="700" fill="#000000" text-anchor="start">24</text>
+<text x="228" y="1577" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">trials completed</text>
+<text x="96" y="1645" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">44 / 54 px · one H1 per page · sentence case</text>
+<text x="96" y="1679" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Left align; leave 32 px before page content.</text>
+<text x="96" y="1728" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.fullscreen-title · .user-id-title</text>
+<text x="96" y="1758" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.calculator-title · .position-title</text>
+<text x="96" y="1788" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.instruction-title · .ready-title</text>
+<text x="96" y="1818" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.results-page h1</text>
+</g>
+<g id="form-inputs" role="group" aria-label="Form inputs">
+<rect x="916" y="1300" width="820" height="548" rx="4" fill="#E6E6E6"/>
+<text x="948" y="1355" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="700" fill="#000000" text-anchor="start">04  Form inputs</text>
+<text x="948" y="1410" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="600" fill="#000000" text-anchor="start">Participant ID</text>
+<text x="1340" y="1410" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="600" fill="#000000" text-anchor="start">Viewing distance</text>
+<rect x="948" y="1428" width="320" height="64" rx="4" fill="#FFFFFF"/>
+<rect x="952" y="1489" width="312" height="3" rx="0" fill="#666666"/>
+<text x="964" y="1469" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">P-014</text>
+<rect x="1340" y="1428" width="364" height="64" rx="4" fill="#FFFFFF"/>
+<rect x="1344" y="1489" width="356" height="3" rx="0" fill="#666666"/>
+<text x="1356" y="1469" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">60</text>
+<text x="1688" y="1469" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="end">cm</text>
+<text x="948" y="1536" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Always show the label and measurement unit.</text>
+<text x="948" y="1600" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="600" fill="#000000" text-anchor="start">Keyboard focus</text>
+<rect x="940" y="1610" width="336" height="80" rx="8" fill="#0047AB"/>
+<rect x="944" y="1614" width="328" height="72" rx="4" fill="#E6E6E6"/>
+<rect x="948" y="1618" width="320" height="64" rx="4" fill="#FFFFFF"/>
+<rect x="952" y="1679" width="312" height="3" rx="0" fill="#666666"/>
+<text x="964" y="1659" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">P-014</text>
+<text x="1340" y="1626" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">64 px high · 24 px text</text>
+<text x="1340" y="1662" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">16 px inset · 4 px radius</text>
+<text x="1340" y="1698" font-family="Verdana, Geneva, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">3 px bottom edge · #666666</text>
+<text x="948" y="1740" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Placeholders never replace visible labels.</text>
+<text x="948" y="1788" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.user-id-input · .calculator-input</text>
+<text x="948" y="1818" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.position-input</text>
+</g>
+<g id="validation-messages" role="group" aria-label="Validation messages">
+<rect x="64" y="1880" width="820" height="548" rx="4" fill="#E6E6E6"/>
+<text x="96" y="1935" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="700" fill="#000000" text-anchor="start">05  Validation messages</text>
+<text x="96" y="1990" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="600" fill="#000000" text-anchor="start">Viewing distance (cm)</text>
+<rect x="96" y="2008" width="756" height="64" rx="4" fill="#FFFFFF"/>
+<rect x="100" y="2069" width="748" height="3" rx="0" fill="#666666"/>
+<text x="112" y="2049" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">0</text>
+<g id="validation-accent-icon" role="group" aria-label="Warning icon">
+<circle cx="114" cy="2115" r="18" fill="#FF0000"/>
+<text x="114" y="2124" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="700" fill="#FFFFFF" text-anchor="middle">!</text>
+</g>
+<text x="148" y="2124" font-family="Verdana, Geneva, sans-serif" font-size="26" font-weight="700" fill="#000000" text-anchor="start">Error: Enter 30–100 cm.</text>
+<text x="96" y="2170" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">The value “0” is outside the allowed range.</text>
+<text x="96" y="2232" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Name the problem and give a clear correction.</text>
+<text x="96" y="2266" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">White ! on red; retain the entered value.</text>
+<text x="96" y="2300" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Associate the error with its field; announce it.</text>
+<text x="96" y="2338" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.error-message · .position-error</text>
+<text x="96" y="2368" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.calculator-input.invalid</text>
+<text x="96" y="2398" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.position-input.invalid</text>
+</g>
+<g id="supporting-text" role="group" aria-label="Supporting text">
+<rect x="916" y="1880" width="820" height="548" rx="4" fill="#E6E6E6"/>
+<text x="948" y="1935" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="700" fill="#000000" text-anchor="start">06  Supporting text</text>
+<text x="948" y="2002" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="700" fill="#000000" text-anchor="start">Before you begin</text>
+<text x="948" y="2054" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#333333" text-anchor="start">Sit at a comfortable distance from the screen.</text>
+<text x="948" y="2090" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#333333" text-anchor="start">You can pause between trials.</text>
+<text x="944" y="2193" font-family="Arial, Helvetica, sans-serif" font-size="88" font-weight="700" fill="#000000" text-anchor="start">60</text>
+<text x="1084" y="2189" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="400" fill="#333333" text-anchor="start">cm</text>
+<text x="1168" y="2173" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Units stay visible.</text>
+<text x="948" y="2232" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Verdana 24 / 36 px · #333333 supporting text</text>
+<text x="948" y="2266" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Plain language · left align · max 68ch</text>
+<text x="948" y="2300" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Allow zoom and text reflow without clipping.</text>
+<text x="948" y="2338" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.fullscreen-text · .user-id-instruction</text>
+<text x="948" y="2368" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.calculator-subtitle · .unit-label</text>
+<text x="948" y="2398" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.position-note · .results-note</text>
+</g>
+<g id="status-messages" role="group" aria-label="Status messages">
+<rect x="64" y="2460" width="820" height="548" rx="4" fill="#E6E6E6"/>
+<text x="96" y="2515" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="700" fill="#000000" text-anchor="start">07  Status messages</text>
+<g id="status-banner-108" role="group" aria-label="Information: Saved. Your responses are stored.">
+<rect x="96" y="2568" width="756" height="76" rx="4" fill="#FFFFFF"/>
+<g id="status-icon-108" role="group" aria-label="Information icon">
+<circle cx="134" cy="2606" r="18" fill="#008000"/>
+<text x="134" y="2615" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="700" fill="#FFFFFF" text-anchor="middle">i</text>
+</g>
+<text x="172" y="2614" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="700" fill="#000000" text-anchor="start">Saved</text>
+<text x="300" y="2614" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Your responses are stored.</text>
+</g>
+<g id="status-banner-200" role="group" aria-label="Information: Saving…. Please wait a moment.">
+<rect x="96" y="2660" width="756" height="76" rx="4" fill="#FFFFFF"/>
+<g id="status-icon-200" role="group" aria-label="Information icon">
+<circle cx="134" cy="2698" r="18" fill="#008000"/>
+<text x="134" y="2707" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="700" fill="#FFFFFF" text-anchor="middle">i</text>
+</g>
+<text x="172" y="2706" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="700" fill="#000000" text-anchor="start">Saving…</text>
+<text x="300" y="2706" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Please wait a moment.</text>
+</g>
+<g id="status-banner-292" role="group" aria-label="Warning: Offline. Check your connection.">
+<rect x="96" y="2752" width="756" height="76" rx="4" fill="#FFFFFF"/>
+<g id="status-icon-292" role="group" aria-label="Warning icon">
+<circle cx="134" cy="2790" r="18" fill="#FF0000"/>
+<text x="134" y="2799" font-family="Arial, Helvetica, sans-serif" font-size="26" font-weight="700" fill="#FFFFFF" text-anchor="middle">!</text>
+</g>
+<text x="172" y="2798" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="700" fill="#000000" text-anchor="start">Offline</text>
+<text x="300" y="2798" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Check your connection.</text>
+</g>
+<text x="96" y="2870" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">White banners · green i / red ! · no icon outlines</text>
+<text x="96" y="2904" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Announce updates politely without moving focus.</text>
+<text x="96" y="2948" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.auto-save-status · .server-status</text>
+<text x="96" y="2978" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.status-badge · #fullscreen-return-status</text>
+</g>
+<g id="keyboard-hints" role="group" aria-label="Keyboard hints">
+<rect x="916" y="2460" width="820" height="548" rx="4" fill="#E6E6E6"/>
+<text x="948" y="2515" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="700" fill="#000000" text-anchor="start">08  Keyboard hints</text>
+<g id="keycap-108" role="group" aria-label="Raised grayscale keycap: Tab">
+<rect x="948" y="2576" width="88" height="64" rx="6" fill="#999999"/>
+<rect x="948" y="2572" width="88" height="64" rx="6" fill="#B3B3B3"/>
+<rect x="948" y="2568" width="88" height="62" rx="6" fill="#E6E6E6"/>
+<path d="M 953,2620 L 1031,2620 L 1034,2629 L 950,2629 Z" fill="#CCCCCC"/>
+<rect x="953" y="2572" width="78" height="48" rx="4" fill="#FFFFFF"/>
+<text x="992.0" y="2605" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#333333" text-anchor="middle">Tab</text>
+</g>
+<text x="1060" y="2609" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Move to the next control</text>
+<g id="keycap-200" role="group" aria-label="Raised grayscale keycap: Shift + Tab">
+<rect x="948" y="2668" width="176" height="64" rx="6" fill="#999999"/>
+<rect x="948" y="2664" width="176" height="64" rx="6" fill="#B3B3B3"/>
+<rect x="948" y="2660" width="176" height="62" rx="6" fill="#E6E6E6"/>
+<path d="M 953,2712 L 1119,2712 L 1122,2721 L 950,2721 Z" fill="#CCCCCC"/>
+<rect x="953" y="2664" width="166" height="48" rx="4" fill="#FFFFFF"/>
+<text x="1036.0" y="2697" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#333333" text-anchor="middle">Shift + Tab</text>
+</g>
+<text x="1148" y="2701" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Move to the previous control</text>
+<g id="keycap-292" role="group" aria-label="Raised grayscale keycap: Enter">
+<rect x="948" y="2760" width="110" height="64" rx="6" fill="#999999"/>
+<rect x="948" y="2756" width="110" height="64" rx="6" fill="#B3B3B3"/>
+<rect x="948" y="2752" width="110" height="62" rx="6" fill="#E6E6E6"/>
+<path d="M 953,2804 L 1053,2804 L 1056,2813 L 950,2813 Z" fill="#CCCCCC"/>
+<rect x="953" y="2756" width="100" height="48" rx="4" fill="#FFFFFF"/>
+<text x="1003.0" y="2789" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="700" fill="#333333" text-anchor="middle">Enter</text>
+</g>
+<text x="1082" y="2793" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Activate the focused button</text>
+<text x="948" y="2858" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">White face · gray bevel · raised lower edge</text>
+<text x="948" y="2892" font-family="Verdana, Geneva, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Keep hints near actions; keep focus fully visible.</text>
+<text x="948" y="2948" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.key-icon (and variants) · .instruction-continue</text>
+<text x="948" y="2978" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" font-weight="400" fill="#333333" text-anchor="start">.start-instruction · .instruction-text</text>
+</g>
+<g id="contrast-check" role="group" aria-label="Calculated contrast and implementation guidance">
+<text x="64" y="3076" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="700" fill="#000000" text-anchor="start">READABILITY / CALCULATED CONTRAST</text>
+<text x="64" y="3150" font-family="Arial, Helvetica, sans-serif" font-size="48" font-weight="700" fill="#000000" text-anchor="start">13.08 : 1</text>
+<text x="64" y="3192" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Black / canvas</text>
+<text x="490" y="3150" font-family="Arial, Helvetica, sans-serif" font-size="48" font-weight="700" fill="#000000" text-anchor="start">7.87 : 1</text>
+<text x="490" y="3192" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Gray text / canvas</text>
+<text x="916" y="3150" font-family="Arial, Helvetica, sans-serif" font-size="48" font-weight="700" fill="#000000" text-anchor="start">5.25 : 1</text>
+<text x="916" y="3192" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Blue / canvas</text>
+<text x="1342" y="3150" font-family="Arial, Helvetica, sans-serif" font-size="48" font-weight="700" fill="#000000" text-anchor="start">8.44 : 1</text>
+<text x="1342" y="3192" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">White / blue</text>
+<text x="64" y="3252" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Body/control text ≥ 4.5 : 1. Focus blue: 5.25 : 1 on #CCCCCC; 6.76 : 1 on #E6E6E6.</text>
+<text x="64" y="3292" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="400" fill="#000000" text-anchor="start">Black / white fields: 21 : 1. Gray field edge / panel: 4.60 : 1. Disabled text: 6.03 : 1.</text>
+<text x="64" y="3324" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">White i / green: 5.14 : 1. White ! / red: 4.00 : 1 (26 px bold). Red / white banner: 4.00 : 1.</text>
+<text x="64" y="3352" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#000000" text-anchor="start">Implement semantic headings, labels and buttons; test keyboard use and 200% zoom / 400% reflow.</text>
+<text x="64" y="3388" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#333333" text-anchor="start">These are palette checks. Confirm the working interface with assistive technology and users.</text>
+<text x="64" y="3440" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="400" fill="#333333" text-anchor="start">Basis: WCAG 2.2 · 1.4.3 Contrast · 1.4.11 Non-text contrast · 2.4.13 Focus appearance</text>
+</g>
+</svg>

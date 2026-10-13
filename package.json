@@ -9,6 +9,7 @@
     "db:start": "node scripts/database.mjs",
     "db:stop": "node scripts/database.mjs stop",
     "db:import": "node scripts/import-archive.mjs",
+    "auth:migrate": "node scripts/migrate-portal-auth.mjs",
     "test": "node --test test/*.test.mjs",
     "test:portal": "node test/portal-browser.mjs",
     "test:browser": "node test/postgres-browser.mjs",
@@ -21,15 +22,19 @@
     "vite": "^6.3.5"
   },
   "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "d3": "^7.9.0",
-    "pg": "^8.23.1",
     "@jspsych/plugin-fullscreen": "^2.1.0",
     "@jspsych/plugin-html-button-response": "^2.1.0",
     "@jspsych/plugin-html-keyboard-response": "^2.1.0",
     "@jspsych/plugin-image-button-response": "^2.1.0",
     "@jspsych/plugin-virtual-chinrest": "^3.1.0",
-    "jspsych": "^8.2.1"
+    "bcryptjs": "^3.0.3",
+    "better-auth": "^1.7.7",
+    "d3": "^7.9.0",
+    "jspsych": "^8.2.1",
+    "kysely": "^0.29.6",
+    "pg": "^8.23.1"
   },
-  "engines": {"node": ">=22"}
+  "engines": {
+    "node": ">=22"
+  }
 }

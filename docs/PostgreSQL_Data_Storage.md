@@ -49,15 +49,19 @@ Configuration:
 
 | Variable | Purpose |
 | --- | --- |
-| `DATABASE_URL` | Connect to an existing PostgreSQL database; skip local cluster launch. Requires privileges to create the `experiment_data` schema and its tables. |
+| `DATABASE_URL` | Connect to an existing PostgreSQL database; skip local cluster launch. Requires privileges to create the `experiment_data` and `portal_auth` schemas and their tables. |
 | `PG_BIN` | Directory containing native `initdb` and `pg_ctl` binaries. |
 | `EXPERIMENT_RUNTIME_DIR` | Persistent cluster, binaries, log, and password location; defaults to `.runtime`. |
 | `EXPERIMENT_PG_PORT` | Local PostgreSQL port; defaults to `55432`. Keep it fixed for an initialized running cluster. |
 | `HOST`, `PORT` | Web server bind address and port; defaults to `127.0.0.1`, `8000`. |
 | `DATABASE_VIEWER_TOKEN` | Bearer token for viewer access. Required when the web server binds publicly or the viewer is accessed through a proxy. Enter it in the viewer's connection form. |
-| `DATA_PORTAL_USER`, `DATA_PORTAL_PASS_HASH` | Existing portal administrator username and bcrypt password hash; defaults match the legacy PHP portal. |
-| `DATA_PORTAL_PARTICIPANT_PASS_HASH` | Optional shared participant bcrypt password hash. When unset, participants sign in with their participant ID as before. |
-| `DATA_PORTAL_SESSION_TTL_SEC` | SQL-backed portal session lifetime; defaults to 24 hours. |
+| `BETTER_AUTH_URL` | Public web origin, e.g. `https://study.example.org`; required when accessing the portal through a public hostname or reverse proxy. Localhost and `127.0.0.1` work automatically. |
+| `BETTER_AUTH_SECRET` | Stable auth signing secret of at least 32 characters. When unset, a secret is generated once in `.runtime/portal-auth.secret` with mode `0600`. |
+| `DATA_PORTAL_USER`, `DATA_PORTAL_PASS_HASH` | Administrator username and legacy bcrypt hash used to seed the Better Auth account; defaults match the PHP portal. Existing migrated credentials are preserved on subsequent starts. |
+| `DATA_PORTAL_PARTICIPANT_PASS_HASH` | Optional legacy shared participant bcrypt hash used during account migration. When unset, passwordless participants receive their exact User ID as their password. |
+| `DATA_PORTAL_SESSION_TTL_SEC` | Better Auth SQL session lifetime; defaults to 24 hours. |
+| `DATA_PORTAL_MAX_ATTEMPTS`, `DATA_PORTAL_ATTEMPT_WINDOW_SEC` | Sign-in request limit per client IP; defaults to 5 requests in 900 seconds. Signup is limited to 5 requests in 900 seconds. Limits are stored in SQL. |
+| `DATA_PORTAL_TRUSTED_PROXIES` | Comma-separated exact proxy IPs allowed to supply Cloudflare/forwarded client IPs for rate limits. Defaults to `127.0.0.1,::1` for the local tunnel/proxy; set to empty to use only socket peer IPs. |
 | `EXPERIMENT_API_URL` | Vite development proxy target; defaults to `http://127.0.0.1:8000`. |
 
 `aws-start-server.sh` uses PM2 and port 8001. The existing
@@ -66,7 +70,7 @@ Both start the same Node/PostgreSQL backend; the static-only fallback is removed
 so startup cannot silently produce an experiment that cannot save.
 
 For development, run `npm run serve` in one terminal and `npm run dev` in another.
-Vite proxies `/api` and `/database`; development writes are real database writes
+Vite proxies `/api`, `/data-portal`, and `/database`; development writes are real database writes
 and no longer report a successful save while skipping it.
 
 ## Import the existing archive once
@@ -185,11 +189,56 @@ Its data comes from `experiment_data`:
 - Admins can access all sources. Participants can access only sources owned by
   their participant ID, including previews and downloads. Imported filename
   ownership determines that scope; original row-ID mismatches remain preserved.
-  Portal session IDs are random, stored as hashes in SQL, and sent in HttpOnly
-  cookies. Login rotates the session and CSRF token; logout revokes it.
+  Better Auth manages SQL sessions and signed HttpOnly cookies scoped to
+  `/data-portal`. Authentication writes require JSON and a trusted Origin;
+  logout revokes the stored session.
 
 The database viewer token is separate from portal login. Existing portal admin
 credentials and environment overrides continue to work. PHP is not required.
+
+### Better Auth accounts and migration
+
+The portal uses [Better Auth](https://better-auth.com/docs/adapters/postgresql)
+with its [username plugin](https://better-auth.com/docs/plugins/username).
+Select **User** or **Admin** on the login form. Both modes require a password;
+the server checks the stored role before creating a session. A user cannot
+gain administrator access by choosing Admin mode.
+
+**Create User Account** asks for a User ID, email, password (8–128 characters),
+and invitation code. The code must be exactly `bright` and is checked on the
+server for every signup. Registration creates only user accounts and signs
+them in immediately. Email verification and third-party login are disabled.
+User IDs are immutable and case-sensitive so existing data ownership remains
+unchanged. The email is account metadata; sign-in uses the User ID or admin
+username.
+
+Startup creates the `portal_auth` schema and migrates accounts before accepting
+requests. To run the migration explicitly:
+
+```bash
+npm run auth:migrate
+```
+
+The migration runs in a transaction with an advisory lock. It discovers existing
+participants from SQL data ownership (including legacy filename ownership) and
+legacy user sessions. It preserves each participant ID exactly, including short
+IDs and leading zeros. Accounts without a password receive a hashed password
+equal to their User ID; a configured legacy participant password hash is retained.
+The admin account retains its configured/default bcrypt hash. Migrated accounts
+without an email receive an internal `@portal.invalid` address and can sign in
+without email verification. Repeated migration adds missing accounts or passwords
+and preserves existing hashes, including passwords changed through Better Auth.
+Old portal sessions are invalidated; existing users sign in again.
+
+`portal_auth."user"` stores role, username, and participant ownership;
+`portal_auth.account` stores credential hashes; `portal_auth.session` stores
+sessions. The verification and rate-limit tables complete the Better Auth schema.
+Experiment records and archive bytes stay in `experiment_data`.
+
+For hosted startup, set `BETTER_AUTH_URL` to the browser's public origin and
+keep `BETTER_AUTH_SECRET` or the generated secret file stable across restarts.
+Legacy credential variables seed new accounts; changing them after migration
+does not overwrite an existing account password.
 
 ## Validation
 
@@ -209,7 +258,9 @@ invalid-request rejection, and viewer read access. Browser validation runs the
 existing 256-trial Motion study with test time accelerated, including manual
 pause/replay, seven scheduled breaks, eight session saves, and the final save.
 It also checks the SQL viewer and its mobile layout.
-Portal tests verify SQL summary values, account scoping, CSRF, source selection,
+Portal tests verify account migration, password preservation, invitation signup,
+role enforcement, unverified-email login, session expiry/revocation, rate limits,
+SQL summary values, account scoping, CSRF, source selection,
 live refresh, original-byte downloads, and JSON types. Browser checks cover the
 original portal layout, participant/admin workflows, SQL-only charts/previews,
 live writes, locally served assets, and mobile rendering.

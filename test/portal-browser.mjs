@@ -12,7 +12,8 @@ import {ingest,hash} from '../server/store.mjs';
 const pool=await openDatabase();
 const participant='P'+randomUUID().replaceAll('-','').slice(0,8),other='P'+randomUUID().replaceAll('-','').slice(0,8);
 const run={id:randomUUID(),user_id:participant,task:'Motion',run_timestamp:'2026-10-13T14-00-00'};
-const requests=[],errors=[],sessionIds=[];
+const requests=[],errors=[];
+const adminUsername='portal-browser-admin-'+participant,signupUser='New'+participant;
 let server,browser,context,jobId;
 try {
   jobId=(await pool.query('INSERT INTO experiment_data.import_jobs(archive_sha256,archive_name) VALUES($1,$2) RETURNING id',[hash(randomUUID()),'portal-browser-test.zip'])).rows[0].id;
@@ -26,7 +27,8 @@ try {
   }
   const payload={user_id:participant,task_type:'Motion',trial_index:1,overall_trial_number:1,correct:true,difficulty_level:2,rt:200,time_elapsed:200};
   await ingest(pool,{batch_id:randomUUID(),run,events:[{event_sequence:1,included:true,payload}]});
-  server=createServer(pool,{portalAuth:{adminUsername:'portal-browser-admin',adminPasswordHash:bcrypt.hashSync('browser-test-password',4),participantPasswordHash:''}});
+  server=createServer(pool,{portalAuth:{adminUsername,adminPasswordHash:bcrypt.hashSync('browser-test-password',4),participantPasswordHash:'',maxAttempts:100}});
+  await server.portalAuthReady;
   server.listen(0,'127.0.0.1');await once(server,'listening');
   const base=`http://127.0.0.1:${server.address().port}`;
   browser=await chromium.launch({headless:true});
@@ -37,6 +39,7 @@ try {
   await page.goto(base+'/data-portal/');
   await expect(page.getByRole('heading',{name:'Data Portal Login'})).toBeVisible();
   await page.locator('#username').fill(participant);
+  await page.locator('#password').fill(participant);
   await page.getByRole('button',{name:'Sign In'}).click();
   await expect(page.getByRole('heading',{name:'User Trends',exact:true})).toBeVisible();
   await expect(page.locator('.user-button')).toHaveCount(1);
@@ -65,7 +68,8 @@ try {
   assert.equal(download.status(),200);assert.deepEqual(await download.body(),bytes);
   await page.getByRole('button',{name:'Log Out',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Data Portal Login'})).toBeVisible();
-  await page.locator('#username').fill('portal-browser-admin');await page.locator('#password').fill('browser-test-password');
+  await page.getByLabel('Login mode').selectOption('admin');
+  await page.locator('#username').fill(adminUsername);await page.locator('#password').fill('browser-test-password');
   await page.getByRole('button',{name:'Sign In'}).click();
   await page.getByRole('link',{name:'User Trends',exact:true}).click();
   await page.locator('.user-button').filter({hasText:'User '+participant}).click();
@@ -76,11 +80,31 @@ try {
   await page.setViewportSize({width:390,height:844});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
   await page.screenshot({path:join(projectRoot,'test/results/sql-portal-mobile.png'),fullPage:true});
+  await page.getByRole('button',{name:'Log Out',exact:true}).click();
+  await page.getByRole('button',{name:'Create User Account',exact:true}).click();
+  await page.getByLabel('User ID',{exact:true}).fill(signupUser);
+  await page.getByLabel('Email',{exact:true}).fill(signupUser+'@example.com');
+  await page.getByLabel('Password',{exact:true}).fill('signup-password');
+  await page.getByLabel('Invitation code',{exact:true}).fill('wrong');
+  await page.getByRole('button',{name:'Create Account',exact:true}).click();
+  await expect(page.locator('.message.error')).toHaveText('Invalid invitation code.');
+  await page.getByLabel('User ID',{exact:true}).fill(signupUser);
+  await page.getByLabel('Email',{exact:true}).fill(signupUser+'@example.com');
+  await page.getByLabel('Password',{exact:true}).fill('signup-password');
+  await page.getByLabel('Invitation code',{exact:true}).fill('bright');
+  await page.getByRole('button',{name:'Create Account',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'User Trends',exact:true})).toBeVisible();
+  assert.equal((await pool.query('SELECT role,"emailVerified" FROM portal_auth."user" WHERE username=$1',[signupUser])).rows[0].emailVerified,false);
+  await page.getByRole('button',{name:'Log Out',exact:true}).click();
+  await page.getByLabel('Login mode').selectOption('user');
+  await page.getByLabel('User ID',{exact:true}).fill(signupUser);
+  await page.getByLabel('Password',{exact:true}).fill('signup-password');
+  await page.getByRole('button',{name:'Sign In',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'User Trends',exact:true})).toBeVisible();
   assert.deepEqual(errors,[]);
   assert.ok(requests.every(url=>url.startsWith(base)));
-  console.log('Portal browser passed: original layout, participant/admin login, historical and live SQL charts, live update, preview, download, local assets and mobile layout.');
+  console.log('Portal browser passed: Better Auth user/admin login, invitation signup without email verification, logout, SQL charts, live update, preview, download and mobile layout.');
 } finally {
-  if (context) for (const cookie of await context.cookies()) if (cookie.name==='viewrecovery_portal_session') sessionIds.push(hash(cookie.value));
   await browser?.close();
   if (server) {server.close();await once(server,'close');}
   for (const table of ['ingest_batches','events']) await pool.query(`DELETE FROM experiment_data.${table} WHERE run_id=$1`,[run.id]);
@@ -90,6 +114,6 @@ try {
     await pool.query('DELETE FROM experiment_data.source_files WHERE import_job_id=$1',[jobId]);
     await pool.query('DELETE FROM experiment_data.import_jobs WHERE id=$1',[jobId]);
   }
-  await pool.query('DELETE FROM experiment_data.portal_sessions WHERE id_hash=ANY($1::text[])',[sessionIds]);
+  await pool.query('DELETE FROM portal_auth."user" WHERE username=ANY($1)',[[participant,other,signupUser,adminUsername]]);
   await pool.end();
 }

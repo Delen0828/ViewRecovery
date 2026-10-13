@@ -48,7 +48,7 @@ test('PostgreSQL persistence, HTTP API, and one-time archive import',async t=>{
       assert.equal((await pool.query('SELECT 1 FROM experiment_data.events WHERE run_id=$1',[first.run.id])).rowCount,1);
     });
     await t.test('HTTP transport and database viewer enforce formats, origins, pagination and read access',async()=>{
-      server=createServer(pool,{host:'0.0.0.0',viewerToken:'test-viewer-token'});server.listen(0,'127.0.0.1');await once(server,'listening');
+      server=createServer(pool,{host:'0.0.0.0',viewerToken:'test-viewer-token'});await server.portalAuthReady;server.listen(0,'127.0.0.1');await once(server,'listening');
       const base=`http://127.0.0.1:${server.address().port}`;
       assert.equal((await fetch(base+'/api/health')).status,200);
       assert.equal((await fetch(base+'/')).status,200);
@@ -104,6 +104,7 @@ with zipfile.ZipFile(sys.argv[1],'w') as z:
       await pool.query('DELETE FROM experiment_data.source_files WHERE import_job_id IN (SELECT id FROM experiment_data.import_jobs WHERE archive_sha256=$1)',[checksum]);
       await pool.query('DELETE FROM experiment_data.import_jobs WHERE archive_sha256=$1',[checksum]);
     }
+    await pool.query('DELETE FROM portal_auth."user" WHERE username=$1',['SQLTest']);
     await pool.end();rmSync(temp,{recursive:true,force:true});
   }
 });

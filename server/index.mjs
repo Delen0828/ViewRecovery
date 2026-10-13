@@ -6,7 +6,7 @@ import {timingSafeEqual} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {openDatabase, projectRoot} from '../scripts/lib/postgres.mjs';
 import {ingest, overview, sources, rows, fail} from './store.mjs';
-import {createPortalAuth} from './portal-auth.mjs';
+import {AUTH_PATH,createPortalAuth} from './portal-auth.mjs';
 import {portalFiles,portalTrends,portalPreview,portalDownload} from './portal-store.mjs';
 
 const require=createRequire(import.meta.url);
@@ -28,12 +28,6 @@ async function body(request) {
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); }
   catch { fail('Invalid JSON'); }
 }
-async function formBody(request) {
-  if (!request.headers['content-type']?.startsWith('application/x-www-form-urlencoded')) fail('Expected form data.',415);
-  const chunks=[];let size=0;
-  for await (const chunk of request) {size+=chunk.length;if(size>65536) fail('Form is too large.',413);chunks.push(chunk);}
-  return Object.fromEntries(new URLSearchParams(Buffer.concat(chunks).toString('utf8')));
-}
 function page(url) {
   const offset = Number(url.searchParams.get('offset') || 0);
   const limit = Number(url.searchParams.get('limit') || 50);
@@ -53,20 +47,18 @@ function viewerAuthorized(request, token) {
 
 export function createServer(pool, {dist = join(projectRoot,'dist'), viewerToken = process.env.DATABASE_VIEWER_TOKEN, host = process.env.HOST || '127.0.0.1', portalAuth = {}} = {}) {
   const auth=createPortalAuth(pool,portalAuth);
-  return http.createServer(async (request,response) => {
+  const server=http.createServer(async (request,response) => {
     try {
       const url = new URL(request.url,'http://localhost');
-      if (url.pathname.startsWith('/data-portal/api/') || ['/data-portal/login','/data-portal/logout','/data-portal/download'].includes(url.pathname)) {
+      if (url.pathname.startsWith(AUTH_PATH+'/')) {
+        response.setHeader('X-Frame-Options','DENY');response.setHeader('X-Content-Type-Options','nosniff');
+        response.setHeader('Cache-Control','no-store');
+        return await auth.handler(request,response);
+      }
+      if (url.pathname.startsWith('/data-portal/api/') || url.pathname==='/data-portal/download') {
         response.setHeader('X-Frame-Options','DENY');response.setHeader('X-Content-Type-Options','nosniff');
         response.setHeader('Cache-Control','no-store');
         const session=await auth.session(request,response);
-        if (url.pathname==='/data-portal/login' || url.pathname==='/data-portal/logout') {
-          if (request.method!=='POST') fail('Method not allowed',405);
-          if (request.headers.origin && ![`http://${request.headers.host}`,`https://${request.headers.host}`].includes(request.headers.origin)) fail('Origin is not allowed.',403);
-          const form=await formBody(request);
-          const result=url.pathname.endsWith('/login') ? await auth.login(request,response,session,form) : await auth.logout(request,response,session,form);
-          return json(response,200,result);
-        }
         if (request.method!=='GET') fail('Method not allowed',405);
         if (url.pathname==='/data-portal/api/session') return json(response,200,auth.state(session));
         if (url.pathname==='/data-portal/api/files') return json(response,200,await portalFiles(pool,session,url.searchParams));
@@ -140,6 +132,8 @@ export function createServer(pool, {dist = join(projectRoot,'dist'), viewerToken
       json(response,error.status || 500,{success:false,error:error.status ? error.message : 'Database request failed; data was not acknowledged.'});
     }
   });
+  server.portalAuthReady=auth.ready;
+  return server;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -147,6 +141,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const host = process.env.HOST || '127.0.0.1';
   const port = Number(process.env.PORT || 8000);
   const server = createServer(pool,{host});
+  await server.portalAuthReady;
   server.listen(port,host,()=>console.log(`Experiment: http://${host}:${port}\nData portal: http://${host}:${port}/data-portal/\nDatabase viewer: http://${host}:${port}/database\nPostgreSQL ready. Historical import is a separate command.`));
   server.on('error',async error=>{ console.error(error.message); await pool.end(); process.exitCode=1; });
   for (const signal of ['SIGINT','SIGTERM']) process.once(signal,()=>{
