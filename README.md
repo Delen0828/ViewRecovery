@@ -12,7 +12,7 @@ Requires Node 22+ and PostgreSQL binaries. If PostgreSQL is absent on Ubuntu
 PostgreSQL server can also be selected with `DATABASE_URL`.
 
 Experiment: `http://127.0.0.1:8000/Motion` (also `/Orientation`, `/Centrality`, `/Bar`).
-Data portal: `http://127.0.0.1:8000/data-portal/` (charts, previews, and downloads).
+Data portal: `http://127.0.0.1:8000/data-portal/` (HeroUI dashboard, setup, scheduling, accounts, analytics, and downloads).
 Database viewer: `http://127.0.0.1:8000/database`.
 
 If port 8000 is busy, `npm start` selects the next available port and prints the
@@ -24,6 +24,11 @@ migrated at startup; users without a password use their exact User ID as their
 initial password, and the admin password is preserved. New user signup requires
 invitation code `bright`. Email verification and third-party login are disabled.
 For public hosting, set `BETTER_AUTH_URL` to the public web origin.
+
+The portal fills the available screen width and adapts to mobile. Participants
+have Dashboard, Study Setup, and My Progress. Administrators have Schedule,
+Manage Users, Data Analytics, and File Download, with a shared user selector.
+See [the portal guide](docs/Data_Portal.md) for CSV scheduling and saved setup.
 
 Import the supplied historical archive separately, once:
 

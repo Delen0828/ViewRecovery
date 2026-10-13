@@ -8,6 +8,7 @@ import {openDatabase, projectRoot} from '../scripts/lib/postgres.mjs';
 import {ingest, overview, sources, rows, fail} from './store.mjs';
 import {AUTH_PATH,createPortalAuth} from './portal-auth.mjs';
 import {portalFiles,portalTrends,portalPreview,portalDownload} from './portal-store.mjs';
+import {portalUsers,managePortalUser,portalPreferences,savePortalPreferences,portalSchedule,savePortalSchedule,importScheduleCsv,exportScheduleCsv} from './portal-workspace.mjs';
 
 const require=createRequire(import.meta.url);
 const d3Bundle=join(dirnamePackage('d3'),'dist/d3.min.js');
@@ -59,8 +60,27 @@ export function createServer(pool, {dist = join(projectRoot,'dist'), viewerToken
         response.setHeader('X-Frame-Options','DENY');response.setHeader('X-Content-Type-Options','nosniff');
         response.setHeader('Cache-Control','no-store');
         const session=await auth.session(request,response);
+        if (!['GET','HEAD'].includes(request.method)) {
+          const baseURL=portalAuth.baseURL || process.env.BETTER_AUTH_URL;
+          const origins=typeof baseURL==='string' ? [new URL(baseURL).origin] : [`http://${request.headers.host}`,`https://${request.headers.host}`];
+          if (!origins.includes(request.headers.origin)) fail('Origin is not allowed.',403);
+          if (!request.headers['content-type']?.startsWith('application/json')) fail('Expected JSON.',415);
+          if (url.pathname==='/data-portal/api/users' && ['POST','PATCH','DELETE'].includes(request.method)) return json(response,200,await managePortalUser(pool,session,request.method,await body(request)));
+          if (url.pathname==='/data-portal/api/preferences' && request.method==='PUT') return json(response,200,await savePortalPreferences(pool,session,await body(request)));
+          if (url.pathname==='/data-portal/api/schedule' && request.method==='PUT') return json(response,200,await savePortalSchedule(pool,session,await body(request)));
+          if (url.pathname==='/data-portal/api/schedule/import' && request.method==='POST') return json(response,200,await importScheduleCsv(pool,session,(await body(request)).csv));
+          fail('Method not allowed',405);
+        }
         if (request.method!=='GET') fail('Method not allowed',405);
         if (url.pathname==='/data-portal/api/session') return json(response,200,auth.state(session));
+        if (url.pathname==='/data-portal/api/users') return json(response,200,await portalUsers(pool,session));
+        if (url.pathname==='/data-portal/api/preferences') return json(response,200,await portalPreferences(pool,session,url.searchParams.get('user_id')));
+        if (url.pathname==='/data-portal/api/schedule') return json(response,200,await portalSchedule(pool,session,url.searchParams.get('user_id')));
+        if (url.pathname==='/data-portal/api/schedule/export') {
+          const csv=await exportScheduleCsv(pool,session);
+          response.writeHead(200,{'Content-Type':'text/csv; charset=utf-8','Content-Disposition':'attachment; filename="schedule.csv"'});
+          return response.end(csv);
+        }
         if (url.pathname==='/data-portal/api/files') return json(response,200,await portalFiles(pool,session,url.searchParams));
         if (url.pathname==='/data-portal/api/user-trends') return json(response,200,await portalTrends(pool,session));
         if (url.pathname==='/data-portal/api/preview') return json(response,200,await portalPreview(pool,session,url.searchParams.get('file') || ''));
@@ -100,10 +120,8 @@ export function createServer(pool, {dist = join(projectRoot,'dist'), viewerToken
         response.writeHead(302,{Location:'/data-portal/index.html'});return response.end();
       }
       if (path.startsWith('/data-portal/')) {
-        root=join(projectRoot,'data-portal');
-        path=path.slice('/data-portal'.length);
-        if (!['/index.html','/users.html','/preview.html','/app.js','/styles.css','/d3.min.js'].includes(path)) fail('Not found',404);
-        if (path==='/d3.min.js') {
+        if (!['/data-portal/index.html','/data-portal/users.html','/data-portal/preview.html','/data-portal/d3.min.js'].includes(path)) fail('Not found',404);
+        if (path==='/data-portal/d3.min.js') {
           response.writeHead(200,{'Content-Type':types['.js'],'X-Content-Type-Options':'nosniff'});
           if (request.method==='HEAD') return response.end();
           return createReadStream(d3Bundle).on('error',()=>response.destroy()).pipe(response);

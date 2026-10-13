@@ -113,6 +113,8 @@ export function createPortalAuth(pool, options = {}) {
         if (ctx.path === '/sign-up/email') {
           if (ctx.body?.invitationCode !== 'bright') throw new APIError('FORBIDDEN', {message: 'Invalid invitation code.'});
           if (!/^[A-Za-z0-9]{1,32}$/.test(ctx.body?.username || '')) throw new APIError('BAD_REQUEST', {message: 'User ID must contain 1–32 letters or numbers.'});
+          const alias = await pool.query('SELECT original_user_id FROM experiment_data.portal_user_aliases WHERE original_user_id=$1 AND current_user_id<>$1', [ctx.body.username]);
+          if (alias.rowCount) throw new APIError('BAD_REQUEST', {message: 'This user ID has been renamed and is reserved.'});
           if (ctx.body.role !== undefined && ctx.body.role !== 'user') throw new APIError('FORBIDDEN', {message: 'Sign-up is only available for users.'});
           if (ctx.body.mode !== undefined && ctx.body.mode !== 'user') throw new APIError('FORBIDDEN', {message: 'Sign-up is only available for users.'});
         }

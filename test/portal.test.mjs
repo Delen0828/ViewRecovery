@@ -53,7 +53,7 @@ test('Better Auth portal preserves accounts and SQL account scopes',async t=>{
     const anonymous=portalClient(base),participant=portalClient(base),admin=portalClient(base);
     await t.test('portal assets are available locally and data requires login',async()=>{
       const page=await fetch(base+'/data-portal/');assert.equal(page.status,200);assert.ok(page.url.endsWith('/data-portal/index.html'));
-      assert.ok((await page.text()).includes('./d3.min.js'));
+      assert.ok((await page.text()).includes('/assets/app-'));
       assert.equal((await fetch(base+'/data-portal/d3.min.js')).status,200);
       for (const path of ['/data-portal/api/files','/data-portal/api/user-trends','/data-portal/api/preview?file='+final.reference,'/data-portal/download?file='+final.reference]) assert.equal((await anonymous.api(path)).status,401);
       assert.equal((await fetch(base+'/data-portal/../server/portal-auth.mjs')).status,404);

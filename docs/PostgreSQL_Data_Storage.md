@@ -31,10 +31,10 @@ archive reader or importer.** Live ingestion does not read, generate, or parse
 CSV. Former CSV filename patterns are retained as logical `.json` save keys,
 not filesystem output files. `save_data.php` is retired by the Node server.
 
-The original portal layout is restored at `/data-portal/`, served by Node with
-SQL-backed file lookup, charts, previews, and downloads. The PHP code remains as
-a legacy reference and is not executed. This local database and restored portal
-remain separate from `beta`'s hosted Supabase deployment.
+The React/HeroUI portal at `/data-portal/` is built by Vite and served by Node,
+with SQL-backed schedules, settings, accounts, charts, previews, and downloads.
+The PHP code remains as a legacy reference and is not executed. This local
+database remains separate from `beta`'s hosted Supabase deployment.
 
 Data and credentials live under `.runtime/`, outside Vite's `dist/` directory,
 and are ignored by Git. Rebuilding the frontend does not remove SQL data.
@@ -70,7 +70,8 @@ Both start the same Node/PostgreSQL backend; the static-only fallback is removed
 so startup cannot silently produce an experiment that cannot save.
 
 For development, run `npm run serve` in one terminal and `npm run dev` in another.
-Vite proxies `/api`, `/data-portal`, and `/database`; development writes are real database writes
+Vite serves the portal source and proxies `/api`, `/data-portal/api`,
+`/data-portal/auth`, `/data-portal/download`, and `/database`; development writes are real database writes
 and no longer report a successful save while skipping it.
 
 ## Import the existing archive once

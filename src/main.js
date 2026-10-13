@@ -7,6 +7,7 @@ import jsPsychFullscreen from "@jspsych/plugin-fullscreen";
 
 import './style.css';
 import { CENTRAL_FIXATION_TASK_CONFIG } from './experiment-config.js';
+import { DEFAULT_STUDY_SETUP } from './study-setup.js';
 import { createExperimentDataSync } from './experiment-data.js';
 const FULLSCREEN_PROMPT_ID = 'fullscreen-return-prompt';
 const FULLSCREEN_STATUS_ID = 'fullscreen-return-status';
@@ -566,8 +567,8 @@ const timeline = [];
 const screenWidth = window.innerWidth;
 const screenHeight = window.innerHeight;
 const DEFAULT_STIMULUS_POSITION_OFFSET_DEGREES = {
-  x: 5,
-  y: 5
+  x: DEFAULT_STUDY_SETUP.xOffsetDeg,
+  y: DEFAULT_STUDY_SETUP.yOffsetDeg
 };
 let latestCalculatorData = null;
 const stimulusPositionSettings = {
@@ -3555,11 +3556,11 @@ timeline.push({
               <div class="setup-pair">
                 <label class="input-group" for="resolution-width">
                   <span class="input-label">Width</span>
-                  <input type="number" id="resolution-width" class="calculator-input" min="1" max="10000" step="1" value="1920">
+                  <input type="number" id="resolution-width" class="calculator-input" min="1" max="10000" step="1" value="${DEFAULT_STUDY_SETUP.resWidth}">
                 </label>
                 <label class="input-group" for="resolution-height">
                   <span class="input-label">Height</span>
-                  <input type="number" id="resolution-height" class="calculator-input" min="1" max="10000" step="1" value="1080">
+                  <input type="number" id="resolution-height" class="calculator-input" min="1" max="10000" step="1" value="${DEFAULT_STUDY_SETUP.resHeight}">
                 </label>
               </div>
             </section>
@@ -3568,16 +3569,16 @@ timeline.push({
               <div class="setup-pair">
                 <label class="input-group" for="screen-width">
                   <span class="input-label">Width</span>
-                  <input type="number" id="screen-width" class="calculator-input" min="0.1" max="10000" step="0.1" value="47.6">
+                  <input type="number" id="screen-width" class="calculator-input" min="0.1" max="10000" step="0.1" value="${DEFAULT_STUDY_SETUP.screenWidth}">
                 </label>
                 <label class="input-group" for="screen-height">
                   <span class="input-label">Height</span>
-                  <input type="number" id="screen-height" class="calculator-input" min="0.1" max="10000" step="0.1" value="26.8">
+                  <input type="number" id="screen-height" class="calculator-input" min="0.1" max="10000" step="0.1" value="${DEFAULT_STUDY_SETUP.screenHeight}">
                 </label>
               </div>
               <label class="input-group setup-distance" for="viewing-distance">
                 <span class="input-label">Viewing distance</span>
-                <input type="number" id="viewing-distance" class="calculator-input" min="0.1" max="10000" step="0.5" value="50" aria-label="Viewing distance in centimeters">
+                <input type="number" id="viewing-distance" class="calculator-input" min="0.1" max="10000" step="0.5" value="${DEFAULT_STUDY_SETUP.viewingDistance}" aria-label="Viewing distance in centimeters">
               </label>
             </section>
             <section class="input-section" aria-labelledby="offset-title">

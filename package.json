@@ -20,9 +20,14 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "tailwindcss": "^4.3.3",
     "vite": "^6.3.5"
   },
   "dependencies": {
+    "@heroui/react": "^2.8.10",
+    "@internationalized/date": "^3.12.4",
     "@jspsych/plugin-fullscreen": "^2.1.0",
     "@jspsych/plugin-html-button-response": "^2.1.0",
     "@jspsych/plugin-html-keyboard-response": "^2.1.0",
@@ -31,9 +36,13 @@
     "bcryptjs": "^3.0.3",
     "better-auth": "^1.7.7",
     "d3": "^7.9.0",
+    "framer-motion": "^12.43.0",
     "jspsych": "^8.2.1",
     "kysely": "^0.29.6",
-    "pg": "^8.23.1"
+    "lucide-react": "^0.468.0",
+    "pg": "^8.23.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
   },
   "engines": {
     "node": ">=22"

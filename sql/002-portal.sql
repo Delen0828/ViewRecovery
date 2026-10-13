@@ -35,10 +35,19 @@ RETURNS text LANGUAGE sql IMMUTABLE AS $$
     ELSE 'other' END;
 $$;
 
+-- Rename portal identities without changing the identity of active ingest runs.
+CREATE TABLE IF NOT EXISTS experiment_data.portal_user_aliases (
+  original_user_id text PRIMARY KEY,
+  current_user_id text NOT NULL
+);
+CREATE OR REPLACE FUNCTION experiment_data.portal_owner(value text)
+RETURNS text LANGUAGE sql STABLE AS $$
+  SELECT coalesce((SELECT current_user_id FROM experiment_data.portal_user_aliases WHERE original_user_id=value),value);
+$$;
 CREATE OR REPLACE VIEW experiment_data.portal_files AS
 SELECT 'source:' || f.id AS reference, 'source'::text AS source_kind,
   f.id::text AS source_id, f.original_path AS name,
-  coalesce(f.user_id,(regexp_match(f.original_path,'user_([^_/]+)_','i'))[1]) AS user_id, f.task,
+  experiment_data.portal_owner(coalesce(f.user_id,(regexp_match(f.original_path,'user_([^_/]+)_','i'))[1])) AS user_id, f.task,
   f.kind AS status, f.kind IN ('csv', 'backup') AS has_rows,
   experiment_data.portal_type(f.original_path) AS metric_type,
   experiment_data.portal_date(coalesce(f.run_timestamp,f.original_path), j.completed_at) AS session_date,
@@ -47,7 +56,7 @@ SELECT 'source:' || f.id AS reference, 'source'::text AS source_kind,
   octet_length(f.bytes)::bigint AS size_bytes, f.row_count, f.sha256 AS version
 FROM experiment_data.source_files f JOIN experiment_data.import_jobs j ON j.id = f.import_job_id
 UNION ALL
-SELECT 'save:' || s.id, 'save', s.id::text, s.save_key, r.user_id, r.task,
+SELECT 'save:' || s.id, 'save', s.id::text, s.save_key, experiment_data.portal_owner(r.user_id), r.task,
   s.prefix, true, experiment_data.portal_type(s.save_key),
   experiment_data.portal_date(r.run_timestamp, r.created_at), s.created_at, s.updated_at,
   NULL::bigint, s.row_count, s.payload_hash
@@ -55,7 +64,7 @@ FROM experiment_data.saves s JOIN experiment_data.runs r ON r.id = s.run_id
 UNION ALL
 SELECT 'run:' || r.id, 'run', r.id::text,
   (CASE WHEN r.status = 'complete' THEN 'final_complete' ELSE 'session_active' END) || '_user_' || r.user_id || '_' || r.task || '_' || r.run_timestamp || '_' || r.id || '.json',
-  r.user_id, r.task, r.status, true,
+  experiment_data.portal_owner(r.user_id), r.task, r.status, true,
   CASE WHEN r.status = 'complete' THEN 'final' ELSE 'session' END,
   experiment_data.portal_date(r.run_timestamp, r.created_at), r.created_at, r.updated_at,
   NULL::bigint, NULL::integer, r.updated_at::text

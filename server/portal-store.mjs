@@ -9,6 +9,10 @@ const scopeSql='($1=\'\' OR f.user_id=$1)';
 function describe(file) {
   const metrics=file.metrics;
   return {name:file.name,reference:file.reference,source_kind:file.source_kind,status:file.status,
+    user_id:file.user_id || '',task_type:file.task || metrics?.task || '',
+    session_type:file.metric_type==='pause' ? 'break' : 'study',metric_type:file.metric_type,
+    session_id:file.source_kind==='run' ? file.source_id : file.reference,
+    session_time:file.session_date ? new Date(file.session_date).toISOString() : null,
     size_bytes:Number(file.size_bytes ?? metrics?.jsonBytes ?? 0),created_at:new Date(file.created_at).getTime()/1000,
     modified_at:new Date(file.modified_at).getTime()/1000,row_count:file.row_count ?? metrics?.rowCount,
     download_url:'/data-portal/download?file='+encodeURIComponent(file.reference),
@@ -21,13 +25,16 @@ async function summaries(pool,references) {
 export async function portalFiles(pool,session,params) {
   const user=userScope(session);
   const q=params.get('q') || '',from=params.get('date_from') || '',to=params.get('date_to') || '';
+  const selected=params.get('user_id') || '';
+  if (session.role==='user' && selected && selected!==user) fail('Access denied.',403);
   for (const value of [from,to]) if (value && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0,10)!==value)) fail('Invalid date filter.');
   const requested=(params.get('metric_types') || 'final').split(',').filter(value=>['final','session','pause'].includes(value));
   const result=await pool.query(`SELECT f.* FROM experiment_data.portal_files f WHERE ${scopeSql}
-    AND ($2='' OR strpos(lower(f.name),lower($2))>0)
+    AND ($2='' OR strpos(lower(concat_ws(' ',f.user_id,f.task,f.reference,f.status,f.name)),lower($2))>0)
     AND ($3='' OR (f.created_at AT TIME ZONE 'America/New_York')::date >= NULLIF($3,'')::date)
     AND ($4='' OR (f.created_at AT TIME ZONE 'America/New_York')::date <= NULLIF($4,'')::date)
-    ORDER BY f.created_at DESC,f.reference`,[user,q,from,to]);
+    AND ($5='' OR f.user_id=$5)
+    ORDER BY f.created_at DESC,f.reference`,[user,q,from,to,selected]);
   await summaries(pool,result.rows.filter(file=>file.has_rows && requested.includes(file.metric_type)).map(file=>file.reference));
   const metrics=await pool.query('SELECT reference,metrics FROM experiment_data.portal_metrics WHERE reference=ANY($1::text[])',[result.rows.map(file=>file.reference)]);
   const byReference=new Map(metrics.rows.map(row=>[row.reference,row.metrics]));

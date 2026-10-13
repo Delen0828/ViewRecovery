@@ -19,7 +19,9 @@ export async function migratePortalAccounts(pool, options = {}) {
       SELECT user_id FROM experiment_data.portal_files
       UNION SELECT user_id FROM experiment_data.portal_sessions WHERE role='user'
       UNION SELECT username FROM portal_auth."user" WHERE role='user'
-    ) owners WHERE user_id ~ '^[A-Za-z0-9]{1,32}$' ORDER BY user_id`);
+    ) owners WHERE user_id ~ '^[A-Za-z0-9]{1,32}$'
+      AND NOT EXISTS (SELECT 1 FROM experiment_data.portal_retired_users r WHERE r.user_id=owners.user_id)
+      ORDER BY user_id`);
     const accounts = [{username: adminUsername, role: 'admin', passwordHash: adminPasswordHash},
       ...participants.rows.filter(row => row.user_id !== adminUsername).map(row => ({username: row.user_id, role: 'user', passwordHash: participantPasswordHash}))];
     for (const account of accounts) {
