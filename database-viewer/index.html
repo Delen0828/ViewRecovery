@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Experiment database</title>
+  <link rel="stylesheet" href="/database/styles.css">
+  <script type="module" src="/database/app.js"></script>
+</head>
+<body>
+  <main>
+    <header><div><h1>Experiment database</h1><p>Migration progress and recorded jsPsych data</p></div><button id="refresh">Refresh</button></header>
+    <p id="status" role="status">Connecting to PostgreSQL…</p>
+    <form id="auth" hidden><label>Viewer token <input id="token" type="password" autocomplete="off"></label><button>Connect</button></form>
+    <section id="counts" class="counts" aria-label="Database counts"></section>
+    <section class="panel"><h2>Archive imports</h2><div id="imports"></div></section>
+    <section class="panel">
+      <h2>Recorded runs, saves, and imported files</h2>
+      <form id="filters"><label>Participant <input id="participant" placeholder="All participants"></label><label>Task <select id="task"><option value="">All tasks</option><option>Motion</option><option>Orientation</option><option>Centrality</option><option>Bar</option></select></label><button>Filter</button></form>
+      <div class="scroll"><table><thead><tr><th>Type</th><th>Participant</th><th>Task</th><th>Source</th><th>Status</th><th>Rows</th></tr></thead><tbody id="sources"></tbody></table></div>
+      <nav><button id="source-prev">Previous</button><span id="source-page"></span><button id="source-next">Next</button></nav>
+    </section>
+    <section class="panel" id="preview" hidden><h2 id="preview-title">Rows</h2><p>Values are shown exactly as stored. Imported CSV cells remain strings; new experiment values retain their JSON types. Rolled-back rows are marked excluded.</p><div class="scroll"><table><thead id="row-head"></thead><tbody id="rows"></tbody></table></div><nav><button id="row-prev">Previous</button><span id="row-page"></span><button id="row-next">Next</button></nav></section>
+  </main>
+</body>
+</html>

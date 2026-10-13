@@ -7,6 +7,7 @@ import jsPsychFullscreen from "@jspsych/plugin-fullscreen";
 
 import './style.css';
 import { CENTRAL_FIXATION_TASK_CONFIG } from './experiment-config.js';
+import { createExperimentDataSync } from './experiment-data.js';
 const FULLSCREEN_PROMPT_ID = 'fullscreen-return-prompt';
 const FULLSCREEN_STATUS_ID = 'fullscreen-return-status';
 let fullscreenPromptVisible = false;
@@ -570,6 +571,7 @@ function handleExperimentFinish() {
 
 const jsPsych = initJsPsych({
   on_interaction_data_update: handleInteractionDataUpdate,
+  on_data_update: (row) => experimentDataSync.record(row),
   on_finish: handleExperimentFinish
 });
 const timeline = [];
@@ -780,6 +782,15 @@ const dataSaveState = {
   pauseProgressCount: 0,
   pauseSaveQueue: Promise.resolve()
 };
+const experimentRunId = crypto.randomUUID();
+const experimentDataSync = createExperimentDataSync({
+  getRun: () => ({
+    id: experimentRunId,
+    user_id: getCurrentUserIdForFilename(),
+    task: selectedTask,
+    run_timestamp: experimentRunTimestamp
+  })
+});
 // let allTrialParameters = []; // Store all trial parameters for export
 
 // Trial configuration based on testing checklist requirements
@@ -898,6 +909,7 @@ function truncateDataToSnapshot(snapshotCount) {
   const allTrialData = jsPsych.data.get().values();
   if (Array.isArray(allTrialData) && allTrialData.length > snapshotCount) {
     allTrialData.length = snapshotCount;
+    experimentDataSync.reconcile(allTrialData);
   }
 }
 
@@ -1859,51 +1871,14 @@ function playFeedbackSound(isCorrect, trialCategory = '') {
 }
 
 // Function to save data to server
-function saveDataToServer(filename, csvData, options = {}) {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/save_data.php', true);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    
-    xhr.onreadystatechange = function() {
-      if (xhr.readyState === 4) {
-        // XHR Response received
-        
-        if (xhr.status === 200) {
-          try {
-            const response = JSON.parse(xhr.responseText);
-            if (response.success) {
-              resolve(response);
-            } else {
-              reject(new Error(response.error || 'Server save failed'));
-            }
-          } catch (e) {
-            console.error('JSON Parse Error:', e);
-            reject(new Error(`Invalid server response: ${xhr.responseText.substring(0, 100)}`));
-          }
-        } else {
-          reject(new Error(`Server error: ${xhr.status} - ${xhr.responseText}`));
-        }
-      }
-    };
-    
-    xhr.onerror = function() {
-      reject(new Error('Network error'));
-    };
-    
-    const postData = {
-      filename: filename,
-      filedata: csvData,
-      overwrite: Boolean(options.overwrite)
-    };
-    
-    xhr.send(JSON.stringify(postData));
+function saveDataToServer(filename, rows, options = {}) {
+  experimentDataSync.reconcile(jsPsych.data.get().values());
+  return experimentDataSync.save({
+    save_key: filename,
+    prefix: options.prefix,
+    rows,
+    overwrite: Boolean(options.overwrite)
   });
-}
-
-function isServerSaveDisabledForDevelopment() {
-  return window.location.port === '5173'
-    || (window.location.hostname === 'localhost' && window.location.port !== '8000');
 }
 
 function sanitizeFilenameSegment(value, fallback = 'unknown') {
@@ -1942,47 +1917,7 @@ function buildDataFilename(prefix, options = {}) {
   }
 
   parts.push(experimentRunTimestamp);
-  return `${parts.join('_')}.csv`;
-}
-
-function csvEscape(value) {
-  if (value === null || typeof value === 'undefined') {
-    return '';
-  }
-
-  let normalizedValue = value;
-  if (typeof normalizedValue === 'object') {
-    normalizedValue = JSON.stringify(normalizedValue);
-  }
-
-  const stringValue = String(normalizedValue);
-  if (/[",\n\r]/.test(stringValue)) {
-    return `"${stringValue.replace(/"/g, '""')}"`;
-  }
-
-  return stringValue;
-}
-
-function rowsToCsv(rows) {
-  const columns = [];
-  const seenColumns = new Set();
-
-  rows.forEach((row) => {
-    Object.keys(row).forEach((column) => {
-      if (!seenColumns.has(column)) {
-        seenColumns.add(column);
-        columns.push(column);
-      }
-    });
-  });
-
-  if (!columns.length) {
-    return '';
-  }
-
-  const header = columns.map(csvEscape).join(',');
-  const body = rows.map((row) => columns.map((column) => csvEscape(row[column])).join(','));
-  return [header, ...body].join('\n');
+  return `${parts.join('_')}.json`;
 }
 
 function getSavableDataRows() {
@@ -2005,9 +1940,8 @@ function addSaveMetadata(rows, prefix, options = {}) {
 
 function saveRowsWithPrefix(prefix, rows, options = {}) {
   const filename = buildDataFilename(prefix, options);
-  const csvData = rowsToCsv(addSaveMetadata(rows, prefix, options));
 
-  if (!csvData) {
+  if (!rows.length) {
     return Promise.resolve({
       success: false,
       skipped: true,
@@ -2016,18 +1950,7 @@ function saveRowsWithPrefix(prefix, rows, options = {}) {
     });
   }
 
-  if (isServerSaveDisabledForDevelopment()) {
-    console.log(`[Data Save] Development mode: would save ${filename}`);
-    return Promise.resolve({
-      success: true,
-      skipped: true,
-      development: true,
-      filename,
-      message: 'Development mode: server save disabled.'
-    });
-  }
-
-  return saveDataToServer(filename, csvData, { overwrite: Boolean(options.overwrite) });
+  return saveDataToServer(filename, addSaveMetadata(rows, prefix, options), { ...options, prefix });
 }
 
 function getSessionChunkCount(taskType) {

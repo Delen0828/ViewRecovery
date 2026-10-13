@@ -26,3 +26,9 @@ dist-ssr
 
 # Private key
 *.pem
+
+# Local PostgreSQL cluster, credentials, and migration source archive
+.runtime/
+.env
+server-data.zip
+test/results/
