@@ -53,7 +53,7 @@ Configuration:
 | `PG_BIN` | Directory containing native `initdb` and `pg_ctl` binaries. |
 | `EXPERIMENT_RUNTIME_DIR` | Persistent cluster, binaries, log, and password location; defaults to `.runtime`. |
 | `EXPERIMENT_PG_PORT` | Local PostgreSQL port; defaults to `55432`. Keep it fixed for an initialized running cluster. |
-| `HOST`, `PORT` | Web server bind address and port; defaults to `127.0.0.1`, `8000`. |
+| `HOST`, `PORT` | Web server bind address and port; defaults to `127.0.0.1`, `8000`. `start-server.sh` selects the next available port if the default is busy. An explicit `PORT` stays fixed and is checked before building. |
 | `DATABASE_VIEWER_TOKEN` | Bearer token for viewer access. Required when the web server binds publicly or the viewer is accessed through a proxy. Enter it in the viewer's connection form. |
 | `BETTER_AUTH_URL` | Public web origin, e.g. `https://study.example.org`; required when accessing the portal through a public hostname or reverse proxy. Localhost and `127.0.0.1` work automatically. |
 | `BETTER_AUTH_SECRET` | Stable auth signing secret of at least 32 characters. When unset, a secret is generated once in `.runtime/portal-auth.secret` with mode `0600`. |

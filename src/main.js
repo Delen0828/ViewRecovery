@@ -40,28 +40,16 @@ function ensureFullscreenPrompt() {
 
   promptElement = document.createElement('div');
   promptElement.id = FULLSCREEN_PROMPT_ID;
-  promptElement.style.cssText = `
-    position: fixed;
-    inset: 0;
-    z-index: 99999;
-    background: rgba(0, 0, 0, 0.78);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    box-sizing: border-box;
-  `;
-
   promptElement.innerHTML = `
-    <div style="max-width: 680px; width: 100%; background: #ffffff; border-radius: 12px; padding: 28px; text-align: center; box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);">
-      <h2 style="margin: 0 0 14px 0; font-size: 32px; color: #1f2933;">Fullscreen Required</h2>
-      <p style="margin: 0 0 18px 0; font-size: 20px; color: #2d3748; line-height: 1.5;">
+    <div class="fullscreen-return-dialog">
+      <h2 class="fullscreen-title">Fullscreen Required</h2>
+      <p class="fullscreen-text">
         You exited fullscreen mode. Please return to fullscreen to continue the experiment.
       </p>
-      <button id="fullscreen-return-button" style="padding: 12px 28px; font-size: 20px; font-weight: 600; border: none; border-radius: 8px; background: #2c7be5; color: #fff; cursor: pointer;">
+      <button id="fullscreen-return-button" class="jspsych-btn">
         Return to Fullscreen
       </button>
-      <div id="${FULLSCREEN_STATUS_ID}" style="margin-top: 12px; min-height: 22px; color: #9a3412; font-size: 15px;"></div>
+      <div id="${FULLSCREEN_STATUS_ID}"></div>
     </div>
   `;
 
@@ -668,94 +656,6 @@ function renderTaskLinksPage() {
   }).join('');
 
   root.innerHTML = `
-    <style>
-      body {
-        margin: 0;
-        min-height: 100vh;
-        background: #ccc;
-        font-family: Arial, sans-serif;
-      }
-      .task-link-page {
-        min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 32px;
-        box-sizing: border-box;
-      }
-      .task-link-container {
-        width: min(760px, 100%);
-        background: white;
-        border-radius: 10px;
-        box-shadow: 0 6px 12px rgba(0,0,0,0.2);
-        padding: 32px;
-        color: #2c3e50;
-      }
-      .task-link-title {
-        font-size: 28px;
-        font-weight: bold;
-        margin-bottom: 10px;
-      }
-      .task-link-subtitle {
-        color: #5f6f7a;
-        font-size: 16px;
-        margin-bottom: 24px;
-      }
-      .task-link-warning {
-        background: #fff3cd;
-        border: 1px solid #ffeaa7;
-        border-radius: 6px;
-        color: #856404;
-        padding: 12px 14px;
-        margin-bottom: 18px;
-      }
-      .task-link-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 14px;
-      }
-      .task-link {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        border: 2px solid #3498db;
-        border-radius: 8px;
-        padding: 16px;
-        color: inherit;
-        text-decoration: none;
-        transition: background 0.2s ease, color 0.2s ease;
-      }
-      .task-link:hover {
-        background: #3498db;
-        color: white;
-      }
-      .task-link-label {
-        font-size: 18px;
-        font-weight: bold;
-      }
-      .task-link-description {
-        font-size: 14px;
-        color: #667780;
-      }
-      .task-link:hover .task-link-description {
-        color: #eef7ff;
-      }
-      .task-link code {
-        margin-top: 6px;
-        color: inherit;
-        font-size: 13px;
-        white-space: normal;
-        word-break: break-all;
-      }
-      @media (max-width: 640px) {
-        .task-link-grid {
-          grid-template-columns: 1fr;
-        }
-        .task-link-container {
-          padding: 24px;
-        }
-      }
-    </style>
     <main class="task-link-page">
       <section class="task-link-container">
         <div class="task-link-title">View Recovery Task Links</div>
@@ -1138,6 +1038,25 @@ function deg2PixelForAxis(angleDeg, axis = 'x', chinrestData = null, fallbackPar
     }
 
     return deg2Pixel(normalizedAngle, chinrestData, fallbackParams);
+}
+
+function pixel2DegForAxis(offsetPx, axis = 'x') {
+    const calculatorData = getLatestCalculatorData();
+    if (calculatorData) {
+        const pixelsPerCm = axis === 'y'
+            ? Number(calculatorData.pixelsPerCmY)
+            : Number(calculatorData.pixelsPerCmX);
+        const pixelsPerDistance = Number(calculatorData.viewingDistanceCm) * pixelsPerCm;
+        if (Number.isFinite(pixelsPerDistance) && pixelsPerDistance > 0) {
+            return Math.atan(offsetPx / pixelsPerDistance) * 180 / Math.PI;
+        }
+        if (Number(calculatorData.pixelsPerDegree) > 0) {
+            return offsetPx / Number(calculatorData.pixelsPerDegree);
+        }
+    }
+
+    // Match the manual-calculation fallback in deg2Pixel.
+    return Math.atan(offsetPx / (80 * ((3840 / 71 + 2160 / 51) / 2))) * 180 / Math.PI;
 }
 
 function getStimulusOffsetSettings(chinrestData = null) {
@@ -2069,36 +1988,6 @@ function shuffleArray(array) {
   return shuffled;
 }
 
-const SHARED_KEY_ICON_CSS = `
-  .key-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 40px;
-    height: 40px;
-    padding: 0 10px;
-    margin: 0 4px;
-    box-sizing: border-box;
-    font-family: monospace;
-    font-size: 18px;
-    font-weight: bold;
-    color: #111;
-    border: 2px solid #9b9b9b;
-    border-radius: 6px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.6);
-    background: linear-gradient(145deg, #f2f2f2, #d9d9d9);
-  }
-  .key-icon-square {
-    width: 40px;
-    min-width: 40px;
-    padding: 0;
-  }
-  .key-icon-space {
-    width: 86px;
-    min-width: 86px;
-  }
-`;
-
 
 // Function to create a ready screen with countdown and spacebar continue
 function createReadyScreen(taskName = "next task") {
@@ -2106,44 +1995,6 @@ function createReadyScreen(taskName = "next task") {
     type: htmlKeyboardResponse,
     stimulus: function() {
       return `
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #ccc;
-            overflow: hidden;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-          }
-          .ready-container {
-            text-align: center;
-            color: black;
-          }
-          .ready-title {
-            font-size: 32px;
-            margin-bottom: 20px;
-            font-weight: bold;
-          }
-          .task-info {
-            font-size: 20px;
-            margin-bottom: 30px;
-            color: #444;
-          }
-          .countdown {
-            font-size: 48px;
-            font-weight: bold;
-            margin: 20px 0;
-            color: #333;
-          }
-          .start-instruction {
-            font-size: 18px;
-            margin-bottom: 20px;
-          }
-          ${SHARED_KEY_ICON_CSS}
-        </style>
         <div class="ready-container">
           <div class="ready-title">Ready to Start?</div>
           <div class="task-info">About to begin: ${taskName}</div>
@@ -2194,67 +2045,6 @@ function createBreakScreen(taskType, breakNum, totalBreaks, trialsCompleted, tot
   return {
     type: htmlKeyboardResponse,
     stimulus: `
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          margin: 0;
-          padding: 0;
-          background-color: #ccc;
-          overflow: hidden;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          height: 100vh;
-        }
-        .ready-container {
-          text-align: center;
-          color: black;
-        }
-        .ready-title {
-          font-size: 32px;
-          margin-bottom: 20px;
-          font-weight: bold;
-        }
-        .task-info {
-          font-size: 20px;
-          margin-bottom: 30px;
-          color: #444;
-        }
-        .countdown {
-          font-size: 48px;
-          font-weight: bold;
-          margin: 20px 0;
-          color: #333;
-        }
-        .start-instruction {
-          font-size: 18px;
-          margin-bottom: 20px;
-        }
-        .auto-save-status {
-          display: inline-block;
-          margin: 0 0 22px;
-          padding: 10px 14px;
-          border: 1px solid #6b7280;
-          border-radius: 6px;
-          color: #1f2933;
-          background: rgba(255, 255, 255, 0.4);
-          font-size: 18px;
-          font-weight: 600;
-        }
-        .auto-save-status.success {
-          border-color: #166534;
-          color: #14532d;
-        }
-        .auto-save-status.error {
-          border-color: #991b1b;
-          color: #7f1d1d;
-        }
-        .auto-save-status.info {
-          border-color: #1d4ed8;
-          color: #1e3a8a;
-        }
-        ${SHARED_KEY_ICON_CSS}
-      </style>
       <div class="ready-container">
         <div class="ready-title">${titleText}</div>
         <div class="task-info">${taskInfoHtml}</div>
@@ -2371,21 +2161,9 @@ function createProgressOverlay(taskType, trialNum, totalTrials) {
   }
   
   return `
-    <div id="progress-overlay" style="
-      position: fixed;
-      top: 10px;
-      left: 10px;
-      background: rgba(0, 0, 0, 0.8);
-      color: white;
-      padding: 10px 15px;
-      border-radius: 5px;
-      font-size: 14px;
-      font-family: Arial, sans-serif;
-      z-index: 1000;
-      line-height: 1.4;
-    ">
+    <div id="progress-overlay">
       <div>Task: ${taskType} | Trial ${trialNum} of ${totalTrials}</div>
-      <div style="font-size: 12px; opacity: 0.9; margin-top: 2px;">
+      <div class="progress-detail">
         Difficulty Level ${currentLevel + 1}/9 | ${parameterName}: ${difficultyDisplay}
       </div>
     </div>
@@ -2498,52 +2276,6 @@ function createTaskInstructionTrials(taskType) {
     return {
       type: htmlKeyboardResponse,
       stimulus: `
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #ccc;
-            overflow: hidden;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-          }
-          .instruction-wrapper {
-            width: min(980px, 92vw);
-            text-align: center;
-            color: black;
-            padding: 0 24px;
-            box-sizing: border-box;
-          }
-          .instruction-title {
-            font-size: 32px;
-            font-weight: bold;
-            margin-bottom: 20px;
-            color: black;
-          }
-          .instruction-page {
-            font-size: 20px;
-            color: black;
-            margin-bottom: 30px;
-          }
-          .instruction-paragraph {
-            font-size: 20px;
-            line-height: 1.6;
-            margin: 0 0 20px 0;
-            color: black;
-          }
-          .instruction-paragraph:last-of-type {
-            margin-bottom: 0;
-          }
-          .instruction-continue {
-            margin-top: 30px;
-            font-size: 18px;
-            color: black;
-          }
-          ${SHARED_KEY_ICON_CSS}
-        </style>
         <div class="instruction-wrapper">
           <div class="instruction-title">${instructionConfig.title}</div>
           <div class="instruction-page">Instructions ${currentPage} of ${totalPages}</div>
@@ -2565,34 +2297,6 @@ function createResponseQuestionStimulus(taskType, trialNum, totalTrials) {
   const promptConfig = getResponsePromptConfig(taskType);
 
   return `
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 0;
-        background-color: #ccc;
-        overflow: hidden;
-      }
-      .question-text {
-        position: absolute;
-        top: 40%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        color: black;
-        font-size: 18px;
-        z-index: 10;
-      }
-      .instruction-text {
-        position: absolute;
-        top: 60%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        color: black;
-        font-size: 16px;
-        z-index: 10;
-      }
-      ${SHARED_KEY_ICON_CSS}
-    </style>
     <div class="question-text">${promptConfig.question}</div>
     <div class="instruction-text">Press ${createKeyIcon(promptConfig.primaryKeyLabel)} for ${promptConfig.primaryLabel}, ${createKeyIcon(promptConfig.secondaryKeyLabel)} for ${promptConfig.secondaryLabel}, ${createKeyIcon('SPACE', 'key-icon-space')} for ✖️, ${createKeyIcon('B', 'key-icon-square')} for break</div>
     <svg id="stimulus" width="100%" height="100%"></svg>
@@ -3737,33 +3441,6 @@ timeline.push({
   type: jsPsychFullscreen,
   fullscreen_mode: true,
   message: `
-    <style>
-      body {
-        margin: 0;
-        padding: 0;
-        background-color: #ccc !important;
-        font-family: Arial, sans-serif;
-        color: black;
-      }
-      .fullscreen-message {
-        text-align: center;
-        color: black;
-        padding: 24px 36px;
-      }
-      .fullscreen-title {
-        font-size: 32px;
-        font-weight: bold;
-        margin: 0 0 18px 0;
-      }
-      .fullscreen-text {
-        font-size: 20px;
-        margin: 0 0 16px 0;
-        line-height: 1.6;
-      }
-      .fullscreen-text:last-of-type {
-        margin-bottom: 0;
-      }
-    </style>
     <div class="fullscreen-message">
       <h2 class="fullscreen-title">Welcome to the Experiment</h2>
       <p class="fullscreen-text">
@@ -3780,27 +3457,6 @@ timeline.push({
 timeline.push({
   type: jsPsychHtmlButtonResponse,
   stimulus: `
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 0;
-        background-color: #ccc;
-        overflow: hidden;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-      }
-      .startup-message {
-        text-align: center;
-        color: black;
-        font-size: 32px;
-        font-weight: bold;
-        line-height: 1.4;
-        padding: 0 24px;
-      }
-    </style>
     <div class="startup-message">Please click the “Continue” button below to start the experiment.</div>
   `,
   choices: ['Continue'],
@@ -3811,56 +3467,6 @@ timeline.push({
 timeline.push({
   type: jsPsychHtmlButtonResponse,
   stimulus: `
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 0;
-        background-color: #ccc;
-        overflow: hidden;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-      }
-      .user-id-container {
-        text-align: center;
-        color: black;
-        padding: 0 24px;
-        width: 100%;
-        box-sizing: border-box;
-      }
-      .user-id-title {
-        font-size: 32px;
-        margin-bottom: 18px;
-        font-weight: bold;
-      }
-      .user-id-input {
-        font-size: 20px;
-        padding: 12px 14px;
-        margin: 12px 0 8px 0;
-        border: 2px solid #8f8f8f;
-        border-radius: 6px;
-        width: min(280px, 85vw);
-        background: #e4e4e4;
-        color: black;
-        text-align: center;
-      }
-      .user-id-input::placeholder {
-        color: #5a5a5a;
-      }
-      .user-id-instruction {
-        font-size: 20px;
-        margin: 0 0 12px 0;
-        color: black;
-      }
-      .error-message {
-        color: #8b0000;
-        font-size: 16px;
-        margin-top: 10px;
-        display: none;
-      }
-    </style>
     <div class="user-id-container">
       <div class="user-id-title">Enter Your User ID</div>
       <div class="user-id-instruction">Please enter your participant ID</div>
@@ -3928,414 +3534,93 @@ timeline.push({
   }
 });
 
-// Visual Angle Calculator UI
-timeline.push({
-  type: jsPsychHtmlButtonResponse,
-  stimulus: `
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 0;
-        background-color: #ccc;
-        overflow: auto;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 100vh;
-      }
-      .calculator-container {
-        text-align: center;
-        color: black;
-        padding: 24px 28px;
-        width: 100%;
-        box-sizing: border-box;
-      }
-      .calculator-title {
-        font-size: 32px;
-        margin-bottom: 8px;
-        color: black;
-        font-weight: bold;
-      }
-      .calculator-subtitle {
-        font-size: 20px;
-        color: black;
-        margin-bottom: 18px;
-      }
-      .input-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr 1fr;
-        gap: 15px;
-        margin: 15px 0;
-      }
-      .input-section {
-        background: #bdbdbd;
-        padding: 12px;
-        border-radius: 8px;
-      }
-      .section-title {
-        font-size: 18px;
-        font-weight: bold;
-        color: black;
-        margin-bottom: 8px;
-      }
-      .input-group {
-        margin: 8px 0;
-        text-align: left;
-      }
-      .input-label {
-        display: block;
-        font-size: 14px;
-        color: black;
-        margin-bottom: 3px;
-        font-weight: 500;
-      }
-      .calculator-input {
-        width: 100%;
-        padding: 8px;
-        border: none;
-        border-radius: 4px;
-        font-size: 16px;
-        text-align: center;
-        box-sizing: border-box;
-        background: #e0e0e0;
-        color: black;
-      }
-      .calculator-input:focus {
-        outline: 2px solid #555;
-      }
-      .calculator-input.invalid {
-        outline: 2px solid #e74c3c;
-      }
-      .unit-label {
-        font-size: 12px;
-        color: #3f3f3f;
-        margin-top: 3px;
-      }
-      .error-message {
-        color: #e74c3c;
-        font-size: 12px;
-        margin-top: 5px;
-        display: none;
-      }
-      .preview-section {
-        background: #c4c4c4;
-        padding: 10px;
-        border-radius: 6px;
-        margin: 10px 0;
-      }
-      .preview-title {
-        font-size: 16px;
-        font-weight: bold;
-        color: black;
-        margin-bottom: 6px;
-      }
-      .preview-text {
-        font-size: 14px;
-        color: black;
-        margin: 3px 0;
-      }
-      .instructions {
-        background: #c8c8c8;
-        padding: 8px;
-        border-radius: 4px;
-        margin: 10px 0;
-        font-size: 14px;
-        color: black;
-        text-align: center;
-      }
-    </style>
-    <div class="calculator-container">
-      <div class="calculator-title">Visual Angle Calculator</div>
-      <div class="calculator-subtitle">Enter your display setup parameters for accurate visual angle calculations</div>
-      
-      <div class="instructions">
-        Enter your display parameters for accurate visual angle calculations
-      </div>
-      
-      <div class="input-grid">
-        <div class="input-section">
-          <div class="section-title">Screen Resolution</div>
-          <div class="input-group">
-            <label class="input-label">Width (pixels)</label>
-            <input type="number" id="resolution-width" class="calculator-input" placeholder="1920" value="1920">
-          </div>
-          <div class="input-group">
-            <label class="input-label">Height (pixels)</label>
-            <input type="number" id="resolution-height" class="calculator-input" placeholder="1080" value="1080">
-          </div>
-        </div>
-        
-        <div class="input-section">
-          <div class="section-title">Screen Dimensions</div>
-          <div class="input-group">
-            <label class="input-label">Width (cm)</label>
-            <input type="number" id="screen-width" class="calculator-input" placeholder="47.6" step="0.1" value="47.6">
-            <div class="unit-label">Visible screen width</div>
-          </div>
-          <div class="input-group">
-            <label class="input-label">Height (cm)</label>
-            <input type="number" id="screen-height" class="calculator-input" placeholder="26.8" step="0.1" value="26.8">
-            <div class="unit-label">Visible screen height</div>
-          </div>
-        </div>
-
-        <div class="input-section">
-          <div class="section-title">Viewing Distance</div>
-          <div class="input-group">
-            <label class="input-label">Distance (cm)</label>
-            <input type="number" id="viewing-distance" class="calculator-input" placeholder="50" step="0.5" value="50">
-            <div class="unit-label">Eye to screen distance</div>
-          </div>
-        </div>
-      </div>
-      
-      <div class="preview-section">
-        <div class="preview-title">Calculated Values</div>
-        <div class="preview-text">Pixels per degree: <span id="preview-ppd">--</span></div>
-        <div class="preview-text">Pixels per cm (X): <span id="preview-ppcm-x">--</span></div>
-        <div class="preview-text">Pixels per cm (Y): <span id="preview-ppcm-y">--</span></div>
-      </div>
-    </div>
-  `,
-  choices: ['Continue'],
-  button_html: (choice) => `<div class="my-btn-container"><button class="jspsych-btn" id="continue-calc-btn">${choice}</button></div>`,
-  on_load: function() {
-    const continueBtn = document.getElementById('continue-calc-btn');
-    const inputs = {
-      resWidth: document.getElementById('resolution-width'),
-      resHeight: document.getElementById('resolution-height'),
-      screenWidth: document.getElementById('screen-width'),
-      screenHeight: document.getElementById('screen-height'),
-      viewingDistance: document.getElementById('viewing-distance')
-    };
-    
-    const previews = {
-      ppd: document.getElementById('preview-ppd'),
-      ppcmX: document.getElementById('preview-ppcm-x'),
-      ppcmY: document.getElementById('preview-ppcm-y')
-    };
-    
-    // Disable continue button initially
-    continueBtn.disabled = true;
-    continueBtn.style.opacity = '0.5';
-    
-    function validateInput(input, min = 1, max = 10000) {
-      const value = parseFloat(input.value);
-      return !isNaN(value) && value >= min && value <= max;
-    }
-    
-    function updateCalculations() {
-      const values = {
-        resWidth: parseFloat(inputs.resWidth.value),
-        resHeight: parseFloat(inputs.resHeight.value),
-        screenWidth: parseFloat(inputs.screenWidth.value),
-        screenHeight: parseFloat(inputs.screenHeight.value),
-        viewingDistance: parseFloat(inputs.viewingDistance.value)
-      };
-      
-      // Check if all values are valid
-      const allValid = Object.values(values).every(v => !isNaN(v) && v > 0);
-      
-      if (allValid) {
-        // Calculate pixels per cm
-        const pixelsPerCmX = values.resWidth / values.screenWidth;
-        const pixelsPerCmY = values.resHeight / values.screenHeight;
-        
-        // Calculate pixels per degree
-        // For 1 degree visual angle: tan(1°) * viewing distance = cm
-        const cmPerDegree = Math.tan(Math.PI / 180) * values.viewingDistance;
-        const pixelsPerDegree = (pixelsPerCmX + pixelsPerCmY) / 2 * cmPerDegree;
-        
-        // Update previews
-        previews.ppd.textContent = pixelsPerDegree.toFixed(2);
-        previews.ppcmX.textContent = pixelsPerCmX.toFixed(2);
-        previews.ppcmY.textContent = pixelsPerCmY.toFixed(2);
-        
-        // Enable continue button
-        continueBtn.disabled = false;
-        continueBtn.style.opacity = '1';
-      } else {
-        previews.ppd.textContent = '--';
-        previews.ppcmX.textContent = '--';
-        previews.ppcmY.textContent = '--';
-        
-        continueBtn.disabled = true;
-        continueBtn.style.opacity = '0.5';
-      }
-    }
-    
-    // Add validation and calculation for all inputs
-    Object.values(inputs).forEach(input => {
-      input.addEventListener('input', function() {
-        const isValid = validateInput(this);
-        this.classList.toggle('invalid', !isValid);
-        updateCalculations();
-      });
-    });
-    
-    // Store the calculated parameters when continue is clicked
-    continueBtn.addEventListener('click', function() {
-	      const calculatorData = {
-	        resolution: [parseFloat(inputs.resWidth.value), parseFloat(inputs.resHeight.value)],
-	        screenSizeCm: [parseFloat(inputs.screenWidth.value), parseFloat(inputs.screenHeight.value)],
-	        viewingDistanceCm: parseFloat(inputs.viewingDistance.value),
-	        pixelsPerCmX: parseFloat(inputs.resWidth.value) / parseFloat(inputs.screenWidth.value),
-	        pixelsPerCmY: parseFloat(inputs.resHeight.value) / parseFloat(inputs.screenHeight.value),
-	        pixelsPerDegree: parseFloat(previews.ppd.textContent)
-	      };
-	      latestCalculatorData = calculatorData;
-
-	      // Store in jsPsych data
-	      jsPsych.data.addProperties({
-	        calculator_data: calculatorData
-	      });
-    });
-    
-    // Initial calculation
-    updateCalculations();
-  },
-  on_finish: function(data) {
-    // Data is already stored in jsPsych via the button click event
-  }
-});
-
-// Stimulus position editor
+// Combined screen calibration and stimulus position editor
+let positionPreviewResizeObserver = null;
 timeline.push({
   type: jsPsychHtmlButtonResponse,
   stimulus: function() {
     const taskLabel = escapeHtml(TASK_LINK_CONFIG[selectedTask]?.label || selectedTask || 'Selected Task');
-    const xMinAttribute = selectedTask === 'Bar' ? 'min="0"' : '';
-    const barValidationNote = selectedTask === 'Bar'
-      ? '<p class="position-note">For bar comparison, x offset must be 0 or greater.</p>'
-      : '';
+    const xMinAttribute = selectedTask === 'Bar' ? 'min="0"' : 'min="-89.9"';
 
     return `
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          margin: 0;
-          padding: 0;
-          background-color: #ccc;
-          overflow: auto;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          min-height: 100vh;
-          color: black;
-        }
-        .position-editor {
-          width: min(980px, calc(100vw - 48px));
-          margin: 0 auto;
-          padding: 28px 0;
-          box-sizing: border-box;
-          color: black;
-          text-align: center;
-        }
-        .position-title {
-          margin: 0 0 8px;
-          font-size: 32px;
-          font-weight: bold;
-          color: black;
-        }
-        .position-subtitle {
-          margin: 0 0 20px;
-          font-size: 20px;
-          color: #333;
-        }
-        .position-preview-wrap {
-          margin: 0 auto 18px;
-          width: min(860px, 100%);
-        }
-        .position-preview {
-          display: block;
-          width: 100%;
-          height: min(48vh, 430px);
-          min-height: 280px;
-          border: 2px solid #7f7f7f;
-          background: #d9d9d9;
-          box-sizing: border-box;
-        }
-        .position-controls {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(180px, 1fr));
-          gap: 18px;
-          width: min(620px, 100%);
-          margin: 0 auto 12px;
-        }
-        .position-field {
-          text-align: left;
-        }
-        .position-label {
-          display: block;
-          margin-bottom: 6px;
-          font-size: 17px;
-          font-weight: 700;
-          color: black;
-        }
-        .position-input {
-          width: 100%;
-          box-sizing: border-box;
-          border: 2px solid #8f8f8f;
-          border-radius: 6px;
-          background: #e4e4e4;
-          color: black;
-          font-size: 20px;
-          padding: 10px 12px;
-          text-align: center;
-        }
-        .position-input.invalid {
-          border-color: #991b1b;
-          outline: 2px solid #991b1b;
-        }
-        .position-readout {
-          margin: 6px 0;
-          font-size: 17px;
-          color: #222;
-        }
-        .position-note {
-          margin: 6px 0;
-          font-size: 16px;
-          color: #333;
-        }
-        .position-error {
-          min-height: 22px;
-          margin: 8px 0 0;
-          color: #7f1d1d;
-          font-size: 16px;
-          font-weight: 700;
-        }
-        @media (max-width: 680px) {
-          .position-controls {
-            grid-template-columns: 1fr;
-          }
-          .position-title {
-            font-size: 28px;
-          }
-          .position-subtitle {
-            font-size: 18px;
-          }
-        }
-      </style>
-      <main class="position-editor">
-        <h1 class="position-title">Stimulus Position</h1>
-        <p class="position-subtitle">${taskLabel}</p>
-        <div class="position-preview-wrap">
-          <svg id="stimulus-position-preview" class="position-preview" role="img" aria-label="Stimulus position preview"></svg>
+      <main class="position-editor screen-setup">
+        <header class="setup-header">
+          <h1 class="position-title">Screen &amp; Stimulus</h1>
+          <span class="position-subtitle">${taskLabel}</span>
+        </header>
+        <div class="setup-layout">
+          <div class="setup-parameters">
+            <section class="input-section" aria-labelledby="resolution-title">
+              <h2 id="resolution-title" class="section-title">Resolution <span class="setup-unit">px</span></h2>
+              <div class="setup-pair">
+                <label class="input-group" for="resolution-width">
+                  <span class="input-label">Width</span>
+                  <input type="number" id="resolution-width" class="calculator-input" min="1" max="10000" step="1" value="1920">
+                </label>
+                <label class="input-group" for="resolution-height">
+                  <span class="input-label">Height</span>
+                  <input type="number" id="resolution-height" class="calculator-input" min="1" max="10000" step="1" value="1080">
+                </label>
+              </div>
+            </section>
+            <section class="input-section" aria-labelledby="dimensions-title">
+              <h2 id="dimensions-title" class="section-title">Screen size <span class="setup-unit">cm</span></h2>
+              <div class="setup-pair">
+                <label class="input-group" for="screen-width">
+                  <span class="input-label">Width</span>
+                  <input type="number" id="screen-width" class="calculator-input" min="0.1" max="10000" step="0.1" value="47.6">
+                </label>
+                <label class="input-group" for="screen-height">
+                  <span class="input-label">Height</span>
+                  <input type="number" id="screen-height" class="calculator-input" min="0.1" max="10000" step="0.1" value="26.8">
+                </label>
+              </div>
+              <label class="input-group setup-distance" for="viewing-distance">
+                <span class="input-label">Viewing distance</span>
+                <input type="number" id="viewing-distance" class="calculator-input" min="0.1" max="10000" step="0.5" value="50" aria-label="Viewing distance in centimeters">
+              </label>
+            </section>
+            <section class="input-section" aria-labelledby="offset-title">
+              <h2 id="offset-title" class="section-title">Stimulus position <span class="setup-unit">°</span></h2>
+              <div class="setup-pair position-controls">
+                <label class="input-group position-field">
+                  <span class="input-label">X offset${selectedTask === 'Bar' ? ' (≥ 0)' : ''}</span>
+                  <input type="number" id="stimulus-x-offset" class="position-input" aria-label="X offset in degrees" step="0.1" max="89.9" value="${stimulusPositionSettings.xOffsetDeg}" ${xMinAttribute}>
+                </label>
+                <label class="input-group position-field">
+                  <span class="input-label">Y offset</span>
+                  <input type="number" id="stimulus-y-offset" class="position-input" aria-label="Y offset in degrees" step="0.1" min="-89.9" max="89.9" value="${stimulusPositionSettings.yOffsetDeg}">
+                </label>
+              </div>
+              <p class="position-readout"><span id="stimulus-position-readout">--</span></p>
+            </section>
+            <div class="setup-calculations">
+              <div>Pixels / degree <strong id="preview-ppd">--</strong></div>
+              <div>Pixels / cm <span>X <strong id="preview-ppcm-x">--</strong> · Y <strong id="preview-ppcm-y">--</strong></span></div>
+            </div>
+            <div id="stimulus-position-error" class="position-error" aria-live="polite"></div>
+            <div id="setup-actions"></div>
+          </div>
+          <section class="setup-preview" aria-label="Simulated monitor">
+            <div class="position-preview-wrap">
+              <div class="monitor-dimension monitor-width-measure" aria-label="Screen width">
+                <span id="monitor-width-readout">--</span>
+              </div>
+              <div class="monitor-dimension monitor-height-measure" aria-label="Screen height">
+                <span id="monitor-height-readout">--</span>
+              </div>
+              <div class="position-monitor-screen">
+                <svg id="stimulus-position-preview" class="position-preview" role="group" tabindex="0" aria-label="Stimulus position preview" aria-describedby="position-instructions"></svg>
+                <span class="position-quadrant position-quadrant-left-upper">Left Upper</span>
+                <span class="position-quadrant position-quadrant-right-upper">Right Upper</span>
+                <span class="position-quadrant position-quadrant-left-lower">Left Lower</span>
+                <span class="position-quadrant position-quadrant-right-lower">Right Lower</span>
+              </div>
+            </div>
+            <p id="monitor-distance-readout" class="position-note">--</p>
+            <p id="position-instructions" class="position-note">Drag dots or use arrow keys · 1° grid</p>
+          </section>
         </div>
-        <div class="position-controls">
-          <label class="position-field">
-            <span class="position-label">X offset</span>
-            <input type="number" id="stimulus-x-offset" class="position-input" step="0.1" value="${stimulusPositionSettings.xOffsetDeg}" ${xMinAttribute}>
-          </label>
-          <label class="position-field">
-            <span class="position-label">Y offset</span>
-            <input type="number" id="stimulus-y-offset" class="position-input" step="0.1" value="${stimulusPositionSettings.yOffsetDeg}">
-          </label>
-        </div>
-        <p class="position-readout">Pixel offset: <span id="stimulus-position-readout">--</span></p>
-        ${barValidationNote}
-        <div id="stimulus-position-error" class="position-error" aria-live="polite"></div>
       </main>
     `;
   },
@@ -4352,9 +3637,82 @@ timeline.push({
     const readout = document.getElementById('stimulus-position-readout');
     const errorMessage = document.getElementById('stimulus-position-error');
     const continueBtn = document.getElementById('continue-position-btn');
+    // Keep the trial's response button with the parameters in the left column.
+    document.getElementById('setup-actions').appendChild(document.getElementById('jspsych-html-button-response-btngroup'));
+    const calibrationInputs = {
+      resWidth: document.getElementById('resolution-width'),
+      resHeight: document.getElementById('resolution-height'),
+      screenWidth: document.getElementById('screen-width'),
+      screenHeight: document.getElementById('screen-height'),
+      viewingDistance: document.getElementById('viewing-distance')
+    };
+    const previews = {
+      ppd: document.getElementById('preview-ppd'),
+      ppcmX: document.getElementById('preview-ppcm-x'),
+      ppcmY: document.getElementById('preview-ppcm-y'),
+      width: document.getElementById('monitor-width-readout'),
+      height: document.getElementById('monitor-height-readout'),
+      distance: document.getElementById('monitor-distance-readout')
+    };
     const svgNamespace = 'http://www.w3.org/2000/svg';
+    svg.setAttribute('preserveAspectRatio', 'none');
+    let previewWidth = 1920;
+    let previewHeight = 1080;
+    let calibrationValid = false;
+    let dragState = null;
+    let activeMarkerIndex = 0;
+    let markerGroup;
 
-    function appendSvgElement(name, attributes = {}, text = '') {
+    function updateCalibration() {
+      const values = {};
+      calibrationValid = true;
+      Object.entries(calibrationInputs).forEach(([key, input]) => {
+        const value = Number(input.value);
+        const isResolution = key === 'resWidth' || key === 'resHeight';
+        const valid = input.value.trim() !== '' && Number.isFinite(value)
+          && value >= (isResolution ? 1 : 0.1) && value <= 10000
+          && (!isResolution || Number.isInteger(value));
+        input.classList.toggle('invalid', !valid);
+        input.setAttribute('aria-invalid', String(!valid));
+        calibrationValid = calibrationValid && valid;
+        values[key] = value;
+      });
+
+      if (!calibrationValid) {
+        Object.values(previews).forEach(preview => { preview.textContent = '--'; });
+        drawPreview();
+        return;
+      }
+
+      previewWidth = values.resWidth;
+      previewHeight = values.resHeight;
+      const pixelsPerCmX = previewWidth / values.screenWidth;
+      const pixelsPerCmY = previewHeight / values.screenHeight;
+      const pixelsPerDegree = (pixelsPerCmX + pixelsPerCmY) / 2
+        * Math.tan(Math.PI / 180) * values.viewingDistance;
+      latestCalculatorData = {
+        resolution: [previewWidth, previewHeight],
+        screenSizeCm: [values.screenWidth, values.screenHeight],
+        viewingDistanceCm: values.viewingDistance,
+        pixelsPerCmX,
+        pixelsPerCmY,
+        pixelsPerDegree
+      };
+      previews.ppd.textContent = pixelsPerDegree.toFixed(2);
+      previews.ppcmX.textContent = pixelsPerCmX.toFixed(2);
+      previews.ppcmY.textContent = pixelsPerCmY.toFixed(2);
+      previews.width.textContent = `${values.screenWidth} cm · ${previewWidth} px`;
+      previews.height.textContent = `${values.screenHeight} cm · ${previewHeight} px`;
+      previews.distance.textContent = `Viewing distance · ${values.viewingDistance} cm`;
+      svg.closest('.position-preview-wrap').style.setProperty('--monitor-aspect-ratio', values.screenWidth / values.screenHeight);
+      // Use physical proportions even when they differ from the pixel aspect ratio.
+      svg.setAttribute('viewBox', `0 0 ${previewWidth} ${previewHeight}`);
+      svg.replaceChildren();
+      drawMonitor();
+      drawPreview();
+    }
+
+    function appendSvgElement(name, attributes = {}, text = '', parent = svg) {
       const element = document.createElementNS(svgNamespace, name);
       Object.entries(attributes).forEach(([key, value]) => {
         element.setAttribute(key, String(value));
@@ -4362,21 +3720,24 @@ timeline.push({
       if (text) {
         element.textContent = text;
       }
-      svg.appendChild(element);
+      parent.appendChild(element);
       return element;
     }
 
     function validateInputs() {
       const xOffsetDeg = Number(xInput.value);
       const yOffsetDeg = Number(yInput.value);
-      const xValid = Number.isFinite(xOffsetDeg) && (selectedTask !== 'Bar' || xOffsetDeg >= 0);
-      const yValid = Number.isFinite(yOffsetDeg);
+      const xValid = xInput.value.trim() !== '' && Number.isFinite(xOffsetDeg)
+        && Math.abs(xOffsetDeg) < 90 && (selectedTask !== 'Bar' || xOffsetDeg >= 0);
+      const yValid = yInput.value.trim() !== '' && Number.isFinite(yOffsetDeg) && Math.abs(yOffsetDeg) < 90;
 
       xInput.classList.toggle('invalid', !xValid);
       yInput.classList.toggle('invalid', !yValid);
+      xInput.setAttribute('aria-invalid', String(!xValid));
+      yInput.setAttribute('aria-invalid', String(!yValid));
 
       return {
-        valid: xValid && yValid,
+        valid: calibrationValid && xValid && yValid,
         xOffsetDeg,
         yOffsetDeg
       };
@@ -4388,102 +3749,110 @@ timeline.push({
 
       if (selectedTask === 'Bar') {
         positions.forEach((position) => {
-          const barCenters = getBarStimulusCentersFromPixels(position, screenWidth, screenHeight, xOffsetPx, yOffsetPx);
+          const barCenters = getBarStimulusCentersFromPixels(position, previewWidth, previewHeight, xOffsetPx, yOffsetPx);
           centers.push({
             x: barCenters.lostViewCenterX,
             y: barCenters.lostViewCenterY,
-            label: `${position} left bar`
+            label: `${position} left bar`,
+            xDirection: -1,
+            yDirection: position === 'lower' ? 1 : -1
           });
           centers.push({
             x: barCenters.goodViewCenterX,
             y: barCenters.goodViewCenterY,
-            label: `${position} right bar`
+            label: `${position} right bar`,
+            xDirection: 1,
+            yDirection: position === 'lower' ? 1 : -1
           });
         });
         return centers;
       }
 
       positions.forEach((position) => {
-        const center = getStimulusCenterForPositionFromPixels(position, screenWidth, screenHeight, xOffsetPx, yOffsetPx);
+        const center = getStimulusCenterForPositionFromPixels(position, previewWidth, previewHeight, xOffsetPx, yOffsetPx);
         centers.push({
           x: center.x,
           y: center.y,
-          label: position.replace('_', ' ')
+          label: position.replace('_', ' '),
+          xDirection: position.startsWith('left') ? -1 : 1,
+          yDirection: position.endsWith('upper') ? -1 : 1
         });
       });
 
       return centers;
     }
 
-    function drawPreview() {
-      const inputState = validateInputs();
-      svg.innerHTML = '';
-      svg.setAttribute('viewBox', `0 0 ${screenWidth} ${screenHeight}`);
-      svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-
+    function drawMonitor() {
       appendSvgElement('rect', {
         x: 0,
         y: 0,
-        width: screenWidth,
-        height: screenHeight,
+        width: previewWidth,
+        height: previewHeight,
         fill: '#d9d9d9'
       });
+
+      // Place every integer degree using the same angular conversion as the stimulus.
+      ['x', 'y'].forEach((axis) => {
+        const extent = axis === 'x' ? previewWidth : previewHeight;
+        for (let degree = 1; degree < 90; degree++) {
+          const offset = deg2PixelForAxis(degree, axis);
+          if (offset > extent / 2) break;
+          [-1, 1].forEach((direction) => {
+            const coordinate = extent / 2 + direction * offset;
+            appendSvgElement('line', {
+              x1: axis === 'x' ? coordinate : 0,
+              y1: axis === 'y' ? coordinate : 0,
+              x2: axis === 'x' ? coordinate : previewWidth,
+              y2: axis === 'y' ? coordinate : previewHeight,
+              class: 'position-grid-line',
+              'data-axis': axis,
+              'data-degree': direction * degree,
+              stroke: degree % 5 === 0 ? '#999' : '#b9b9b9',
+              'stroke-width': degree % 5 === 0 ? 1.2 : 0.7,
+              'vector-effect': 'non-scaling-stroke'
+            });
+          });
+        }
+      });
+
       appendSvgElement('line', {
-        x1: screenWidth / 2,
+        x1: previewWidth / 2,
         y1: 0,
-        x2: screenWidth / 2,
-        y2: screenHeight,
+        x2: previewWidth / 2,
+        y2: previewHeight,
         stroke: '#6f6f6f',
         'stroke-width': 2,
         'vector-effect': 'non-scaling-stroke'
       });
       appendSvgElement('line', {
         x1: 0,
-        y1: screenHeight / 2,
-        x2: screenWidth,
-        y2: screenHeight / 2,
+        y1: previewHeight / 2,
+        x2: previewWidth,
+        y2: previewHeight / 2,
         stroke: '#6f6f6f',
         'stroke-width': 2,
         'vector-effect': 'non-scaling-stroke'
       });
       appendSvgElement('circle', {
-        cx: screenWidth / 2,
-        cy: screenHeight / 2,
-        r: Math.max(6, Math.min(screenWidth, screenHeight) * 0.008),
+        cx: previewWidth / 2,
+        cy: previewHeight / 2,
+        r: Math.min(previewWidth, previewHeight) * 0.008,
         fill: '#111'
       });
-      appendSvgElement('text', {
-        x: 18,
-        y: 32,
-        fill: '#222',
-        'font-size': Math.max(18, Math.min(screenWidth, screenHeight) * 0.026)
-      }, 'Left Upper');
-      appendSvgElement('text', {
-        x: screenWidth - 18,
-        y: 32,
-        fill: '#222',
-        'font-size': Math.max(18, Math.min(screenWidth, screenHeight) * 0.026),
-        'text-anchor': 'end'
-      }, 'Right Upper');
-      appendSvgElement('text', {
-        x: 18,
-        y: screenHeight - 18,
-        fill: '#222',
-        'font-size': Math.max(18, Math.min(screenWidth, screenHeight) * 0.026)
-      }, 'Left Lower');
-      appendSvgElement('text', {
-        x: screenWidth - 18,
-        y: screenHeight - 18,
-        fill: '#222',
-        'font-size': Math.max(18, Math.min(screenWidth, screenHeight) * 0.026),
-        'text-anchor': 'end'
-      }, 'Right Lower');
+      markerGroup = appendSvgElement('g', { class: 'position-markers' });
+    }
+
+    function drawPreview() {
+      const inputState = validateInputs();
+      markerGroup?.replaceChildren();
 
       if (!inputState.valid) {
         readout.textContent = '--';
-        errorMessage.textContent = selectedTask === 'Bar' && Number(inputState.xOffsetDeg) < 0
-          ? 'For the bar comparison task, x offset must be 0 or greater.'
-          : 'Enter valid numeric x and y offsets.';
+        errorMessage.textContent = !calibrationValid
+          ? 'Enter valid screen values greater than zero (max 10,000).'
+          : selectedTask === 'Bar' && Number(inputState.xOffsetDeg) < 0
+            ? 'X offset must be 0° or greater.'
+            : 'Offsets must be between −90° and 90°.';
         continueBtn.disabled = true;
         continueBtn.style.opacity = '0.5';
         return;
@@ -4493,21 +3862,37 @@ timeline.push({
       const yOffsetPx = deg2PixelForAxis(inputState.yOffsetDeg, 'y');
       setStimulusOffsetSettings(inputState.xOffsetDeg, inputState.yOffsetDeg);
 
-      const markerRadius = Math.max(9, Math.min(screenWidth, screenHeight) * 0.014);
-      getPreviewCenters(xOffsetPx, yOffsetPx).forEach((center) => {
-        const visible = center.x >= 0 && center.x <= screenWidth && center.y >= 0 && center.y <= screenHeight;
-        const markerX = Math.min(Math.max(center.x, markerRadius), screenWidth - markerRadius);
-        const markerY = Math.min(Math.max(center.y, markerRadius), screenHeight - markerRadius);
+      const bounds = svg.getBoundingClientRect();
+      const displayScale = Math.max(previewWidth / bounds.width, previewHeight / bounds.height);
+      const markerRadius = 8 * displayScale;
+      getPreviewCenters(xOffsetPx, yOffsetPx).forEach((center, index) => {
+        const visible = center.x >= 0 && center.x <= previewWidth && center.y >= 0 && center.y <= previewHeight;
+        const markerX = Math.min(Math.max(center.x, 0), previewWidth);
+        const markerY = Math.min(Math.max(center.y, 0), previewHeight);
         appendSvgElement('line', {
-          x1: screenWidth / 2,
-          y1: screenHeight / 2,
+          x1: previewWidth / 2,
+          y1: previewHeight / 2,
           x2: markerX,
           y2: markerY,
           stroke: visible ? '#1f2933' : '#991b1b',
           'stroke-width': 2,
           'stroke-dasharray': '8 7',
           'vector-effect': 'non-scaling-stroke'
-        });
+        }, '', markerGroup);
+        const marker = appendSvgElement('g', {
+          class: 'position-marker',
+          'data-position-marker': index,
+          'aria-label': `${center.label} stimulus position`
+        }, '', markerGroup);
+        appendSvgElement('title', {}, `Drag to adjust ${center.label} stimulus position`, marker);
+        // A larger transparent target makes the dot easy to grab with a mouse or touch.
+        appendSvgElement('circle', {
+          cx: markerX,
+          cy: markerY,
+          r: 22 * displayScale,
+          fill: 'transparent',
+          'pointer-events': 'all'
+        }, '', marker);
         appendSvgElement('circle', {
           cx: markerX,
           cy: markerY,
@@ -4516,15 +3901,15 @@ timeline.push({
           stroke: '#fff',
           'stroke-width': 2,
           'vector-effect': 'non-scaling-stroke'
-        });
+        }, '', marker);
         if (selectedTask !== 'Motion') {
           appendSvgElement('text', {
             x: markerX,
             y: markerY - markerRadius - 8,
             fill: visible ? '#111' : '#991b1b',
-            'font-size': Math.max(16, Math.min(screenWidth, screenHeight) * 0.022),
+            'font-size': 16 * displayScale,
             'text-anchor': 'middle'
-          }, center.label);
+          }, center.label, markerGroup);
         }
       });
 
@@ -4536,6 +3921,74 @@ timeline.push({
 
     xInput.addEventListener('input', drawPreview);
     yInput.addEventListener('input', drawPreview);
+    Object.values(calibrationInputs).forEach(input => input.addEventListener('input', updateCalibration));
+
+    function updateOffsetsFromPointer(event) {
+      const transform = svg.getScreenCTM();
+      if (!transform || !dragState) return;
+      const point = svg.createSVGPoint();
+      point.x = event.clientX;
+      point.y = event.clientY;
+      const local = point.matrixTransform(transform.inverse());
+      const x = Math.min(Math.max(local.x, 0), previewWidth);
+      const y = Math.min(Math.max(local.y, 0), previewHeight);
+      let xOffset = pixel2DegForAxis((x - previewWidth / 2) * dragState.xDirection, 'x');
+      const yOffset = pixel2DegForAxis((y - previewHeight / 2) * dragState.yDirection, 'y');
+      if (selectedTask === 'Bar') xOffset = Math.max(0, xOffset);
+      // Snap to the calibrated 1° grid, including the last visible line at each edge.
+      const xLimit = Math.floor(pixel2DegForAxis(previewWidth / 2, 'x'));
+      const yLimit = Math.floor(pixel2DegForAxis(previewHeight / 2, 'y'));
+      xInput.value = String(Math.min(Math.max(Math.round(xOffset), -xLimit), xLimit));
+      yInput.value = String(Math.min(Math.max(Math.round(yOffset), -yLimit), yLimit));
+      drawPreview();
+    }
+
+    svg.addEventListener('pointerdown', (event) => {
+      const marker = event.target.closest('[data-position-marker]');
+      if (!marker || (event.pointerType === 'mouse' && event.button !== 0) || dragState) return;
+      const inputState = validateInputs();
+      if (!inputState.valid) return;
+      activeMarkerIndex = Number(marker.dataset.positionMarker);
+      const center = getPreviewCenters(
+        deg2PixelForAxis(inputState.xOffsetDeg, 'x'),
+        deg2PixelForAxis(inputState.yOffsetDeg, 'y')
+      )[activeMarkerIndex];
+      event.preventDefault();
+      svg.focus({ preventScroll: true });
+      dragState = { pointerId: event.pointerId, xDirection: center.xDirection, yDirection: center.yDirection };
+      svg.setPointerCapture(event.pointerId);
+      svg.classList.add('is-dragging');
+      updateOffsetsFromPointer(event);
+    });
+    svg.addEventListener('pointermove', (event) => {
+      if (dragState?.pointerId === event.pointerId) updateOffsetsFromPointer(event);
+    });
+    function finishDrag(event) {
+      if (dragState?.pointerId !== event.pointerId) return;
+      dragState = null;
+      svg.classList.remove('is-dragging');
+      if (svg.hasPointerCapture(event.pointerId)) svg.releasePointerCapture(event.pointerId);
+    }
+    svg.addEventListener('pointerup', finishDrag);
+    svg.addEventListener('pointercancel', finishDrag);
+    svg.addEventListener('lostpointercapture', finishDrag);
+    svg.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+      event.preventDefault();
+      const inputState = validateInputs();
+      if (!inputState.valid) return;
+      const center = getPreviewCenters(0, 0)[activeMarkerIndex];
+      const step = event.shiftKey ? 1 : 0.1;
+      let xOffset = inputState.xOffsetDeg;
+      let yOffset = inputState.yOffsetDeg;
+      if (event.key === 'ArrowLeft') xOffset -= step * center.xDirection;
+      if (event.key === 'ArrowRight') xOffset += step * center.xDirection;
+      if (event.key === 'ArrowUp') yOffset -= step * center.yDirection;
+      if (event.key === 'ArrowDown') yOffset += step * center.yDirection;
+      xInput.value = Math.min(89.9, Math.max(selectedTask === 'Bar' ? 0 : -89.9, xOffset)).toFixed(1);
+      yInput.value = Math.min(89.9, Math.max(-89.9, yOffset)).toFixed(1);
+      drawPreview();
+    });
     continueBtn.addEventListener('click', function() {
       const inputState = validateInputs();
       if (!inputState.valid) {
@@ -4544,6 +3997,7 @@ timeline.push({
 
       const settings = setStimulusOffsetSettings(inputState.xOffsetDeg, inputState.yOffsetDeg);
       jsPsych.data.addProperties({
+        calculator_data: latestCalculatorData,
         stimulus_position_data: {
           xOffsetDeg: settings.xOffsetDeg,
           yOffsetDeg: settings.yOffsetDeg,
@@ -4557,10 +4011,15 @@ timeline.push({
       });
     });
 
-    drawPreview();
+    updateCalibration();
+    positionPreviewResizeObserver = new ResizeObserver(drawPreview);
+    positionPreviewResizeObserver.observe(svg);
   },
   on_finish: function(data) {
+    positionPreviewResizeObserver?.disconnect();
+    positionPreviewResizeObserver = null;
     const settings = getStimulusOffsetSettings();
+    data.calculator_data = latestCalculatorData;
     data.stimulus_position_data = {
       xOffsetDeg: settings.xOffsetDeg,
       yOffsetDeg: settings.yOffsetDeg,
@@ -4594,44 +4053,6 @@ const conditionalReadyScreen = {
     if (!selectedTask) return '<p>Loading...</p>';
 
     return `
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          margin: 0;
-          padding: 0;
-          background-color: #ccc;
-          overflow: hidden;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          height: 100vh;
-        }
-        .ready-container {
-          text-align: center;
-          color: black;
-        }
-        .ready-title {
-          font-size: 32px;
-          margin-bottom: 20px;
-          font-weight: bold;
-        }
-        .task-info {
-          font-size: 20px;
-          margin-bottom: 30px;
-          color: #444;
-        }
-        .countdown {
-          font-size: 48px;
-          font-weight: bold;
-          margin: 20px 0;
-          color: #333;
-        }
-        .start-instruction {
-          font-size: 18px;
-          margin-bottom: 20px;
-        }
-        ${SHARED_KEY_ICON_CSS}
-      </style>
       <div class="ready-container">
         <div class="ready-title">Ready?</div>
         <div class="task-info">The task will begin after a brief countdown.</div>
@@ -4878,187 +4299,6 @@ timeline.push({
       : 'No scored responses were found for this task.';
     
     return `
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          margin: 0;
-          padding: 0;
-          background-color: #ccc;
-          overflow: auto;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          min-height: 100vh;
-          color: black;
-        }
-        #jspsych-html-button-response-stimulus {
-          width: 100%;
-        }
-        .results-page {
-          width: min(1120px, calc(100vw - 96px));
-          margin: 0 auto;
-          padding: 48px 0 24px;
-          text-align: left;
-          color: black;
-          box-sizing: border-box;
-        }
-        .results-page h1 {
-          margin: 0 0 10px;
-          color: black;
-          font-size: 36px;
-          line-height: 1.15;
-        }
-        .results-task {
-          margin: 0;
-          color: #333;
-          font-size: 22px;
-          line-height: 1.4;
-        }
-        .results-summary {
-          display: grid;
-          grid-template-columns: minmax(260px, 0.9fr) minmax(360px, 1.1fr);
-          align-items: end;
-          gap: 64px;
-          margin: 50px 0 36px;
-          padding: 34px 0;
-          border-top: 2px solid #8f8f8f;
-          border-bottom: 2px solid #8f8f8f;
-        }
-        .accuracy-label {
-          display: block;
-          margin-bottom: 10px;
-          color: #333;
-          font-size: 18px;
-          font-weight: 700;
-          letter-spacing: 0;
-        }
-        .accuracy-value {
-          display: block;
-          color: black;
-          font-size: 88px;
-          font-weight: 700;
-          line-height: 0.95;
-        }
-        .accuracy-value span {
-          font-size: 36px;
-          font-weight: 700;
-        }
-        .results-stats {
-          display: grid;
-          grid-template-columns: max-content 1fr;
-          gap: 10px 28px;
-          margin: 0;
-          font-size: 20px;
-          line-height: 1.35;
-        }
-        .results-stats dt {
-          color: #444;
-          font-weight: 700;
-        }
-        .results-stats dd {
-          margin: 0;
-          color: black;
-        }
-        .results-note {
-          margin: 0 0 28px;
-          color: #333;
-          font-size: 18px;
-        }
-        .server-status {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          gap: 24px;
-          margin: 0;
-          padding: 16px 0;
-          border-top: 1px solid #8f8f8f;
-          border-bottom: 1px solid #8f8f8f;
-          color: black;
-          font-size: 17px;
-          line-height: 1.4;
-        }
-        .server-status.success {
-          color: #14532d;
-        }
-        .server-status.error {
-          color: #7f1d1d;
-        }
-        .server-status.info {
-          color: #1e3a8a;
-        }
-        .status-badge {
-          flex: 0 0 auto;
-          min-width: 88px;
-          border: 1px solid currentColor;
-          border-radius: 999px;
-          padding: 4px 12px;
-          text-align: center;
-          font-size: 14px;
-          font-weight: 700;
-        }
-        #jspsych-html-button-response-btngroup {
-          width: min(1120px, calc(100vw - 96px));
-          margin: 34px auto 0 !important;
-          display: flex;
-          justify-content: flex-start;
-          gap: 24px;
-        }
-        #jspsych-html-button-response-btngroup .jspsych-html-button-response-button {
-          margin: 0 !important;
-        }
-        .result-finish-btn {
-          margin: 0;
-          min-width: 220px;
-          padding: 14px 28px;
-          border-radius: 10px;
-          font-size: 20px;
-          font-weight: 600;
-          background: #cfcfcf;
-          color: black;
-          border: 1px solid #8f8f8f;
-        }
-        .result-finish-btn:hover {
-          background: #bdbdbd;
-        }
-        @media (max-width: 760px) {
-          .results-page,
-          #jspsych-html-button-response-btngroup {
-            width: calc(100vw - 48px);
-          }
-          .results-page {
-            padding-top: 32px;
-          }
-          .results-page h1 {
-            font-size: 30px;
-          }
-          .results-task {
-            font-size: 19px;
-          }
-          .results-summary {
-            grid-template-columns: 1fr;
-            gap: 28px;
-            margin: 32px 0 26px;
-          }
-          .accuracy-value {
-            font-size: 68px;
-          }
-          .results-stats {
-            font-size: 18px;
-          }
-          .server-status {
-            align-items: flex-start;
-            flex-direction: column;
-            gap: 10px;
-          }
-          #jspsych-html-button-response-btngroup {
-            flex-direction: column;
-            align-items: stretch;
-          }
-          .result-finish-btn {
-            width: 100%;
-          }
-        }
-      </style>
       <main class="results-page">
         <h1>Experiment Complete</h1>
         <p class="results-task">${escapeHtml(taskLabel)}</p>
@@ -5165,11 +4405,11 @@ timeline.push({
     if (data.response === 0) { // Finish button clicked
       // Show thank you message
       document.body.innerHTML = `
-        <main style="display: flex; justify-content: center; align-items: center; min-height: 100vh; background-color: #ccc; font-family: Arial, sans-serif; color: black; padding: 32px; box-sizing: border-box;">
-          <section style="width: min(900px, 100%); text-align: center;">
-            <h2 style="color: black; font-size: 36px; margin: 0 0 18px;">Thank You</h2>
-            <p style="font-size: 22px; margin: 0 0 12px;">Your participation in this experiment is greatly appreciated.</p>
-            <p style="font-size: 18px; margin: 0; color: #333;">You may now close this window.</p>
+        <main class="thank-you-page">
+          <section class="thank-you-message">
+            <h2 class="thank-you-title">Thank You</h2>
+            <p class="thank-you-text">Your participation in this experiment is greatly appreciated.</p>
+            <p class="thank-you-note">You may now close this window.</p>
           </section>
         </main>
       `;

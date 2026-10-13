@@ -13,6 +13,7 @@
     "test": "node --test test/*.test.mjs",
     "test:portal": "node test/portal-browser.mjs",
     "test:browser": "node test/postgres-browser.mjs",
+    "test:position": "node test/stimulus-position-browser.mjs",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"

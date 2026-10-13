@@ -15,6 +15,10 @@ Experiment: `http://127.0.0.1:8000/Motion` (also `/Orientation`, `/Centrality`, 
 Data portal: `http://127.0.0.1:8000/data-portal/` (charts, previews, and downloads).
 Database viewer: `http://127.0.0.1:8000/database`.
 
+If port 8000 is busy, `npm start` selects the next available port and prints the
+URLs to use. Set a fixed port with `PORT=8010 npm start`; if that port is busy,
+startup exits before building with instructions to choose another port.
+
 The portal uses Better Auth with User/Admin password login. Existing users are
 migrated at startup; users without a password use their exact User ID as their
 initial password, and the admin password is preserved. New user signup requires
