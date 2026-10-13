@@ -12,6 +12,7 @@ Requires Node 22+ and PostgreSQL binaries. If PostgreSQL is absent on Ubuntu
 PostgreSQL server can also be selected with `DATABASE_URL`.
 
 Experiment: `http://127.0.0.1:8000/Motion` (also `/Orientation`, `/Centrality`, `/Bar`).
+Data portal: `http://127.0.0.1:8000/data-portal/` (charts, previews, and downloads).
 Database viewer: `http://127.0.0.1:8000/database`.
 
 Import the supplied historical archive separately, once:

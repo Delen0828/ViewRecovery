@@ -24,6 +24,7 @@
     logout: '/data-portal/logout',
     files: '/data-portal/api/files',
     userTrends: '/data-portal/api/user-trends',
+    preview: '/data-portal/api/preview',
     download: '/data-portal/download'
   };
   const TASKS = ['Motion', 'Orientation', 'Centrality', 'Bar'];
@@ -52,7 +53,6 @@
     day: 'numeric'
   });
   const view = getPortalView();
-  const csvRowsCache = new Map();
 
   const state = {
     authenticated: false,
@@ -80,7 +80,8 @@
       loading: false,
       error: '',
       rows: [],
-      points: []
+      points: [],
+      summary: null
     },
     users: {
       loading: false,
@@ -210,6 +211,7 @@
     state.preview.error = '';
     state.preview.rows = [];
     state.preview.points = [];
+    state.preview.summary = null;
     renderPreview();
 
     if (!state.preview.fileName) {
@@ -220,9 +222,13 @@
     }
 
     try {
-      const rows = await fetchCsvRows(state.preview.fileName);
-      state.preview.rows = rows;
-      state.preview.points = aggregateAccuracyByDifficulty(rows);
+      const response=await fetch(`${API.preview}?file=${encodeURIComponent(state.preview.fileName)}`,{credentials:'same-origin',headers:{Accept:'application/json'}});
+      const data=await readJson(response);
+      if (response.status===401) {state.authenticated=false;throw new Error('Your session expired. Sign in again.');}
+      if (!response.ok) throw new Error(data.error || 'Could not load preview data.');
+      state.preview.fileName=data.file.name;
+      state.preview.points=data.metrics.levels.map(level=>({level:level.level,total:level.total,correct:level.correct,accuracy:level.accuracy}));
+      state.preview.summary={task:data.metrics.task,trials:data.metrics.total,accuracy:data.metrics.total ? 100*data.metrics.correct/data.metrics.total : 0,levels:state.preview.points.length};
     } catch (error) {
       state.preview.error = error.message || 'Could not load preview data.';
     } finally {
@@ -361,7 +367,7 @@
       try {
         const response = await fetch(API.login, {
           method: 'POST',
-          body: formData,
+          body: new URLSearchParams(formData),
           credentials: 'same-origin',
           headers: { Accept: 'application/json' }
         });
@@ -430,7 +436,7 @@
       return;
     }
 
-    const summary = previewSummary(state.preview.rows, state.preview.points);
+    const summary = state.preview.summary || previewSummary(state.preview.rows, state.preview.points);
     const metrics = [
       { label: 'Task', value: summary.task },
       { label: 'Trials', value: String(summary.trials) },
@@ -470,7 +476,7 @@
     }
 
     if (!state.users.csvFiles.length) {
-      card.append('p').attr('class', 'message info').text('No final CSV data files were found.');
+      card.append('p').attr('class', 'message info').text('No saved data or recorded runs were found.');
       return;
     }
 
@@ -478,7 +484,7 @@
       card
         .append('p')
         .attr('class', 'message info')
-        .text('CSV files were found, but no response rows with task and correct values were available.');
+        .text('Data was found, but no response rows with task and correct values were available.');
       return;
     }
 
@@ -486,7 +492,7 @@
       card
         .append('p')
         .attr('class', 'message error')
-        .text(`${state.users.failedFileCount} CSV file could not be loaded.`);
+        .text(`${state.users.failedFileCount} data source could not be loaded.`);
     }
 
     const layout = card.append('div').attr('class', 'user-dashboard');
@@ -717,7 +723,7 @@
     controls
       .append('span')
       .attr('class', 'file-type-label')
-      .text(`Showing final CSV files (${counts.final})`);
+      .text(`Showing final data files (${counts.final})`);
 
     [
       { key: 'showSessionFiles', label: `Session files (${counts.session})` },
@@ -795,7 +801,7 @@
     actions
       .append('a')
       .attr('class', (file) => (isCsvFile(file) ? 'button-link secondary' : 'button-link disabled'))
-      .attr('href', (file) => (isCsvFile(file) ? previewUrl(file.name) : null))
+      .attr('href', (file) => (isCsvFile(file) ? previewUrl(file.reference || file.name) : null))
       .attr('aria-disabled', (file) => (isCsvFile(file) ? null : 'true'))
       .text('Preview');
     actions
@@ -876,53 +882,6 @@
     } catch {
       return {};
     }
-  }
-
-  async function fetchCsvFile(fileName) {
-    const response = await fetch(downloadUrl(fileName), {
-      credentials: 'same-origin',
-      headers: { Accept: 'text/csv, text/plain, */*' }
-    });
-
-    if (response.status === 401) {
-      state.authenticated = false;
-      state.loginError = 'Your session expired. Sign in again.';
-      throw new Error(state.loginError);
-    }
-
-    if (!response.ok) {
-      throw new Error(`Could not load ${fileName}.`);
-    }
-
-    return response.text();
-  }
-
-  async function fetchCsvRows(fileName) {
-    if (csvRowsCache.has(fileName)) {
-      return csvRowsCache.get(fileName);
-    }
-
-    const csvText = await fetchCsvFile(fileName);
-    const rows = d3.csvParse(csvText);
-    csvRowsCache.set(fileName, rows);
-    return rows;
-  }
-
-  async function hydrateFileDurationMetrics(files) {
-    const targets = files.filter((file) => isCsvFile(file) && isPortalDataCsvFile(file));
-    await Promise.all(targets.map(async (file) => {
-      try {
-        file.duration = calculateDurationMetrics(await fetchCsvRows(file.name));
-        file.durationError = false;
-      } catch (error) {
-        if (!state.authenticated) {
-          throw error;
-        }
-
-        file.duration = null;
-        file.durationError = true;
-      }
-    }));
   }
 
   function calculateDurationMetrics(rows) {
@@ -1090,7 +1049,7 @@
   }
 
   function isCsvFile(file) {
-    return Boolean(file && /\.csv$/i.test(file.name || ''));
+    return Boolean(file && /\.(csv|json)$/i.test(file.name || ''));
   }
 
   function isDeploymentTaskVisible(task) {

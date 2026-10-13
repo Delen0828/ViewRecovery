@@ -21,8 +21,9 @@ npm start
 ```
 
 Open the experiment at `http://127.0.0.1:8000/Motion` (or `/Orientation`,
-`/Centrality`, `/Bar`) and the read-only viewer at
-`http://127.0.0.1:8000/database`. The existing experiment landing page is retained.
+`/Centrality`, `/Bar`), the data portal at `http://127.0.0.1:8000/data-portal/`,
+and the read-only database viewer at `http://127.0.0.1:8000/database`.
+The existing experiment landing page is retained.
 
 Startup builds the experiment, starts the project-managed PostgreSQL cluster
 if needed, and ensures the SQL schema exists. **Startup does not invoke the
@@ -30,11 +31,10 @@ archive reader or importer.** Live ingestion does not read, generate, or parse
 CSV. Former CSV filename patterns are retained as logical `.json` save keys,
 not filesystem output files. `save_data.php` is retired by the Node server.
 
-The old PHP CSV portal and its files are retained in the repository as legacy
-code. The new server supplies the SQL viewer at `/database`; it does not execute
-the old PHP portal or write new data into its CSV directory. This local database
-is separate from `beta`'s hosted Supabase database and portal. Integrating it with
-that portal would require an explicit mapping of its authentication and run schema.
+The original portal layout is restored at `/data-portal/`, served by Node with
+SQL-backed file lookup, charts, previews, and downloads. The PHP code remains as
+a legacy reference and is not executed. This local database and restored portal
+remain separate from `beta`'s hosted Supabase deployment.
 
 Data and credentials live under `.runtime/`, outside Vite's `dist/` directory,
 and are ignored by Git. Rebuilding the frontend does not remove SQL data.
@@ -55,6 +55,9 @@ Configuration:
 | `EXPERIMENT_PG_PORT` | Local PostgreSQL port; defaults to `55432`. Keep it fixed for an initialized running cluster. |
 | `HOST`, `PORT` | Web server bind address and port; defaults to `127.0.0.1`, `8000`. |
 | `DATABASE_VIEWER_TOKEN` | Bearer token for viewer access. Required when the web server binds publicly or the viewer is accessed through a proxy. Enter it in the viewer's connection form. |
+| `DATA_PORTAL_USER`, `DATA_PORTAL_PASS_HASH` | Existing portal administrator username and bcrypt password hash; defaults match the legacy PHP portal. |
+| `DATA_PORTAL_PARTICIPANT_PASS_HASH` | Optional shared participant bcrypt password hash. When unset, participants sign in with their participant ID as before. |
+| `DATA_PORTAL_SESSION_TTL_SEC` | SQL-backed portal session lifetime; defaults to 24 hours. |
 | `EXPERIMENT_API_URL` | Vite development proxy target; defaults to `http://127.0.0.1:8000`. |
 
 `aws-start-server.sh` uses PM2 and port 8001. The existing
@@ -157,6 +160,37 @@ read-only; test writes use the actual experiment ingestion API. Remote database
 reads require the configured viewer token. Database credentials never enter the
 frontend bundle.
 
+## Restored data portal
+
+The portal retains its original pages, styling, charts, admin/participant login,
+file-type toggles, search, date filters, preview links, and downloads. D3 is
+served locally, so portal rendering does not require a CDN.
+
+Its data comes from `experiment_data`:
+
+- SQL computes accuracy, difficulty, training/rest durations, and catch pass
+  rates using the metric definitions previously introduced on `beta`.
+- `portal_files` exposes imported files, saved JSON snapshots, and canonical
+  recorded runs. `portal_metrics` caches summaries by source revision and metric
+  version; reads refresh stale summaries after new trial writes or pause rollback.
+- Overview trends prefer historical final files over overlapping chunks from
+  the same participant/task/run timestamp and exclude backups/checkpoints.
+  Canonical live runs appear once; their snapshot saves do not duplicate their
+  responses in overview charts. Active runs are included in trends and appear
+  among session files in the file browser.
+- Previews request SQL summaries as JSON, without fetching or parsing CSV.
+  Downloads retrieve original historical bytes from SQL or JSON payloads for
+  newly recorded runs and saves. Imported dates use the run timestamp in the
+  filename; live save dates use their actual SQL creation/update timestamps.
+- Admins can access all sources. Participants can access only sources owned by
+  their participant ID, including previews and downloads. Imported filename
+  ownership determines that scope; original row-ID mismatches remain preserved.
+  Portal session IDs are random, stored as hashes in SQL, and sent in HttpOnly
+  cookies. Login rotates the session and CSRF token; logout revokes it.
+
+The database viewer token is separate from portal login. Existing portal admin
+credentials and environment overrides continue to work. PHP is not required.
+
 ## Validation
 
 ```bash
@@ -165,6 +199,7 @@ npm test
 # One-time browser setup if Chromium is absent:
 npx playwright install chromium
 npm run test:browser
+npm run test:portal
 ```
 
 Integration tests use PostgreSQL and remove their own synthetic fixtures. They
@@ -174,6 +209,10 @@ invalid-request rejection, and viewer read access. Browser validation runs the
 existing 256-trial Motion study with test time accelerated, including manual
 pause/replay, seven scheduled breaks, eight session saves, and the final save.
 It also checks the SQL viewer and its mobile layout.
+Portal tests verify SQL summary values, account scoping, CSRF, source selection,
+live refresh, original-byte downloads, and JSON types. Browser checks cover the
+original portal layout, participant/admin workflows, SQL-only charts/previews,
+live writes, locally served assets, and mobile rendering.
 
 The database lifecycle follows PostgreSQL's
 [initdb](https://www.postgresql.org/docs/current/app-initdb.html) and

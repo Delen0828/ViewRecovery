@@ -85,7 +85,9 @@ export async function openDatabase() {
   try {
     await client.query('BEGIN');
     await client.query("SELECT pg_advisory_xact_lock(hashtext('viewrecovery-schema-v1'))");
-    await client.query(readFileSync(join(projectRoot, 'sql/001-experiment.sql'), 'utf8'));
+    for (const file of readdirSync(join(projectRoot, 'sql')).filter(name => name.endsWith('.sql')).sort()) {
+      await client.query(readFileSync(join(projectRoot, 'sql', file), 'utf8'));
+    }
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; }
   finally { client.release(); }
