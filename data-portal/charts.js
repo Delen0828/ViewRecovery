@@ -1,13 +1,9 @@
 import * as d3 from "d3";
+import { TASK_COLORS } from "./task-colors.js";
+export { TASK_COLORS } from "./task-colors.js";
 
 // The existing aggregation, session ordering, task toggles and chart interactions
 // are retained here, independent of the React/HeroUI application shell.
-export const TASK_COLORS = {
-  Motion: "#2563eb",
-  Orientation: "#059669",
-  Centrality: "#d97706",
-  Bar: "#7c3aed",
-};
 const TASKS = Object.keys(TASK_COLORS);
 const easternDateKeyFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York",

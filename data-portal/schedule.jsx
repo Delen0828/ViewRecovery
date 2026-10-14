@@ -1,19 +1,18 @@
-import React, { useState, useId, useRef, useEffect } from "react";
+import React, { useState, useId, useMemo, useEffect } from "react";
 import {
   Calendar,
   Button,
   DatePicker,
+  Input,
   Select,
   SelectItem,
   Tooltip,
 } from "@heroui/react";
-import { parseAbsolute } from "@internationalized/date";
+import { parseDate } from "@internationalized/date";
 import {
   Plus,
   Trash2,
   Save,
-  Upload,
-  Download,
   Clock,
   ArrowUpRight,
 } from "lucide-react";
@@ -22,14 +21,16 @@ import {
   Empty,
   Notice,
   SessionChip,
+  ScheduleLegend,
   todayET,
   TIME_ZONE,
-  dateKey,
   dateLabel,
   timeLabel,
   api,
 } from "./ui.jsx";
 import { STUDY_TASKS } from "../src/study-setup.js";
+import { scheduleFields } from "../src/portal-schedule.js";
+import { TASK_COLORS, BREAK_COLOR, sessionColor } from "./task-colors.js";
 
 function onDay(session, day) {
   const start = day.toDate(TIME_ZONE).getTime(),
@@ -48,6 +49,7 @@ export function Agenda({ sessions, day, limit = 6 }) {
           <div className="agenda-item" key={row.session_id}>
             <span
               className={`session-dot ${row.session_type === "break" ? "break" : ""}`}
+              style={{ background: sessionColor(row) }}
             />
             <div>
               <strong>
@@ -88,14 +90,15 @@ export function ScheduleCalendar({ sessions, day, onChange }) {
       events = sessions.filter((row) => onDay(row, date));
     if (events.length) {
       const label = dateLabel(date.toDate(TIME_ZONE), { month: "long" });
-      const color = events.some((row) => row.session_type === "study")
-        ? "#2563eb"
-        : "#7c8799";
+      const colors = [...Object.values(TASK_COLORS), BREAK_COLOR]
+        .filter((color) => events.some((row) => sessionColor(row) === color));
+      const dots = colors.map((color, index) =>
+        `radial-gradient(circle at ${index * 5 + 2}px 2px, ${color} 0 2px, transparent 2px)`);
       marks.push(
-        `.${className} [role="button"][aria-label*="${label}"]::after{content:"";position:absolute;bottom:3px;width:4px;height:4px;border-radius:50%;background:${color}}`,
+        `.${className} [role="button"][aria-label*="${label}"]::after{content:"";position:absolute;bottom:3px;left:50%;transform:translateX(-50%);width:${colors.length * 5 - 1}px;height:4px;border-radius:2px;background-image:${dots.join(",")}}`,
       );
       marks.push(
-        `.${className} [role="button"][aria-label*="${label}"][data-selected="true"]::after{background:white}`,
+        `.${className} [role="button"][aria-label*="${label}"][data-selected="true"]::after{background-color:white;box-shadow:0 0 0 1px white}`,
       );
     }
   }
@@ -115,15 +118,7 @@ export function ScheduleCalendar({ sessions, day, onChange }) {
           cellButton: "portal-calendar-day",
         }}
       />
-      <div className="calendar-legend">
-        <span>
-          <i className="session-dot" /> Study
-        </span>
-        <span>
-          <i className="session-dot break" /> Break
-        </span>
-        <span className="muted">Eastern Time</span>
-      </div>
+      <ScheduleLegend>Eastern Time</ScheduleLegend>
     </div>
   );
 }
@@ -165,7 +160,7 @@ export function NextSession({ sessions, onProgress }) {
         </p>
       </div>
       <div className="next-session-actions">
-        {next && <SessionChip type={next.session_type} />}
+        {next && <SessionChip type={next.session_type} task={next.task_type} />}
         <Button
           color="primary"
           variant="flat"
@@ -178,307 +173,99 @@ export function NextSession({ sessions, onProgress }) {
     </Panel>
   );
 }
-export default function ScheduleEditor({
-  schedule,
-  onSaved,
-  onImported,
-  onDirtyChange,
-}) {
-  const [rows, setRows] = useState(schedule.sessions),
-    [day, setDay] = useState(todayET()),
+export default function ScheduleEditor({ schedule, onSaved, onPreviewChange, onDirtyChange }) {
+  const savedRows = useMemo(() => schedule.sessions.map(scheduleFields), [schedule]);
+  const [rows, setRows] = useState(savedRows),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [message, setMessage] = useState("");
-  const upload = useRef(null);
+  useEffect(() => { setRows(savedRows); }, [savedRows]);
+  const changed = JSON.stringify(rows) !== JSON.stringify(savedRows);
+  useEffect(() => { onDirtyChange(changed); }, [changed, onDirtyChange]);
   useEffect(() => {
-    setRows(schedule.sessions);
-  }, [schedule]);
-  const changed = JSON.stringify(rows) !== JSON.stringify(schedule.sessions);
-  useEffect(() => {
-    onDirtyChange(changed);
-  }, [changed, onDirtyChange]);
-  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
+    onPreviewChange({ user_id: schedule.user_id, sessions: changed ? rows : schedule.sessions });
+  }, [rows, changed, schedule, onPreviewChange]);
+  useEffect(() => () => { onDirtyChange(false); onPreviewChange(null); }, [onDirtyChange, onPreviewChange]);
   const update = (id, key, value) => {
-    setRows((current) =>
-      current.map((row) =>
-        row.session_id === id ? { ...row, [key]: value } : row,
-      ),
-    );
+    setRows((current) => current.map((row) => row.session_id === id ? { ...row, [key]: value } : row));
     setMessage("");
   };
   const add = () => {
-    const selected = day.toDate(TIME_ZONE);
-    const start = parseAbsolute(selected.toISOString(), TIME_ZONE).set({
-      hour: 10,
-      minute: 0,
-      second: 0,
-      millisecond: 0,
-    });
-    setRows((current) => [
-      ...current,
-      {
-        session_id: crypto.randomUUID(),
-        user_id: schedule.user_id,
-        starts_at: start.toAbsoluteString(),
-        ends_at: start.add({ minutes: 30 }).toAbsoluteString(),
-        session_type: "study",
-        task_type: "Motion",
-      },
-    ]);
+    const date = todayET().toString();
+    setRows((current) => [...current, {
+      session_id: crypto.randomUUID(), user_id: schedule.user_id,
+      start_date: date, end_date: date, scheduled_time: "10:00", duration_minutes: 30,
+      session_type: "study", task_type: "Motion",
+    }]);
     setMessage("");
   };
   const save = async () => {
-    setBusy(true);
-    setError("");
-    setMessage("");
+    setBusy(true); setError(""); setMessage("");
     try {
       const result = await api("/data-portal/api/schedule", {
         method: "PUT",
-        body: JSON.stringify({
-          user_id: schedule.user_id,
-          version: schedule.version,
-          sessions: rows,
-        }),
+        body: JSON.stringify({ user_id: schedule.user_id, version: schedule.version, sessions: rows }),
       });
       onSaved(result);
-      setRows(result.sessions);
+      setRows(result.sessions.map(scheduleFields));
       setMessage("Schedule saved. The participant calendar is updated.");
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-    }
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
   };
-  const importCsv = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setBusy(true);
-    setError("");
-    setMessage("");
-    try {
-      const result = await api("/data-portal/api/schedule/import", {
-        method: "POST",
-        body: JSON.stringify({ csv: await file.text() }),
-      });
-      await onImported();
-      setMessage(`${result.imported} sessions imported.`);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setBusy(false);
-      event.target.value = "";
-    }
-  };
-  const preview = rows.filter((row) => row.starts_at && row.ends_at);
   return (
-    <div className="panel-stack">
-      <Panel
-        title="Calendar preview"
-        subtitle="Preview the selected user’s sessions in Eastern Time."
-        className="schedule-preview"
-      >
-        <div className="calendar-preview-layout">
-          <ScheduleCalendar sessions={preview} day={day} onChange={setDay} />
-          <Agenda sessions={preview} day={day} />
+    <Panel title="Sessions" className="schedule-sessions"
+      subtitle={`${rows.length} ${rows.length === 1 ? "session" : "sessions"} · User ${schedule.user_id} · Repeats daily from Starts through Ends`}
+      actions={<Button size="sm" color="primary" startContent={<Plus size={16} />} onPress={add} isDisabled={busy}>Add session</Button>}
+    >
+      <Notice error>{error}</Notice>
+      <Notice>{message}</Notice>
+      {rows.length ? (
+        <div className="session-rows">
+          {rows.map((row, index) => (
+            <div className="session-row" key={row.session_id}>
+              <span className="session-index">{String(index + 1).padStart(2, "0")}</span>
+              <DatePicker label="Starts" aria-label={`Session ${index + 1} starts`} labelPlacement="outside"
+                value={row.start_date ? parseDate(row.start_date) : null}
+                onChange={(value) => update(row.session_id, "start_date", value?.toString() || "")}
+                granularity="day" showMonthAndYearPickers variant="bordered" size="sm" isRequired isDisabled={busy} />
+              <DatePicker label="Ends" aria-label={`Session ${index + 1} ends`} labelPlacement="outside"
+                value={row.end_date ? parseDate(row.end_date) : null}
+                onChange={(value) => update(row.session_id, "end_date", value?.toString() || "")}
+                granularity="day" showMonthAndYearPickers variant="bordered" size="sm" isRequired isDisabled={busy} />
+              <Input type="time" label="Scheduled time" aria-label={`Session ${index + 1} scheduled time`} labelPlacement="outside"
+                value={row.scheduled_time} onValueChange={(value) => update(row.session_id, "scheduled_time", value)}
+                variant="bordered" size="sm" isRequired isDisabled={busy} />
+              <Input type="number" label="Duration" aria-label={`Session ${index + 1} duration`} labelPlacement="outside"
+                value={String(row.duration_minutes)} min="0.01" step="any"
+                onValueChange={(value) => update(row.session_id, "duration_minutes", value)}
+                endContent={<span className="muted duration-unit">min</span>} variant="bordered" size="sm" isRequired isDisabled={busy} />
+              <Select label="Session type" aria-label={`Session ${index + 1} type`} labelPlacement="outside"
+                selectedKeys={[row.session_type]} onSelectionChange={(keys) => { const value = [...keys][0]; if (value) update(row.session_id, "session_type", value); }}
+                variant="bordered" size="sm" isDisabled={busy}>
+                <SelectItem key="study">Study</SelectItem><SelectItem key="break">Break</SelectItem>
+              </Select>
+              <Select label="Task" aria-label={`Session ${index + 1} task`} labelPlacement="outside"
+                selectedKeys={[row.task_type]} onSelectionChange={(keys) => { const value = [...keys][0]; if (value) update(row.session_id, "task_type", value); }}
+                variant="bordered" size="sm" isDisabled={busy}>
+                {STUDY_TASKS.map((task) => <SelectItem key={task}>{task}</SelectItem>)}
+              </Select>
+              <Tooltip content="Remove session">
+                <Button isIconOnly size="sm" variant="light" color="danger" aria-label={`Remove session ${index + 1}`}
+                  onPress={() => { setRows((current) => current.filter((item) => item.session_id !== row.session_id)); setMessage(""); }} isDisabled={busy}>
+                  <Trash2 size={16} />
+                </Button>
+              </Tooltip>
+            </div>
+          ))}
         </div>
-      </Panel>
-      <Panel
-        title="Sessions"
-        subtitle={`${rows.length} sessions · User ${schedule.user_id}`}
-        actions={
-          <Button
-            size="sm"
-            color="primary"
-            startContent={<Plus size={16} />}
-            onPress={add}
-            isDisabled={busy}
-          >
-            Add session
-          </Button>
-        }
-      >
-        <Notice error>{error}</Notice>
-        <Notice>{message}</Notice>
-        {rows.length ? (
-          <div className="session-rows">
-            {rows.map((row, index) => (
-              <div className="session-row" key={row.session_id}>
-                <span className="session-index">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <DatePicker
-                  label="Starts"
-                  aria-label={`Session ${index + 1} starts`}
-                  labelPlacement="outside"
-                  value={
-                    row.starts_at
-                      ? parseAbsolute(row.starts_at, TIME_ZONE)
-                      : null
-                  }
-                  onChange={(value) =>
-                    update(
-                      row.session_id,
-                      "starts_at",
-                      value?.toAbsoluteString() || "",
-                    )
-                  }
-                  granularity="minute"
-                  hideTimeZone
-                  showMonthAndYearPickers
-                  variant="bordered"
-                  isRequired
-                  isDisabled={busy}
-                />
-                <DatePicker
-                  label="Ends"
-                  aria-label={`Session ${index + 1} ends`}
-                  labelPlacement="outside"
-                  value={
-                    row.ends_at ? parseAbsolute(row.ends_at, TIME_ZONE) : null
-                  }
-                  onChange={(value) =>
-                    update(
-                      row.session_id,
-                      "ends_at",
-                      value?.toAbsoluteString() || "",
-                    )
-                  }
-                  granularity="minute"
-                  hideTimeZone
-                  showMonthAndYearPickers
-                  variant="bordered"
-                  isRequired
-                  isDisabled={busy}
-                />
-                <Select
-                  label="Session type"
-                  aria-label={`Session ${index + 1} type`}
-                  labelPlacement="outside"
-                  selectedKeys={[row.session_type]}
-                  onSelectionChange={(keys) => {
-                    const value = [...keys][0];
-                    if (value) update(row.session_id, "session_type", value);
-                  }}
-                  variant="bordered"
-                  isDisabled={busy}
-                >
-                  <SelectItem key="study">Study</SelectItem>
-                  <SelectItem key="break">Break</SelectItem>
-                </Select>
-                <Select
-                  label="Task"
-                  aria-label={`Session ${index + 1} task`}
-                  labelPlacement="outside"
-                  selectedKeys={[row.task_type]}
-                  onSelectionChange={(keys) => {
-                    const value = [...keys][0];
-                    if (value) update(row.session_id, "task_type", value);
-                  }}
-                  variant="bordered"
-                  isDisabled={busy}
-                >
-                  {STUDY_TASKS.map((task) => (
-                    <SelectItem key={task}>{task}</SelectItem>
-                  ))}
-                </Select>
-                <Tooltip content="Remove session">
-                  <Button
-                    isIconOnly
-                    variant="light"
-                    color="danger"
-                    aria-label={`Remove session ${index + 1}`}
-                    onPress={() => {
-                      setRows((current) =>
-                        current.filter(
-                          (item) => item.session_id !== row.session_id,
-                        ),
-                      );
-                      setMessage("");
-                    }}
-                    isDisabled={busy}
-                  >
-                    <Trash2 size={16} />
-                  </Button>
-                </Tooltip>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <Empty title="No sessions yet">
-            Select a day above, then add a study session or break.
-          </Empty>
-        )}
-        <div className="schedule-footer">
-          <span className="muted">
-            <Clock size={14} /> All dates and times are in Eastern Time.
-          </span>
-          <div className="button-row">
-            <Button
-              variant="flat"
-              onPress={() => {
-                setRows(schedule.sessions);
-                setError("");
-                setMessage("");
-              }}
-              isDisabled={!changed || busy}
-            >
-              Discard edits
-            </Button>
-            <Button
-              color="primary"
-              startContent={<Save size={16} />}
-              onPress={save}
-              isLoading={busy}
-              isDisabled={!changed}
-            >
-              Save schedule
-            </Button>
-          </div>
+      ) : <Empty title="No sessions yet">Add a study session or break for this user.</Empty>}
+      <div className="schedule-footer">
+        <span className="muted"><Clock size={14} /> Daily sessions use Eastern Time. Duration is in minutes.</span>
+        <div className="button-row">
+          <Button variant="flat" onPress={() => { setRows(savedRows); setError(""); setMessage(""); }} isDisabled={!changed || busy}>Discard edits</Button>
+          <Button color="primary" startContent={<Save size={16} />} onPress={save} isLoading={busy} isDisabled={!changed}>Save schedule</Button>
         </div>
-      </Panel>
-      <Panel
-        title="One CSV for every schedule"
-        subtitle="Import adds sessions or updates matching session IDs across users. Export includes all users."
-        className="csv-panel"
-        actions={
-          <div className="button-row">
-            <Button
-              as="a"
-              href="/data-portal/api/schedule/export"
-              variant="flat"
-              size="sm"
-              startContent={<Download size={15} />}
-            >
-              Export CSV
-            </Button>
-            <Button
-              variant="flat"
-              size="sm"
-              startContent={<Upload size={15} />}
-              onPress={() => upload.current.click()}
-              isDisabled={busy || changed}
-            >
-              Import CSV
-            </Button>
-          </div>
-        }
-      >
-        <input
-          type="file"
-          accept=".csv,text/csv"
-          ref={upload}
-          onChange={importCsv}
-          hidden
-        />
-        <code className="csv-columns">
-          session_id, user_id, starts_at, ends_at, session_type, task_type
-        </code>
-        <p className="muted">
-          Use ISO dates with a timezone offset, such as
-          2026-10-13T10:00:00-04:00. Leave session_id empty for a new session.
-          Save or discard edits before importing.
-        </p>
-      </Panel>
-    </div>
+      </div>
+    </Panel>
   );
 }

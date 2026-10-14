@@ -10,6 +10,7 @@ import {
   Select,
   SelectItem,
   Checkbox,
+  Chip,
   Button,
   Pagination,
   Tooltip,
@@ -23,7 +24,6 @@ import {
 import { Search, Download, ChartNoAxesCombined } from "lucide-react";
 import {
   Panel,
-  Empty,
   Notice,
   SessionChip,
   dateLabel,
@@ -134,7 +134,38 @@ export function SessionPreview({ reference, onClose }) {
     </Modal>
   );
 }
-export default function Files({ userId, onPreview }) {
+function DurationBar({ duration }) {
+  if (!duration) return <span className="muted">—</span>;
+  const training = Math.max(0, Number(duration.trainingMs) || 0);
+  const resting = Math.max(0, Number(duration.restingMs) || 0);
+  const total = training + resting;
+  return (
+    <Tooltip content={`${durationLabel(training)} training · ${durationLabel(resting)} break`}>
+      <div className="file-duration" tabIndex={0}
+        aria-label={`${durationLabel(duration.totalMs)} total: ${durationLabel(training)} training, ${durationLabel(resting)} break`}>
+        <span>{durationLabel(duration.totalMs)}</span>
+        <div className="file-duration-track" aria-hidden="true">
+          <i className="file-duration-training" style={{ width: `${total ? training / total * 100 : 0}%` }} />
+          <i className="file-duration-break" style={{ width: `${total ? resting / total * 100 : 0}%` }} />
+        </div>
+        <small>{durationLabel(resting)} break</small>
+      </div>
+    </Tooltip>
+  );
+}
+function SanityCheck({ rate }) {
+  if (!rate?.total || !Number.isFinite(rate.accuracy)) return <span className="muted">—</span>;
+  const tone = rate.accuracy >= 80 ? "success" : rate.accuracy >= 60 ? "warning" : "danger";
+  return (
+    <Tooltip content={`${rate.correct} of ${rate.total} sanity checks passed`}>
+      <Chip size="sm" variant="flat" color={tone}
+        aria-label={`Sanity check accuracy: ${percentage(rate.accuracy)}, ${rate.correct} of ${rate.total} passed`}>
+        {percentage(rate.accuracy)}
+      </Chip>
+    </Tooltip>
+  );
+}
+export default function Files({ userId, refreshKey, onPreview }) {
   const [files, setFiles] = useState([]),
     [loading, setLoading] = useState(true),
     [error, setError] = useState("");
@@ -146,8 +177,7 @@ export default function Files({ userId, onPreview }) {
     [sessionFiles, setSessionFiles] = useState(false),
     [pauseFiles, setPauseFiles] = useState(false),
     [page, setPage] = useState(1),
-    [sort, setSort] = useState({ column: "time", direction: "descending" }),
-    [reload, setReload] = useState(0);
+    [sort, setSort] = useState({ column: "time", direction: "descending" });
   useEffect(() => {
     let alive = true;
     setLoading(true);
@@ -171,7 +201,7 @@ export default function Files({ userId, onPreview }) {
     return () => {
       alive = false;
     };
-  }, [userId, reload]);
+  }, [userId, refreshKey]);
   useEffect(() => {
     setPage(1);
   }, [search, from, to, task, type, sessionFiles, pauseFiles]);
@@ -234,16 +264,6 @@ export default function Files({ userId, onPreview }) {
     <Panel
       title="Session data"
       subtitle="Browse recorded sessions and download their original data."
-      actions={
-        <Button
-          variant="flat"
-          size="sm"
-          isLoading={loading}
-          onPress={() => setReload((value) => value + 1)}
-        >
-          Refresh
-        </Button>
-      }
     >
       <div className="file-filters">
         <Input
@@ -335,16 +355,13 @@ export default function Files({ userId, onPreview }) {
           <TableColumn key="task_type" allowsSorting>
             Task
           </TableColumn>
-          <TableColumn key="session_id" allowsSorting>
-            Session ID
-          </TableColumn>
           <TableColumn key="time" allowsSorting>
             Time · ET
           </TableColumn>
           <TableColumn key="duration" allowsSorting>
             Duration
           </TableColumn>
-          <TableColumn key="rows">Rows</TableColumn>
+          <TableColumn key="sanity">Sanity check accuracy</TableColumn>
           <TableColumn key="actions">Actions</TableColumn>
         </TableHeader>
         <TableBody
@@ -363,15 +380,6 @@ export default function Files({ userId, onPreview }) {
               </TableCell>
               <TableCell>{file.task_type || "—"}</TableCell>
               <TableCell>
-                <Tooltip content={file.session_id}>
-                  <span className="session-id">
-                    {file.session_id?.length > 18
-                      ? file.session_id.slice(0, 14) + "…"
-                      : file.session_id}
-                  </span>
-                </Tooltip>
-              </TableCell>
-              <TableCell>
                 <span className="table-time">
                   {dateLabel(file.session_time || file.created_at * 1000)}
                   <small>
@@ -380,42 +388,32 @@ export default function Files({ userId, onPreview }) {
                 </span>
               </TableCell>
               <TableCell>
-                <Tooltip
-                  content={
-                    file.duration
-                      ? `${durationLabel(file.duration.trainingMs)} training · ${durationLabel(file.duration.restingMs)} resting`
-                      : "Duration unavailable"
-                  }
-                >
-                  <span>
-                    {file.duration ? durationLabel(file.duration.totalMs) : "—"}
-                  </span>
-                </Tooltip>
+                <DurationBar duration={file.duration} />
               </TableCell>
-              <TableCell>{file.row_count ?? "—"}</TableCell>
+              <TableCell><SanityCheck rate={file.catch_pass_rate} /></TableCell>
               <TableCell>
                 <div className="table-actions">
                   <Button
                     size="sm"
-                    variant="light"
+                    variant="flat"
+                    className="file-action"
                     aria-label={`Preview session ${file.session_id}`}
                     onPress={() => onPreview(file.reference)}
                     startContent={<ChartNoAxesCombined size={15} />}
                   >
                     Preview
                   </Button>
-                  <Tooltip content="Download session data">
-                    <Button
-                      isIconOnly
-                      as="a"
-                      size="sm"
-                      variant="flat"
-                      href={file.download_url}
-                      aria-label={`Download session ${file.session_id}`}
-                    >
-                      <Download size={15} />
-                    </Button>
-                  </Tooltip>
+                  <Button
+                    as="a"
+                    size="sm"
+                    variant="flat"
+                    className="file-action"
+                    href={file.download_url}
+                    aria-label={`Download session ${file.session_id}`}
+                    startContent={<Download size={15} />}
+                  >
+                    Download
+                  </Button>
                 </div>
               </TableCell>
             </TableRow>

@@ -28,7 +28,7 @@ For public hosting, set `BETTER_AUTH_URL` to the public web origin.
 The portal fills the available screen width and adapts to mobile. Participants
 have Dashboard, Study Setup, and My Progress. Administrators have Schedule,
 Manage Users, Data Analytics, and File Download, with a shared user selector.
-See [the portal guide](docs/Data_Portal.md) for CSV scheduling and saved setup.
+See [the portal guide](docs/Data_Portal.md) for scheduling and saved setup.
 
 Import the supplied historical archive separately, once:
 

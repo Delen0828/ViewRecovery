@@ -8,14 +8,12 @@ import { createServer } from "../server/index.mjs";
 import { portalClient } from "./portal-auth-client.mjs";
 import { migratePortalAccounts } from "../server/portal-accounts.mjs";
 import {
-  SCHEDULE_COLUMNS,
-  parseScheduleCsv,
   validateScheduleRows,
 } from "../server/portal-workspace.mjs";
 import { DEFAULT_STUDY_SETUP, studyCalibration } from "../src/study-setup.js";
 import { ingest } from "../server/store.mjs";
 
-test("schedule CSV validates quoting, timestamps, and conflicts", () => {
+test("schedule rows validate timestamps and conflicts", () => {
   const row = {
     session_id: randomUUID(),
     user_id: "P1",
@@ -24,22 +22,10 @@ test("schedule CSV validates quoting, timestamps, and conflicts", () => {
     session_type: "study",
     task_type: "Motion",
   };
-  const csv =
-    "\uFEFF" +
-    SCHEDULE_COLUMNS.join(",") +
-    "\r\n" +
-    SCHEDULE_COLUMNS.map((key) => '"' + row[key] + '"').join(",") +
-    "\r\n";
-  assert.deepEqual(parseScheduleCsv(csv), [row]);
   assert.equal(
     Date.parse(validateScheduleRows([row], "P1")[0].ends_at) -
       Date.parse(validateScheduleRows([row], "P1")[0].starts_at),
     90 * 60000,
-  );
-  assert.throws(() => parseScheduleCsv("not,the,header"), /CSV columns/);
-  assert.throws(
-    () => parseScheduleCsv(SCHEDULE_COLUMNS.join(",") + '\n"unclosed'),
-    /quoting/,
   );
   assert.throws(
     () =>
@@ -285,71 +271,29 @@ test("portal workspace persists scoped preferences, account changes and synchron
       },
     );
     await t.test(
-      "one CSV round trips all users and invalid imports roll back atomically",
+      "daily definitions persist, expand for participants, and appear in the admin-only overview",
       async () => {
-        const csv = await (
-          await admin.api("/data-portal/api/schedule/export")
-        ).text();
-        assert.ok(parseScheduleCsv(csv).some((item) => item.user_id === first));
-        assert.equal(
-          (await user.api("/data-portal/api/schedule/export")).status,
-          403,
-        );
-        const imported = {
-          ...row,
-          user_id: second,
-          session_id: randomUUID(),
-          session_type: "break",
+        const recurring = {
+          session_id: randomUUID(), start_date: "2026-10-31", end_date: "2026-11-02",
+          scheduled_time: "10:15", duration_minutes: 45, session_type: "study", task_type: "Orientation",
         };
-        const makeCsv = (records) =>
-          SCHEDULE_COLUMNS.join(",") +
-          "\n" +
-          records
-            .map((record) =>
-              SCHEDULE_COLUMNS.map((key) => record[key]).join(","),
-            )
-            .join("\n");
-        assert.equal(
-          (
-            await mutation(admin, "/data-portal/api/schedule/import", "POST", {
-              csv: makeCsv([imported]),
-            })
-          ).status,
-          200,
-        );
-        assert.equal(
-          (await (await other.api("/data-portal/api/schedule")).json())
-            .sessions[0].session_type,
-          "break",
-        );
-        const revised = { ...imported, task_type: "Centrality" };
-        const invalid = { ...row, user_id: first, task_type: "Invalid" };
-        assert.equal(
-          (
-            await mutation(admin, "/data-portal/api/schedule/import", "POST", {
-              csv: makeCsv([revised, invalid]),
-            })
-          ).status,
-          400,
-        );
-        assert.equal(
-          (await (await other.api("/data-portal/api/schedule")).json())
-            .sessions[0].task_type,
-          "Motion",
-        );
-        assert.equal(
-          (
-            await mutation(admin, "/data-portal/api/schedule/import", "POST", {
-              csv: makeCsv([revised]),
-            })
-          ).status,
-          200,
-        );
-        assert.equal(
-          (await (await other.api("/data-portal/api/schedule")).json()).sessions
-            .length,
-          1,
-        );
+        const response = await mutation(admin, "/data-portal/api/schedule", "PUT", {
+          user_id: second, version: 0, sessions: [recurring],
+        });
+        assert.equal(response.status, 200);
+        const saved = await response.json();
+        assert.equal(saved.sessions.length, 1);
+        assert.equal(saved.sessions[0].end_date, "2026-11-02");
+        assert.equal(saved.sessions[0].duration_minutes, 45);
+        assert.equal((await (await admin.api("/data-portal/api/schedule?user_id=" + second)).json()).sessions[0].start_date, "2026-10-31");
+        const participantSchedule = await (await other.api("/data-portal/api/schedule")).json();
+        assert.equal(participantSchedule.sessions.length, 3);
+        assert.equal(participantSchedule.sessions[1].starts_at, "2026-11-01T15:15:00.000Z");
+        const overview = await (await admin.api("/data-portal/api/schedule/overview")).json();
+        assert.ok(overview.sessions.some((item) => item.user_id === first));
+        assert.ok(overview.sessions.some((item) => item.user_id === second));
+        assert.equal((await user.api("/data-portal/api/schedule/overview")).status, 403);
+        assert.equal((await other.api("/data-portal/api/schedule/overview?user_id=" + second)).status, 403);
       },
     );
     await t.test(
@@ -502,6 +446,72 @@ test("portal workspace persists scoped preferences, account changes and synchron
           ).rowCount,
           1,
         );
+        const retainedUsers = await (await admin.api("/data-portal/api/users")).json();
+        assert.equal(retainedUsers.users.find((entry) => entry.user_id === renamed).has_account, false);
+        // Delete the data-only user directly, including data linked to its original ID.
+        assert.equal((await mutation(admin, "/data-portal/api/users", "DELETE", {
+          user_id: renamed, delete_data: "true",
+        })).status, 400);
+        await ingest(pool, {
+          batch_id: randomUUID(), run,
+          events: [],
+          save: { save_key: "final_complete_user_" + first + ".json", prefix: "final_complete", overwrite: false, rows: [{ user_id: first }] },
+        });
+        const job = (await pool.query(
+          "INSERT INTO experiment_data.import_jobs(archive_sha256,archive_name) VALUES($1,'delete-data-test.zip') RETURNING id",
+          [randomUUID()],
+        )).rows[0].id;
+        try {
+          for (const owner of [first, second]) {
+            const source = (await pool.query(
+              `INSERT INTO experiment_data.source_files(import_job_id,original_path,sha256,kind,user_id,row_count,bytes)
+               VALUES($1,$2,$3,'csv',NULL,1,$4) RETURNING id`,
+              [job, `final_complete_user_${owner}_Motion.csv`, randomUUID(), Buffer.from("user_id\n" + owner)],
+            )).rows[0].id;
+            await pool.query("INSERT INTO experiment_data.source_rows(source_file_id,ordinal,payload) VALUES($1,1,$2)", [source, { user_id: owner }]);
+          }
+          await pool.query("SELECT experiment_data.ensure_portal_metrics(array_agg(reference)) FROM experiment_data.portal_files WHERE user_id=$1", [renamed]);
+          const refs = (await pool.query("SELECT reference FROM experiment_data.portal_files WHERE user_id=$1", [renamed])).rows.map((row) => row.reference);
+          assert.equal(refs.length, 3);
+          assert.equal((await mutation(user, "/data-portal/api/users", "DELETE", {
+            user_id: renamed, delete_data: true,
+          })).status, 401);
+          assert.equal((await mutation(admin, "/data-portal/api/users", "DELETE", {
+            user_id: renamed,
+          })).status, 200);
+          assert.equal((await pool.query("SELECT reference FROM experiment_data.portal_files WHERE user_id=$1", [renamed])).rowCount, 0);
+          assert.equal((await pool.query("SELECT reference FROM experiment_data.portal_metrics WHERE reference=ANY($1)", [refs])).rowCount, 0);
+          assert.equal((await pool.query("SELECT id FROM experiment_data.runs WHERE id=$1", [run.id])).rowCount, 0);
+          assert.equal((await pool.query("SELECT batch_id FROM experiment_data.ingest_batches WHERE run_id=$1", [run.id])).rowCount, 0);
+          assert.equal((await pool.query("SELECT * FROM experiment_data.source_rows WHERE source_file_id IN (SELECT id FROM experiment_data.source_files WHERE import_job_id=$1)", [job])).rowCount, 1);
+          const deletedUsers = await (await admin.api("/data-portal/api/users")).json();
+          assert.ok(!deletedUsers.users.some((entry) => entry.user_id === renamed || entry.user_id === first));
+          assert.ok(deletedUsers.users.some((entry) => entry.user_id === second && entry.has_account));
+          // Imported IDs need not follow the newer account-creation format.
+          const legacyId = `Legacy-${suffix}`;
+          const legacySource = (await pool.query(
+            `INSERT INTO experiment_data.source_files(import_job_id,original_path,sha256,kind,user_id,row_count,bytes)
+             VALUES($1,$2,$3,'csv',$4,1,$5) RETURNING id`,
+            [job, `final_complete_user_${legacyId}_Motion.csv`, randomUUID(), legacyId, Buffer.from("legacy data")],
+          )).rows[0].id;
+          await pool.query("INSERT INTO experiment_data.source_rows(source_file_id,ordinal,payload) VALUES($1,1,$2)", [legacySource, { user_id: legacyId }]);
+          const legacyUsers = await (await admin.api("/data-portal/api/users")).json();
+          assert.equal(legacyUsers.users.find((entry) => entry.user_id === legacyId).has_account, false);
+          assert.equal((await mutation(admin, "/data-portal/api/users", "DELETE", {
+            user_id: legacyId,
+          })).status, 200);
+          assert.equal((await pool.query("SELECT id FROM experiment_data.source_files WHERE id=$1", [legacySource])).rowCount, 0);
+          assert.equal((await pool.query("SELECT ordinal FROM experiment_data.source_rows WHERE source_file_id=$1", [legacySource])).rowCount, 0);
+          assert.equal((await mutation(admin, "/data-portal/api/users", "DELETE", {
+            user_id: renamed,
+          })).status, 404);
+          await migratePortalAccounts(pool, authOptions);
+          assert.equal((await pool.query('SELECT id FROM portal_auth."user" WHERE username=ANY($1)', [[first, renamed]])).rowCount, 0);
+        } finally {
+          await pool.query("DELETE FROM experiment_data.source_rows WHERE source_file_id IN (SELECT id FROM experiment_data.source_files WHERE import_job_id=$1)", [job]);
+          await pool.query("DELETE FROM experiment_data.source_files WHERE import_job_id=$1", [job]);
+          await pool.query("DELETE FROM experiment_data.import_jobs WHERE id=$1", [job]);
+        }
       },
     );
   } finally {

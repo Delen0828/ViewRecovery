@@ -5,7 +5,6 @@ import {
   Checkbox,
   Select,
   SelectItem,
-  Switch,
   Tooltip,
 } from "@heroui/react";
 import { Pin, PinOff, ArrowUpRight } from "lucide-react";
@@ -99,7 +98,6 @@ export function ProgressCharts({
   onProgress,
 }) {
   const [visible, setVisible] = useState(Object.keys(TASK_COLORS)),
-    [advanced, setAdvanced] = useState(false),
     [error, setError] = useState(""),
     [pinBusy, setPinBusy] = useState(false);
   const available = Object.keys(TASK_COLORS).filter((task) =>
@@ -119,7 +117,7 @@ export function ProgressCharts({
     : [
         "accuracy",
         "duration",
-        ...(admin && advanced ? ["difficulty", "difficulty-duration"] : []),
+        ...(admin ? ["difficulty", "difficulty-duration"] : []),
       ];
   const togglePin = async (type) => {
     setError("");
@@ -168,15 +166,11 @@ export function ProgressCharts({
           >
             View progress
           </Button>
-        ) : admin ? (
-          <Switch size="sm" isSelected={advanced} onValueChange={setAdvanced}>
-            Advanced charts
-          </Switch>
-        ) : (
+        ) : !admin && (
           <span className="muted pin-hint">Pin charts to your dashboard.</span>
         )}
       </div>
-      {admin && advanced && (
+      {admin && !dashboard && (
         <div className="difficulty-controls">
           <Select
             label="Difficulty task"

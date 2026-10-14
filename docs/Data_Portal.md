@@ -22,38 +22,54 @@ Account passwords are hashed. Password resets and ID changes revoke existing
 sessions. Changing an ID updates database ownership, setup, and schedules while
 preserving original experiment rows and archive bytes. Deletion removes access,
 settings, and schedules but retains experiment data; startup will not recreate
-a deleted account. Adding the same ID explicitly restores access to its data.
+a deleted account. Select **Also delete recorded experiment data** in the deletion
+dialog to permanently remove the user's recorded sessions, saved results, imported
+files, and cached metrics too, including data linked to previous IDs. The user list
+refreshes after deletion. With retained data, the entry remains labeled **Data only**;
+with data deleted, it disappears. Adding the same ID explicitly restores access to
+any retained data. Manage Users also allows deleting a **Data only** user directly;
+this always deletes their recorded data, including records linked to earlier IDs.
 
-Advanced analytics includes accuracy and average trial duration by difficulty
+Data Analytics always shows all four charts, including accuracy and average trial duration by difficulty
 across sessions, with session legends and hover comparison. Charts retain the
 existing D3 metric definitions within HeroUI cards and controls; HeroUI does not
-provide a chart renderer. File Download shows user, session type, task, session
-ID, Eastern time, duration, and row count instead of source filenames. Previews
+provide a chart renderer. File Download shows user, session type, task, Eastern
+time, duration with blue training and grey break bars, and sanity check accuracy.
+Sanity check rates are green at 80% or higher, amber at 60–79%, and red below 60%;
+sessions without sanity checks show a dash. Preview and Download use matching
+grey buttons with icons and text. Previews
 use the metrics API; original data is fetched only when downloading.
 
-## Scheduling with one CSV
+## Scheduling
 
-The Schedule editor manages one session per row. Select a calendar date and use
-**Add session**, choose start/end, Study or Break, and the task, then save. Both
-date fields use Eastern Time, including daylight saving transitions. User
-dashboards refresh their schedule every 30 seconds; Refresh fetches immediately.
-Scheduling saves use revisions and reject concurrent stale edits.
+The full-width Calendar preview uses the ReUI Gantt core with a portal-styled
+custom view over five Sunday–Saturday weeks: the previous week, current week,
+and next three weeks. Compact day columns are grouped by week number (the week
+containing January 1 is Week 1). The chart keeps room for at least three user
+rows even when empty. Only users with sessions in the displayed date range
+appear. Names are shown directly on slim
+16px bars, with no separate user column or selection controls. Bars cannot be
+dragged or resized.
+Scroll horizontally or use the previous/next controls to explore the dates and
+use **Today** to return to the current day. Calendars, agenda markers, Gantt bars,
+and analytics share task colors: Motion blue, Orientation green, Centrality orange,
+and Bar purple; breaks are always grey. Calendar dates can show multiple task dots.
+Hover or focus a bar for the task, time, duration, and dates. The preview includes
+unsaved edits. The user selector sits beside Sessions and only selects the user
+being edited.
 
-**Export CSV** downloads a single `schedule.csv` containing all users:
+Each session row has date-only **Starts** and **Ends**, a **Scheduled time**, a
+**Duration** in minutes, Study or Break, and the task. It repeats daily across
+the inclusive date range. Both dates can be the same for a single occurrence.
+Scheduled time uses Eastern Time, including daylight saving transitions; each
+occurrence keeps the specified elapsed duration. Existing timestamp-only
+sessions remain available as single occurrences in the editor.
 
-```csv
-session_id,user_id,starts_at,ends_at,session_type,task_type
-,A123,2026-10-13T10:00:00-04:00,2026-10-13T10:30:00-04:00,study,Motion
-,A123,2026-10-13T10:30:00-04:00,2026-10-13T10:40:00-04:00,break,Motion
-```
-
-**Import CSV** adds sessions with empty IDs and updates rows matching exported
-UUIDs. Unmentioned sessions are retained; remove sessions in the editor.
-Import applies all rows atomically. User IDs must exist, times must include a
-timezone offset (`Z` or `±HH:MM`), end must follow start, and a user's sessions
-cannot overlap. Supported task values are `Motion`, `Orientation`, `Centrality`,
-and `Bar`; session types are `study` and `break`. CSV size is limited to 1 MB and
-5,000 rows. PostgreSQL is the source of truth; CSV is the shared editing format.
+Save to update the participant calendar. User dashboards refresh every 30
+seconds; the single **Refresh** button in the top banner fetches the current page's
+data, preferences, schedules, and file listings immediately. Scheduling saves use revisions and reject
+concurrent stale edits. Sessions cannot overlap for the same user, including
+occurrences that cross midnight. PostgreSQL is the source of truth.
 
 ## Experiment setup integration
 
@@ -66,7 +82,7 @@ future experiment import; the experiment currently retains manual setup.
 Administrators can inspect a user's preferences with `?user_id=A123`.
 
 The portal APIs enforce account scopes and admin permissions. Mutations require
-a trusted Origin and JSON. Schedule CSV import/export is admin-only.
+a trusted Origin and JSON. The all-user scheduling overview is admin-only.
 
 ## Verification
 
@@ -78,6 +94,6 @@ npm run test:portal
 ```
 
 The browser suite checks both roles, setup save/reload and dragging, chart
-visibility and pinning, schedules and participant synchronization, CSV export,
+visibility and pinning, daily schedules, the all-user Gantt preview, and participant synchronization,
 advanced charts, preview/download, account changes, invitation signup, and
 desktop/mobile layout. Screenshots are saved under ignored `test/results/`.

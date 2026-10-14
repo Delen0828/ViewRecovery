@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
 import { fail } from "./store.mjs";
+import { expandScheduleRows, MAX_SCHEDULE_OCCURRENCES } from "../src/portal-schedule.js";
 import {
   DEFAULT_STUDY_SETUP,
   STUDY_TASKS,
@@ -9,13 +10,17 @@ import {
 } from "../src/study-setup.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const SCHEDULE_COLUMNS = [
+const SCHEDULE_FIELDS = [
   "session_id",
   "user_id",
   "starts_at",
   "ends_at",
   "session_type",
   "task_type",
+  "start_date",
+  "end_date",
+  "scheduled_time",
+  "duration_minutes",
 ];
 export function requireAdmin(session) {
   if (!["admin", "user"].includes(session.role)) fail("Unauthorized", 401);
@@ -52,9 +57,18 @@ export async function managePortalUser(pool, session, method, data) {
   requireAdmin(session);
   const id = String(data.user_id || "");
   const original = String(data.original_user_id || id);
-  if (!/^[A-Za-z0-9]{1,32}$/.test(id))
+  if (method === "DELETE") {
+    // Existing imported identities may predate the account naming rules.
+    if (!id || id.length > 100) fail("Invalid user ID.");
+  } else if (!/^[A-Za-z0-9]{1,32}$/.test(id))
     fail("User ID must contain 1–32 letters or numbers.");
   const password = data.password;
+  if (
+    method === "DELETE" &&
+    data.delete_data !== undefined &&
+    typeof data.delete_data !== "boolean"
+  )
+    fail("Delete data must be a boolean.");
   if (method === "POST" || password) {
     if (
       typeof password !== "string" ||
@@ -70,7 +84,63 @@ export async function managePortalUser(pool, session, method, data) {
       "SELECT pg_advisory_xact_lock(hashtext('viewrecovery-portal-accounts-v1'))",
     );
     if (method === "DELETE") {
-      await participant(client, id);
+      const account = await client.query(
+        "SELECT id FROM portal_auth.\"user\" WHERE username=$1 AND role='user'",
+        [id],
+      );
+      if (!account.rowCount) {
+        const recorded = await client.query(
+          "SELECT 1 FROM experiment_data.portal_files WHERE user_id=$1 LIMIT 1",
+          [id],
+        );
+        if (!recorded.rowCount) fail("User not found.", 404);
+      }
+      // A data-only user can only be removed by deleting their recorded data.
+      if (data.delete_data === true || !account.rowCount) {
+        const files = await client.query(
+          "SELECT source_kind,source_id FROM experiment_data.portal_files WHERE user_id=$1 AND source_kind IN ('source','run')",
+          [id],
+        );
+        const sources = files.rows
+          .filter((file) => file.source_kind === "source")
+          .map((file) => file.source_id);
+        const runs = files.rows
+          .filter((file) => file.source_kind === "run")
+          .map((file) => file.source_id);
+        // Lock runs against concurrent ingest before removing their dependent rows.
+        await client.query(
+          "SELECT id FROM experiment_data.runs WHERE id=ANY($1::uuid[]) FOR UPDATE",
+          [runs],
+        );
+        await client.query(
+          "DELETE FROM experiment_data.source_rows WHERE source_file_id=ANY($1::bigint[])",
+          [sources],
+        );
+        await client.query(
+          "DELETE FROM experiment_data.source_files WHERE id=ANY($1::bigint[])",
+          [sources],
+        );
+        await client.query(
+          "DELETE FROM experiment_data.save_rows WHERE save_id IN (SELECT id FROM experiment_data.saves WHERE run_id=ANY($1::uuid[]))",
+          [runs],
+        );
+        await client.query(
+          "DELETE FROM experiment_data.saves WHERE run_id=ANY($1::uuid[])",
+          [runs],
+        );
+        await client.query(
+          "DELETE FROM experiment_data.events WHERE run_id=ANY($1::uuid[])",
+          [runs],
+        );
+        await client.query(
+          "DELETE FROM experiment_data.ingest_batches WHERE run_id=ANY($1::uuid[])",
+          [runs],
+        );
+        await client.query(
+          "DELETE FROM experiment_data.runs WHERE id=ANY($1::uuid[])",
+          [runs],
+        );
+      }
       await client.query(
         "INSERT INTO experiment_data.portal_retired_users(user_id) VALUES($1) ON CONFLICT DO NOTHING",
         [id],
@@ -220,12 +290,23 @@ export async function portalSchedule(pool, session, requested) {
     FROM portal_auth."user" u LEFT JOIN experiment_data.portal_preferences p ON p.user_id=u.username WHERE u.username=$1`,
     [id],
   );
-  return { user_id: id, ...result.rows[0] };
+  const schedule = { user_id: id, ...result.rows[0] };
+  if (session.role !== "admin") schedule.sessions = expandScheduleRows(schedule.sessions);
+  return schedule;
+}
+export async function portalScheduleOverview(pool, session) {
+  requireAdmin(session);
+  const result = await pool.query(
+    `SELECT coalesce(jsonb_agg(s ORDER BY s.user_id,s.starts_at,s.session_id),'[]') AS sessions
+     FROM experiment_data.portal_schedule s`,
+  );
+  return result.rows[0];
 }
 export function validateScheduleRows(rows, userId) {
   if (!Array.isArray(rows) || rows.length > 5000)
     fail("A schedule can contain at most 5,000 sessions.");
   const ids = new Set();
+  let occurrenceCount = 0;
   const normalized = rows
     .map((row) => {
       if (!row || typeof row !== "object" || Array.isArray(row))
@@ -236,6 +317,32 @@ export function validateScheduleRows(rows, userId) {
       ids.add(session_id);
       if (row.user_id && row.user_id !== userId)
         fail("Session belongs to another user.");
+      const recurring = ["start_date", "end_date", "scheduled_time", "duration_minutes"]
+        .some((key) => row[key] !== undefined && row[key] !== null);
+      let recurrence = {};
+      if (recurring) {
+        if (
+          !/^\d{4}-\d{2}-\d{2}$/.test(row.start_date || "") ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(row.end_date || "") ||
+          !/^\d{2}:\d{2}(?::\d{2})?$/.test(row.scheduled_time || "") ||
+          !["number", "string"].includes(typeof row.duration_minutes)
+        ) fail("Select valid Starts and Ends dates, Scheduled time, and Duration.");
+        recurrence = {
+          start_date: row.start_date,
+          end_date: row.end_date,
+          scheduled_time: row.scheduled_time,
+          duration_minutes: Number(row.duration_minutes),
+        };
+        try {
+          const occurrences = expandScheduleRows([{ ...row, ...recurrence }], MAX_SCHEDULE_OCCURRENCES - occurrenceCount);
+          occurrenceCount += occurrences.length;
+          row = { ...row, starts_at: occurrences[0].starts_at, ends_at: occurrences.at(-1).ends_at };
+        } catch (error) {
+          fail(error.message.includes("at most") ? "A schedule can contain at most 5,000 sessions." : error.message);
+        }
+      } else occurrenceCount++;
+      if (occurrenceCount > MAX_SCHEDULE_OCCURRENCES)
+        fail("A schedule can contain at most 5,000 sessions.");
       for (const key of ["starts_at", "ends_at"]) {
         if (
           typeof row[key] !== "string" ||
@@ -263,11 +370,18 @@ export function validateScheduleRows(rows, userId) {
         ends_at: new Date(row.ends_at).toISOString(),
         session_type: row.session_type,
         task_type: row.task_type,
+        ...recurrence,
       };
     })
     .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
-  for (let i = 1; i < normalized.length; i++)
-    if (normalized[i].starts_at < normalized[i - 1].ends_at)
+  let occurrences;
+  try {
+    occurrences = expandScheduleRows(normalized);
+  } catch (error) {
+    fail(error.message);
+  }
+  for (let i = 1; i < occurrences.length; i++)
+    if (occurrences[i].starts_at < occurrences[i - 1].ends_at)
       fail("Sessions cannot overlap for the same user.");
   return normalized;
 }
@@ -294,9 +408,9 @@ async function writeSchedule(client, id, sessions, version) {
   );
   for (const row of sessions)
     await client.query(
-      `INSERT INTO experiment_data.portal_schedule(session_id,user_id,starts_at,ends_at,session_type,task_type)
-    VALUES($1,$2,$3,$4,$5,$6)`,
-      SCHEDULE_COLUMNS.map((key) => row[key]),
+      `INSERT INTO experiment_data.portal_schedule(session_id,user_id,starts_at,ends_at,session_type,task_type,start_date,end_date,scheduled_time,duration_minutes)
+    VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      SCHEDULE_FIELDS.map((key) => row[key] ?? null),
     );
   await client.query(
     "UPDATE experiment_data.portal_preferences SET schedule_version=schedule_version+1,updated_at=now() WHERE user_id=$1",
@@ -321,134 +435,4 @@ export async function savePortalSchedule(pool, session, data) {
     client.release();
   }
   return portalSchedule(pool, session, id);
-}
-export function parseScheduleCsv(csv) {
-  if (typeof csv !== "string" || Buffer.byteLength(csv) > 1024 * 1024)
-    fail("CSV must be smaller than 1 MB.");
-  const records = [];
-  let row = [],
-    field = "",
-    quoted = false,
-    closed = false;
-  const input = csv.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n");
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i];
-    if (quoted) {
-      if (ch === '"' && input[i + 1] === '"') {
-        field += '"';
-        i++;
-      } else if (ch === '"') {
-        quoted = false;
-        closed = true;
-      } else field += ch;
-    } else if (ch === '"') {
-      if (field || closed) fail("Malformed CSV quoting.");
-      quoted = true;
-    } else if (ch === "," || ch === "\n") {
-      row.push(field);
-      field = "";
-      closed = false;
-      if (ch === "\n") {
-        if (row.some(Boolean)) records.push(row);
-        row = [];
-      }
-    } else {
-      if (closed) fail("Malformed CSV quoting.");
-      field += ch;
-    }
-  }
-  if (quoted) fail("Malformed CSV quoting.");
-  row.push(field);
-  if (row.some(Boolean)) records.push(row);
-  const header = records.shift();
-  if (
-    !header ||
-    header.length !== SCHEDULE_COLUMNS.length ||
-    SCHEDULE_COLUMNS.some((key) => !header.includes(key))
-  )
-    fail("CSV columns: " + SCHEDULE_COLUMNS.join(", "));
-  if (records.length > 5000) fail("CSV can contain at most 5,000 sessions.");
-  return records.map((values) => {
-    if (values.length !== header.length)
-      fail("CSV row has the wrong number of columns.");
-    return Object.fromEntries(header.map((key, index) => [key, values[index]]));
-  });
-}
-export async function importScheduleCsv(pool, session, csv) {
-  requireAdmin(session);
-  const rows = parseScheduleCsv(csv),
-    groups = new Map();
-  for (const row of rows) {
-    if (!/^[A-Za-z0-9]{1,32}$/.test(row.user_id))
-      fail("Every CSV row needs a valid user ID.");
-    if (!groups.has(row.user_id)) groups.set(row.user_id, []);
-    groups.get(row.user_id).push(row);
-  }
-  const ids = rows.filter((row) => row.session_id).map((row) => row.session_id);
-  if (new Set(ids).size !== ids.length)
-    fail("Session IDs must be unique across the CSV.");
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    // Lock in the same order for concurrent multi-user imports.
-    for (const id of [...groups.keys()].sort()) {
-      await participant(client, id);
-      await client.query(
-        "INSERT INTO experiment_data.portal_preferences(user_id) VALUES($1) ON CONFLICT DO NOTHING",
-        [id],
-      );
-      await client.query(
-        "SELECT schedule_version FROM experiment_data.portal_preferences WHERE user_id=$1 FOR UPDATE",
-        [id],
-      );
-      const existing = (
-        await client.query(
-          "SELECT * FROM experiment_data.portal_schedule WHERE user_id=$1",
-          [id],
-        )
-      ).rows.map((row) => ({
-        ...row,
-        starts_at: row.starts_at.toISOString(),
-        ends_at: row.ends_at.toISOString(),
-      }));
-      const imported = groups.get(id);
-      const merged = [
-        ...existing.filter(
-          (row) => !imported.some((item) => item.session_id === row.session_id),
-        ),
-        ...imported,
-      ];
-      await writeSchedule(client, id, validateScheduleRows(merged, id));
-    }
-    await client.query("COMMIT");
-    return { success: true, imported: rows.length };
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-export async function exportScheduleCsv(pool, session) {
-  requireAdmin(session);
-  const rows = (
-    await pool.query(
-      "SELECT * FROM experiment_data.portal_schedule ORDER BY user_id,starts_at,session_id",
-    )
-  ).rows;
-  const escape = (value) =>
-    '"' +
-    String(value instanceof Date ? value.toISOString() : value).replaceAll(
-      '"',
-      '""',
-    ) +
-    '"';
-  return (
-    SCHEDULE_COLUMNS.join(",") +
-    "\r\n" +
-    rows
-      .map((row) => SCHEDULE_COLUMNS.map((key) => escape(row[key])).join(","))
-      .join("\r\n") +
-    "\r\n"
-  );
 }

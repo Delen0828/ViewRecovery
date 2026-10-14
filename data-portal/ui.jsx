@@ -1,7 +1,8 @@
 import React from "react";
 import { Card, CardBody, Chip, Button } from "@heroui/react";
-import { Activity, Inbox } from "lucide-react";
+import { Inbox, RefreshCw } from "lucide-react";
 import { parseAbsolute, today } from "@internationalized/date";
+import { TASK_COLORS, BREAK_COLOR, sessionColor } from "./task-colors.js";
 export const TIME_ZONE = "America/New_York";
 export const todayET = () => today(TIME_ZONE);
 export const dateKey = (value) =>
@@ -95,15 +96,28 @@ export function Notice({ error, children }) {
     </div>
   ) : null;
 }
-export function SessionChip({ type }) {
+export function SessionChip({ type, task }) {
+  const color = sessionColor({ session_type: type, task_type: task });
   return (
     <Chip
       size="sm"
       variant="flat"
       color={type === "break" ? "default" : "primary"}
+      style={task ? { backgroundColor: `${color}18`, color } : undefined}
     >
       {type === "break" ? "Break" : "Study"}
     </Chip>
+  );
+}
+export function ScheduleLegend({ children }) {
+  return (
+    <div className="calendar-legend">
+      {Object.entries(TASK_COLORS).map(([task, color]) => (
+        <span key={task}><i className="session-dot" style={{ background: color }} />{task}</span>
+      ))}
+      <span><i className="session-dot" style={{ background: BREAK_COLOR }} />Break</span>
+      {children && <span className="muted">{children}</span>}
+    </div>
   );
 }
 export function Stats({ summary }) {
@@ -141,13 +155,11 @@ export function Brand() {
     <a
       href="/data-portal/"
       className="brand"
-      aria-label="ViewRecovery Data Portal"
+      aria-label="BRIGHT Data Portal"
     >
-      <span className="brand-icon">
-        <Activity size={22} />
-      </span>
+      <img className="brand-logo" src="/img/vpp.png" alt="VPP lab" />
       <span>
-        ViewRecovery<small>Data Portal</small>
+        BRIGHT<small>Data Portal</small>
       </span>
     </a>
   );
@@ -165,8 +177,16 @@ export function PageTitle({ title, subtitle, actions }) {
 }
 export function RefreshButton({ onPress, isLoading }) {
   return (
-    <Button size="sm" variant="flat" onPress={onPress} isLoading={isLoading}>
-      Refresh
+    <Button
+      size="sm"
+      variant="flat"
+      className="portal-refresh"
+      aria-label="Refresh"
+      onPress={onPress}
+      isLoading={isLoading}
+      startContent={!isLoading && <RefreshCw size={16} />}
+    >
+      <span className="refresh-label">Refresh</span>
     </Button>
   );
 }

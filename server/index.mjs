@@ -8,7 +8,7 @@ import {openDatabase, projectRoot} from '../scripts/lib/postgres.mjs';
 import {ingest, overview, sources, rows, fail} from './store.mjs';
 import {AUTH_PATH,createPortalAuth} from './portal-auth.mjs';
 import {portalFiles,portalTrends,portalPreview,portalDownload} from './portal-store.mjs';
-import {portalUsers,managePortalUser,portalPreferences,savePortalPreferences,portalSchedule,savePortalSchedule,importScheduleCsv,exportScheduleCsv} from './portal-workspace.mjs';
+import {portalUsers,managePortalUser,portalPreferences,savePortalPreferences,portalSchedule,savePortalSchedule,portalScheduleOverview} from './portal-workspace.mjs';
 
 const require=createRequire(import.meta.url);
 const d3Bundle=join(dirnamePackage('d3'),'dist/d3.min.js');
@@ -68,7 +68,6 @@ export function createServer(pool, {dist = join(projectRoot,'dist'), viewerToken
           if (url.pathname==='/data-portal/api/users' && ['POST','PATCH','DELETE'].includes(request.method)) return json(response,200,await managePortalUser(pool,session,request.method,await body(request)));
           if (url.pathname==='/data-portal/api/preferences' && request.method==='PUT') return json(response,200,await savePortalPreferences(pool,session,await body(request)));
           if (url.pathname==='/data-portal/api/schedule' && request.method==='PUT') return json(response,200,await savePortalSchedule(pool,session,await body(request)));
-          if (url.pathname==='/data-portal/api/schedule/import' && request.method==='POST') return json(response,200,await importScheduleCsv(pool,session,(await body(request)).csv));
           fail('Method not allowed',405);
         }
         if (request.method!=='GET') fail('Method not allowed',405);
@@ -76,11 +75,7 @@ export function createServer(pool, {dist = join(projectRoot,'dist'), viewerToken
         if (url.pathname==='/data-portal/api/users') return json(response,200,await portalUsers(pool,session));
         if (url.pathname==='/data-portal/api/preferences') return json(response,200,await portalPreferences(pool,session,url.searchParams.get('user_id')));
         if (url.pathname==='/data-portal/api/schedule') return json(response,200,await portalSchedule(pool,session,url.searchParams.get('user_id')));
-        if (url.pathname==='/data-portal/api/schedule/export') {
-          const csv=await exportScheduleCsv(pool,session);
-          response.writeHead(200,{'Content-Type':'text/csv; charset=utf-8','Content-Disposition':'attachment; filename="schedule.csv"'});
-          return response.end(csv);
-        }
+        if (url.pathname==='/data-portal/api/schedule/overview') return json(response,200,await portalScheduleOverview(pool,session));
         if (url.pathname==='/data-portal/api/files') return json(response,200,await portalFiles(pool,session,url.searchParams));
         if (url.pathname==='/data-portal/api/user-trends') return json(response,200,await portalTrends(pool,session));
         if (url.pathname==='/data-portal/api/preview') return json(response,200,await portalPreview(pool,session,url.searchParams.get('file') || ''));

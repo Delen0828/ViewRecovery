@@ -9,7 +9,6 @@ import {
   Select,
   SelectItem,
   Avatar,
-  Chip,
   Spinner,
   Modal,
   ModalContent,
@@ -30,6 +29,7 @@ import {
 } from "./ui.jsx";
 import { DashboardCalendar, NextSession } from "./schedule.jsx";
 import ScheduleEditor from "./schedule.jsx";
+import ScheduleGantt from "./schedule-gantt.jsx";
 import { ProgressCharts } from "./progress.jsx";
 import StudySetup from "./study-setup.jsx";
 import ManageUser, { AddUserModal } from "./accounts.jsx";
@@ -107,38 +107,12 @@ function Login({ onSignedIn, sessionError }) {
         <Brand />
       </header>
       <div className="login-layout">
-        <div className="login-intro">
-          <span className="eyebrow">Your study, in view</span>
-          <h1>
-            A clearer view
-            <br />
-            of your progress.
-          </h1>
-          <p>
-            See your schedule, prepare your study setup, and follow every
-            session in one place.
-          </p>
-          <div className="intro-feature">
-            <span>01</span>
-            <div>
-              <strong>Know what’s next</strong>
-              <p>Your study schedule, at a glance.</p>
-            </div>
-          </div>
-          <div className="intro-feature">
-            <span>02</span>
-            <div>
-              <strong>Make progress visible</strong>
-              <p>Explore sessions, accuracy, and study time.</p>
-            </div>
-          </div>
-        </div>
         <Panel className="login-card">
-          <h2>{signup ? "Create user account" : "Welcome back"}</h2>
+          <h2>{signup ? "Create user account" : "Data Portal"}</h2>
           <p className="muted">
             {signup
               ? "Use your study team’s invitation code."
-              : "Sign in to your data portal."}
+              : "Welcome back"}
           </p>
           <form onSubmit={submit} className="login-form">
             <Notice error>{error}</Notice>
@@ -224,7 +198,9 @@ function Login({ onSignedIn, sessionError }) {
           </form>
         </Panel>
       </div>
-      <footer>ViewRecovery · Visual training research</footer>
+      <footer>
+        Copyright 2026. Developed by Songwen Hu, powering BRIGHT in VPP lab
+      </footer>
     </div>
   );
 }
@@ -232,9 +208,23 @@ function UserList({ users, data, selected, onSelect, onAdd }) {
   const [search, setSearch] = useState("");
   const listRef = useRef(null);
   useEffect(() => {
-    listRef.current
-      ?.querySelector('[aria-pressed="true"]')
-      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const list = listRef.current;
+    if (!list) return;
+    const revealSelected = () => {
+      const active = list.querySelector('[aria-pressed="true"]');
+      if (!active) return;
+      const bounds = list.getBoundingClientRect();
+      const item = active.getBoundingClientRect();
+      const top = item.top < bounds.top ? item.top - bounds.top
+        : item.bottom > bounds.bottom ? item.bottom - bounds.bottom : 0;
+      const left = item.left < bounds.left ? item.left - bounds.left
+        : item.right > bounds.right ? item.right - bounds.right : 0;
+      list.scrollBy({ top, left });
+    };
+    revealSelected();
+    const observer = new ResizeObserver(revealSelected);
+    observer.observe(list);
+    return () => observer.disconnect();
   }, [selected]);
   const shown = users.filter((user) =>
     user.user_id.toLowerCase().includes(search.toLowerCase()),
@@ -320,6 +310,8 @@ function Portal() {
     [error, setError] = useState(""),
     [preferences, setPreferences] = useState(null),
     [schedule, setSchedule] = useState(null),
+    [allSessions, setAllSessions] = useState([]),
+    [draftSchedule, setDraftSchedule] = useState(null),
     [detailError, setDetailError] = useState(""),
     [add, setAdd] = useState(false),
     [preview, setPreview] = useState(
@@ -349,6 +341,7 @@ function Portal() {
       setData(null);
       setPreferences(null);
       setSchedule(null);
+      setAllSessions([]);
       setSessionError("Your session expired. Sign in again.");
     };
     window.addEventListener("portal-session-expired", expired);
@@ -363,6 +356,7 @@ function Portal() {
       const results = await Promise.allSettled([
         api("/data-portal/api/user-trends"),
         ...(admin ? [api("/data-portal/api/users")] : []),
+        ...(admin ? [api("/data-portal/api/schedule/overview")] : []),
       ]);
       const errors = [];
       if (results[0].status === "fulfilled") setData(results[0].value);
@@ -380,6 +374,8 @@ function Portal() {
                   "";
           });
         } else errors.push(results[1].reason.message);
+        if (results[2].status === "fulfilled") setAllSessions(results[2].value.sessions);
+        else errors.push(results[2].reason.message);
       } else setSelected(account.user_id);
       setError(errors.join(" "));
       setLoading(false);
@@ -453,12 +449,6 @@ function Portal() {
       url.searchParams.delete("view");
       history.replaceState({}, "", url);
     });
-  const imported = async () => {
-    const result = await api(
-      "/data-portal/api/schedule?" + new URLSearchParams({ user_id: selected }),
-    );
-    setSchedule(result);
-  };
   const logout = async () => {
     setLogoutBusy(true);
     setError("");
@@ -470,6 +460,7 @@ function Portal() {
       setUsers([]);
       setPreferences(null);
       setSchedule(null);
+      setAllSessions([]);
       setPreview("");
       setSessionError("");
     } catch (err) {
@@ -524,7 +515,7 @@ function Portal() {
         </Empty>
       </Panel>
     );
-  else if (admin && !hasAccount && ["schedule", "accounts"].includes(tab))
+  else if (admin && !hasAccount && tab === "schedule")
     content = (
       <Panel>
         <Empty
@@ -587,8 +578,14 @@ function Portal() {
         <ScheduleEditor
           key={selected + refreshKey}
           schedule={schedule}
-          onSaved={setSchedule}
-          onImported={imported}
+          onSaved={(result) => {
+            setSchedule(result);
+            setAllSessions((current) => [
+              ...current.filter((row) => row.user_id !== result.user_id),
+              ...result.sessions,
+            ]);
+          }}
+          onPreviewChange={setDraftSchedule}
           onDirtyChange={setDirty}
         />
       ) : null;
@@ -603,12 +600,15 @@ function Portal() {
           await refresh(id);
         }}
         onDeleted={async () => {
-          await refresh();
+          setDirty(false);
+          setPreferences(null);
+          setSchedule(null);
+          await refresh("");
         }}
       />
     ) : null;
   else if (tab === "downloads")
-    content = <Files key={selected} userId={selected} onPreview={setPreview} />;
+    content = <Files key={selected} userId={selected} refreshKey={refreshKey} onPreview={setPreview} />;
   return (
     <div className="portal-shell">
       <header className="portal-topbar">
@@ -633,6 +633,16 @@ function Portal() {
           </Tabs>
         </nav>
         <div className="account-menu">
+          <RefreshButton
+            onPress={() =>
+              guard(() => {
+                setDirty(false);
+                refresh();
+                setRefreshKey((value) => value + 1);
+              })
+            }
+            isLoading={loading}
+          />
           <Avatar
             name={admin ? "AD" : account.user_id.slice(0, 2)}
             size="sm"
@@ -658,28 +668,18 @@ function Portal() {
         <PageTitle
           title={title}
           subtitle={subtitle}
-          actions={
-            <div className="button-row">
-              {admin && selected && (
-                <Chip variant="flat" size="sm" className="selected-user-chip">
-                  User {selected}
-                </Chip>
-              )}
-              <RefreshButton
-                onPress={() =>
-                  guard(() => {
-                    setDirty(false);
-                    refresh();
-                    setRefreshKey((value) => value + 1);
-                  })
-                }
-                isLoading={loading}
-              />
-            </div>
-          }
         />
         <Notice error>{error}</Notice>
-        <div className={admin ? "admin-layout" : "user-layout"}>
+        {admin && tab === "schedule" && (
+          <ScheduleGantt
+            users={users}
+            sessions={draftSchedule ? [
+              ...allSessions.filter((row) => row.user_id !== draftSchedule.user_id),
+              ...draftSchedule.sessions,
+            ] : allSessions}
+          />
+        )}
+        <div className={admin ? `admin-layout ${tab === "schedule" ? "schedule-layout" : ""}` : "user-layout"}>
           {admin && (
             <UserList
               users={users}
@@ -709,10 +709,7 @@ function Portal() {
         </div>
       </main>
       <footer className="portal-footer">
-        <span>ViewRecovery</span>
-        <span>
-          Visual training research · All session times in Eastern Time
-        </span>
+        Copyright 2026. Developed by Songwen Hu, powering BRIGHT in VPP lab
       </footer>
       <Modal isOpen={!!pending} onClose={() => setPending(null)}>
         <ModalContent>

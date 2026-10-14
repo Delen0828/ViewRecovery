@@ -8,6 +8,7 @@ import {
   ModalBody,
   ModalFooter,
   Chip,
+  Checkbox,
 } from "@heroui/react";
 import { Save, Trash2, UserPlus, Eye, EyeOff } from "lucide-react";
 import { Panel, Notice, api, dateLabel } from "./ui.jsx";
@@ -116,12 +117,14 @@ export default function ManageUser({
   onDeleted,
   onDirtyChange,
 }) {
+  const hasAccount = user.has_account !== false;
   const [id, setId] = useState(user.user_id),
     [password, setPassword] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
-    [confirm, setConfirm] = useState(false);
+    [confirm, setConfirm] = useState(false),
+    [deleteData, setDeleteData] = useState(false);
   const changed = id !== user.user_id || !!password;
   useEffect(() => {
     onDirtyChange(changed);
@@ -156,7 +159,7 @@ export default function ManageUser({
     try {
       await api("/data-portal/api/users", {
         method: "DELETE",
-        body: JSON.stringify({ user_id: user.user_id }),
+        body: JSON.stringify({ user_id: user.user_id, delete_data: !hasAccount || deleteData }),
       });
       await onDeleted();
       setConfirm(false);
@@ -169,10 +172,11 @@ export default function ManageUser({
   return (
     <div className="account-layout">
       <Panel
-        title="Account details"
-        subtitle={`Manage access for User ${user.user_id}.`}
+        title={hasAccount ? "Account details" : "Recorded data"}
+        subtitle={hasAccount ? `Manage access for User ${user.user_id}.` : `Manage recorded experiment data for User ${user.user_id}.`}
       >
-        <form className="account-form" onSubmit={save}>
+        <Notice error>{!hasAccount && error}</Notice>
+        {hasAccount ? <form className="account-form" onSubmit={save}>
           <Notice error>{error}</Notice>
           <Notice>{message}</Notice>
           <Input
@@ -204,20 +208,22 @@ export default function ManageUser({
           >
             Save account
           </Button>
-        </form>
+        </form> : <p className="muted">This user has recorded data only. Deleting the user also deletes all their recorded experiment data.</p>}
         <div className="delete-account">
           <div>
-            <h3>Delete account</h3>
+            <h3>{hasAccount ? "Delete account" : "Delete user and data"}</h3>
             <p className="muted">
-              Removes access, setup, and schedules. Recorded experiment data is
-              retained.
+              {hasAccount ? "Removes access, setup, and schedules. You can also delete recorded experiment data." : "Permanently removes recorded sessions, saved results, and imported files."}
             </p>
           </div>
           <Button
             color="danger"
             variant="flat"
             startContent={<Trash2 size={16} />}
-            onPress={() => setConfirm(true)}
+            onPress={() => {
+              setDeleteData(!hasAccount);
+              setConfirm(true);
+            }}
             isDisabled={busy}
           >
             Delete user
@@ -226,13 +232,13 @@ export default function ManageUser({
       </Panel>
       <Panel title="User overview">
         <div className="account-overview">
-          <Chip color="primary" variant="flat">
-            Participant
+          <Chip color={hasAccount ? "primary" : "default"} variant="flat">
+            {hasAccount ? "Participant" : "Data only"}
           </Chip>
           <dl>
             <div>
               <dt>Created</dt>
-              <dd>{dateLabel(user.created_at)}</dd>
+              <dd>{user.created_at ? dateLabel(user.created_at) : "—"}</dd>
             </div>
             <div>
               <dt>Sessions recorded</dt>
@@ -258,8 +264,19 @@ export default function ManageUser({
           <ModalHeader>Delete User {user.user_id}?</ModalHeader>
           <ModalBody>
             <p>
-              The user will lose access and their setup and schedules will be
-              removed. Recorded experiment data will be kept.
+              {hasAccount ? "The user will lose access and their setup and schedules will be removed." : "This user’s recorded experiment data will be permanently deleted."}
+            </p>
+            {hasAccount && <Checkbox
+              isSelected={deleteData}
+              onValueChange={setDeleteData}
+              isDisabled={busy}
+            >
+              Also delete recorded experiment data
+            </Checkbox>}
+            <p className="muted">
+              {(!hasAccount || deleteData)
+                ? "All recorded sessions, saved results, and imported files for this user will be permanently deleted. This cannot be undone."
+                : "Recorded experiment data will be kept. Users with retained data remain in the list as Data only."}
             </p>
             <Notice error>{error}</Notice>
           </ModalBody>
@@ -272,7 +289,7 @@ export default function ManageUser({
               Cancel
             </Button>
             <Button color="danger" onPress={remove} isLoading={busy}>
-              Delete account
+              {!hasAccount ? "Delete user and data" : deleteData ? "Delete account and data" : "Delete account"}
             </Button>
           </ModalFooter>
         </ModalContent>
