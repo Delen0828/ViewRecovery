@@ -8,7 +8,9 @@ keeps existing account credentials and recorded data. For development, start
 Participants have three panels:
 
 - **Dashboard:** a HeroUI calendar, daily sessions, current/upcoming session,
-  trial/session/accuracy/study-time summaries, and pinned progress charts.
+  a **Start Training** link to the scheduled study task, trial/session/accuracy/study-time
+  summaries, and pinned progress charts. Training is disabled during scheduled
+  breaks and when there is no current or upcoming study session.
 - **Study Setup:** the experiment's resolution, physical screen size, viewing
   distance, task, and X/Y offsets, including calibrated grid, draggable position
   markers, keyboard adjustment, and pixels-per-degree readouts. Saved to SQL.
@@ -18,6 +20,10 @@ Participants have three panels:
 Administrators share a searchable user selector across Schedule, Manage Users,
 Data Analytics, and File Download. Users without accounts but with retained data
 are labeled **Data only** and remain available in analytics and downloads.
+Manage Users includes **Study parameters**, with the same screen, task, stimulus
+offsets, and monitor preview controls as the participant's Study Setup panel.
+Administrators can save these settings for the selected participant; the changes
+appear in that participant's portal and load when they next enter the experiment.
 Account passwords are hashed. Password resets and ID changes revoke existing
 sessions. Changing an ID updates database ownership, setup, and schedules while
 preserving original experiment rows and archive bytes. Deletion removes access,
@@ -77,9 +83,26 @@ The portal and experiment share defaults in `src/study-setup.js`. Portal
 calibration matches the experiment's physical tangent conversion separately for
 each axis. `GET /data-portal/api/preferences` returns the authenticated user's
 saved `setup` with `task`, `resWidth`, `resHeight`, `screenWidth`, `screenHeight`,
-`viewingDistance`, `xOffsetDeg`, and `yOffsetDeg`. This endpoint is ready for
-future experiment import; the experiment currently retains manual setup.
-Administrators can inspect a user's preferences with `?user_id=A123`.
+`viewingDistance`, `xOffsetDeg`, and `yOffsetDeg`.
+Administrators can inspect a user's preferences with `?user_id=A123` and update
+them with `PUT /data-portal/api/preferences`, including `user_id` in the JSON body.
+
+Clicking **Continue** in the main study checks the entered User ID against registered participant accounts
+using `GET /api/experiment/participant?user_id=A123`. This ID-only endpoint returns
+only the matched ID, study setup, and whether setup has been saved; it does not
+require a portal login. Unknown, deleted, previous (renamed), admin, and data-only IDs cannot
+continue. Any ID can be entered and submitted. Unknown IDs receive a warning and
+a link to portal registration with the ID prefilled; **Continue** remains available
+to try again. Lookup failures also allow retrying with **Continue**. A matched ID
+loads the participant's settings and immediately advances to the next page.
+
+After validation, saved monitor dimensions, resolution, viewing distance, and
+stimulus offsets populate **Screen & Stimulus** automatically. Accounts without
+saved setup use the shared defaults. Participants can review and adjust values
+for the current run; edits in the experiment do not overwrite portal settings.
+The task URL determines the task, including when saved setup names a different
+task. **Start Training** opens that scheduled task URL with `?user_id=A123` to
+prefill the participant's ID, which is validated when they click **Continue**.
 
 The portal APIs enforce account scopes and admin permissions. Mutations require
 a trusted Origin and JSON. The all-user scheduling overview is admin-only.
@@ -91,6 +114,7 @@ npm run build
 npm run db:start
 npm test
 npm run test:portal
+npm run test:study-portal
 ```
 
 The browser suite checks both roles, setup save/reload and dragging, chart

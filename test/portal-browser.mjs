@@ -9,6 +9,7 @@ import {openDatabase,projectRoot} from '../scripts/lib/postgres.mjs';
 import {createServer} from '../server/index.mjs';
 import {ingest,hash} from '../server/store.mjs';
 import {today,startOfWeek} from '@internationalized/date';
+import {DEFAULT_STUDY_SETUP} from '../src/study-setup.js';
 
 const pool=await openDatabase();
 const participant='P'+randomUUID().replaceAll('-','').slice(0,8),other='P'+randomUUID().replaceAll('-','').slice(0,8);
@@ -322,8 +323,68 @@ try {
   await page.screenshot({path:join(projectRoot,'test/results/portal-files-mobile.png'),fullPage:true});
   await page.setViewportSize({width:1440,height:1000});
   await tab('Manage Users').click();
+  await page.locator('.user-button').filter({hasText:participant}).click();
+  const studyParameters=page.getByRole('region',{name:'Study parameters',exact:true});
+  const setupField=key=>key==='viewingDistance'
+    ? studyParameters.getByLabel('Viewing distance',{exact:true}) : studyParameters.locator('#'+key);
+  await expect(studyParameters.getByRole('heading',{name:'Screen & stimulus',exact:true})).toBeVisible();
+  await expect(page.locator('#resWidth')).toHaveValue('2560');
+  await expect(page.locator('#xOffsetDeg')).toHaveValue('7');
+  const adminSetup={...DEFAULT_STUDY_SETUP,task:'Bar',resWidth:2560,resHeight:1440,
+    screenWidth:60,screenHeight:34,viewingDistance:65,xOffsetDeg:6.5,yOffsetDeg:-3.5};
+  await choose('Task','Bar');
+  for (const [key,value] of Object.entries(adminSetup))
+    if (key!=='task') await setupField(key).fill(String(value));
+  await expect(studyParameters.locator('[data-position-marker]')).toHaveCount(2);
+  await page.locator('#screenWidth').fill('0');
+  await expect(studyParameters.getByRole('button',{name:'Save setup',exact:true})).toBeDisabled();
+  await page.locator('#screenWidth').fill(String(adminSetup.screenWidth));
+  await page.locator('.account-form').getByLabel('User ID',{exact:true}).fill('Renamed'+participant);
+  await page.getByRole('button',{name:'Save account'}).click();
+  await expect(page.locator('.account-form .notice.error')).toHaveText('Save study parameters before changing the User ID.');
+  await page.locator('.account-form').getByLabel('User ID',{exact:true}).fill(participant);
   await page.getByLabel('New password',{exact:true}).fill('changed-password');await page.getByRole('button',{name:'Save account'}).click();
-  await expect(page.locator('.notice.success')).toHaveText('Account updated.');
+  await expect(page.locator('.account-form .notice.success')).toHaveText('Account updated.');
+  // Saving account access must preserve unsaved study parameters and their guard.
+  await page.locator('.user-button').filter({hasText:other}).click();
+  await expect(page.getByRole('dialog')).toContainText('Discard unsaved changes?');
+  await page.getByRole('button',{name:'Keep editing',exact:true}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(setupField('viewingDistance')).toHaveValue('65');
+  await page.getByLabel('New password',{exact:true}).fill('draft-password');
+  await studyParameters.getByRole('button',{name:'Save setup',exact:true}).click();
+  await expect(studyParameters.locator('.notice.success')).toHaveText('Study setup saved.');
+  const savedPreferences=await (await context.request.get(base+'/data-portal/api/preferences?user_id='+participant)).json();
+  assert.equal(savedPreferences.user_id,participant);
+  assert.equal(savedPreferences.setup_saved,true);
+  assert.deepEqual(savedPreferences.setup,adminSetup);
+  // Saving parameters must still guard unsaved account edits.
+  await page.locator('.user-button').filter({hasText:other}).click();
+  await expect(page.getByRole('dialog')).toContainText('Discard unsaved changes?');
+  await page.getByRole('button',{name:'Keep editing',exact:true}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByLabel('New password',{exact:true}).fill('');
+  await expect(page.getByLabel('New password',{exact:true})).toHaveValue('');
+  await expect(page.getByRole('button',{name:'Save account'})).toBeDisabled();
+  await page.locator('.user-button').filter({hasText:other}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('#resWidth')).toHaveValue(String(DEFAULT_STUDY_SETUP.resWidth));
+  assert.deepEqual((await (await context.request.get(base+'/data-portal/api/preferences?user_id='+other)).json()).setup,DEFAULT_STUDY_SETUP);
+  await page.locator('#resWidth').fill('2000');
+  await studyParameters.getByRole('button',{name:'Reset setup to defaults',exact:true}).click();
+  await expect(page.locator('#resWidth')).toHaveValue(String(DEFAULT_STUDY_SETUP.resWidth));
+  await page.locator('.user-button').filter({hasText:participant}).click();
+  await expect(setupField('viewingDistance')).toHaveValue('65');
+  await page.reload();
+  await page.locator('.user-button').filter({hasText:participant}).click();
+  for (const [key,value] of Object.entries(adminSetup))
+    if (key!=='task') await expect(setupField(key)).toHaveValue(String(value));
+  await expect(studyParameters.locator('[data-position-marker]')).toHaveCount(2);
+  await page.screenshot({path:join(projectRoot,'test/results/portal-admin-study-desktop.png'),fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
+  await page.screenshot({path:join(projectRoot,'test/results/portal-admin-study-mobile.png'),fullPage:true});
+  await page.setViewportSize({width:1440,height:1000});
   await page.getByRole('button',{name:'Add user',exact:true}).click();
   await page.getByRole('dialog').getByLabel('User ID',{exact:true}).fill(signupUser);
   await page.getByRole('dialog').getByLabel('Password',{exact:true}).fill('signup-password');
@@ -340,6 +401,7 @@ try {
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.locator('.user-button').filter({hasText:other}).click();
   await expect(page.getByRole('heading',{name:'Recorded data',exact:true})).toBeVisible();
+  await expect(studyParameters).toHaveCount(0);
   await page.getByRole('button',{name:'Delete user',exact:true}).click();
   await expect(page.getByRole('checkbox',{name:'Also delete recorded experiment data'})).toHaveCount(0);
   await page.getByRole('button',{name:'Delete user and data',exact:true}).click();
@@ -379,6 +441,12 @@ try {
   await page.getByRole('button',{name:'Sign In',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Dashboard',exact:true})).toBeVisible();
   await expect(page.locator('.agenda-item')).toHaveCount(5);
+  const participantPreferences=await (await context.request.get(base+'/data-portal/api/preferences')).json();
+  assert.deepEqual(participantPreferences.setup,adminSetup);
+  await tab('Study Setup').click();
+  await expect(page.getByLabel('Viewing distance',{exact:true})).toHaveValue('65');
+  await expect(page.locator('#xOffsetDeg')).toHaveValue('6.5');
+  await tab('Dashboard').click();
   const dots=page.locator('.agenda-item .session-dot');
   for (const [index,[,color]] of palette.entries()) await expect(dots.nth(index)).toHaveCSS('background-color',color);
   const selectedDay=page.locator('.portal-calendar-day[data-selected="true"]');

@@ -7,7 +7,7 @@ import jsPsychFullscreen from "@jspsych/plugin-fullscreen";
 
 import './style.css';
 import { CENTRAL_FIXATION_TASK_CONFIG } from './experiment-config.js';
-import { DEFAULT_STUDY_SETUP } from './study-setup.js';
+import { DEFAULT_STUDY_SETUP, validateStudySetup, normalizeStudySetup } from './study-setup.js';
 import { createExperimentDataSync } from './experiment-data.js';
 const FULLSCREEN_PROMPT_ID = 'fullscreen-return-prompt';
 const FULLSCREEN_STATUS_ID = 'fullscreen-return-status';
@@ -571,6 +571,8 @@ const DEFAULT_STIMULUS_POSITION_OFFSET_DEGREES = {
   y: DEFAULT_STUDY_SETUP.yOffsetDeg
 };
 let latestCalculatorData = null;
+let studyParticipant = null;
+let studySetup = { ...DEFAULT_STUDY_SETUP };
 const stimulusPositionSettings = {
   xOffsetDeg: DEFAULT_STIMULUS_POSITION_OFFSET_DEGREES.x,
   yOffsetDeg: DEFAULT_STIMULUS_POSITION_OFFSET_DEGREES.y,
@@ -687,7 +689,7 @@ const experimentRunId = crypto.randomUUID();
 const experimentDataSync = createExperimentDataSync({
   getRun: () => ({
     id: experimentRunId,
-    user_id: getCurrentUserIdForFilename(),
+    user_id: studyParticipant?.user_id || getCurrentUserIdForFilename(),
     task: selectedTask,
     run_timestamp: experimentRunTimestamp
   })
@@ -3470,9 +3472,11 @@ timeline.push({
   stimulus: `
     <div class="user-id-container">
       <div class="user-id-title">Enter Your User ID</div>
-      <div class="user-id-instruction">Please enter your participant ID</div>
-      <input type="text" id="user-id-input" class="user-id-input" placeholder="e.g., A123" maxlength="10">
-      <div id="error-message" class="error-message">Letters and numbers only</div>
+      <div class="user-id-instruction">Enter the exact User ID from your data portal account.</div>
+      <input type="text" id="user-id-input" class="user-id-input" aria-label="User ID" aria-describedby="user-id-status error-message" placeholder="e.g., A123" maxlength="100" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <div id="user-id-status" class="user-id-status" role="status"></div>
+      <div id="error-message" class="error-message" role="alert"></div>
+      <p id="user-id-register" class="user-id-help" hidden><a id="user-id-register-link">Register in the data portal</a>, then return here to enter your User ID.</p>
     </div>
   `,
   choices: ['Continue'],
@@ -3481,57 +3485,81 @@ timeline.push({
     const continueBtn = document.getElementById('continue-btn');
     const userIdInput = document.getElementById('user-id-input');
     const errorMessage = document.getElementById('error-message');
-    
-    // Disable continue button initially
-    continueBtn.disabled = true;
-    continueBtn.style.opacity = '0.5';
-    
-    const participantIdPattern = /^[A-Za-z0-9]+$/;
+    const status = document.getElementById('user-id-status');
+    const register = document.getElementById('user-id-register');
+    let participant = null;
+    let controller;
 
-    // Store user ID value in a variable that persists
-    let currentUserId = '';
-    
-    // Validate input on each keystroke
-    userIdInput.addEventListener('input', function() {
-      const value = this.value;
-      const isValid = participantIdPattern.test(value);
-      currentUserId = value; // Store the current value
-      
-      if (isValid) {
-        errorMessage.style.display = 'none';
-        continueBtn.disabled = false;
-        continueBtn.style.opacity = '1';
-      } else {
-        if (value.length > 0) {
-          errorMessage.style.display = 'block';
-        } else {
-          errorMessage.style.display = 'none';
-        }
-        continueBtn.disabled = true;
-        continueBtn.style.opacity = '0.5';
-      }
-    });
-    
-    // Store the user ID when continue button is clicked
-    continueBtn.addEventListener('click', function() {
-      if (participantIdPattern.test(currentUserId)) {
-        // Store user ID in jsPsych data for all subsequent trials
-        jsPsych.data.addProperties({
-          user_id: currentUserId
-        });
-      }
-    });
-    
-    // Focus on input field
-    userIdInput.focus();
-  },
-  on_finish: function(data) {
-    // The user ID should already be stored in jsPsych data from the button click
-    const allData = jsPsych.data.get();
-    const userIdFromData = allData.values()[0]?.user_id;
-    if (userIdFromData) {
-      data.user_id = userIdFromData;
+    function enableContinue(enabled) {
+      continueBtn.disabled = !enabled;
+      continueBtn.style.opacity = enabled ? '1' : '0.5';
     }
+
+    async function lookupParticipant(id, requestController) {
+      try {
+        const response = await fetch(`/api/experiment/participant?${new URLSearchParams({user_id: id})}`, {
+          cache: 'no-store',
+          signal: AbortSignal.any([requestController.signal, AbortSignal.timeout(10000)])
+        });
+        const result = await response.json().catch(() => {
+          throw new Error('Unable to check your User ID. Please retry.');
+        });
+        if (requestController.signal.aborted || userIdInput.value !== id) return;
+        if (!response.ok) {
+          if (response.status === 400 || response.status === 404) {
+            register.hidden = false;
+            document.getElementById('user-id-register-link').href =
+              `/data-portal/index.html?${new URLSearchParams({register: '1', user_id: id})}`;
+            throw new Error('User ID not found. Please register in the data portal before starting the study.');
+          }
+          throw new Error('Unable to check your User ID. Please retry.');
+        }
+        if (result.user_id !== id || validateStudySetup(result.setup))
+          throw new Error('Unable to load your study setup. Please retry or review your settings in the data portal.');
+        participant = {...result, setup: normalizeStudySetup(result.setup)};
+        enableContinue(true);
+        // Let jsPsych's normal response handler advance after this lookup succeeds.
+        continueBtn.click();
+      } catch (error) {
+        if (requestController.signal.aborted || userIdInput.value !== id) return;
+        status.textContent = '';
+        errorMessage.textContent = error.name === 'TimeoutError' || error instanceof TypeError
+          ? 'Unable to check your User ID. Check your connection and retry.' : error.message;
+        errorMessage.style.display = 'block';
+        enableContinue(true);
+      }
+    }
+
+    function resetLookup() {
+      controller?.abort();
+      participant = null;
+      enableContinue(true);
+      errorMessage.style.display = 'none';
+      status.textContent = '';
+      register.hidden = true;
+    }
+
+    userIdInput.addEventListener('input', resetLookup);
+    // Capture runs before jsPsych's response handler advances to calibration.
+    continueBtn.addEventListener('click', function(event) {
+      if (!participant || participant.user_id !== userIdInput.value) {
+        event.stopImmediatePropagation();
+        resetLookup();
+        status.textContent = 'Checking your User ID and loading study settings…';
+        enableContinue(false);
+        controller = new AbortController();
+        lookupParticipant(userIdInput.value, controller);
+        return;
+      }
+      studyParticipant = participant;
+      studySetup = {...participant.setup};
+      stimulusPositionSettings.xOffsetDeg = studySetup.xOffsetDeg;
+      stimulusPositionSettings.yOffsetDeg = studySetup.yOffsetDeg;
+      jsPsych.data.addProperties({user_id: participant.user_id});
+    }, {capture: true});
+
+    userIdInput.value = new URLSearchParams(window.location.search).get('user_id') || '';
+    userIdInput.focus();
   }
 });
 
@@ -3556,11 +3584,11 @@ timeline.push({
               <div class="setup-pair">
                 <label class="input-group" for="resolution-width">
                   <span class="input-label">Width</span>
-                  <input type="number" id="resolution-width" class="calculator-input" min="1" max="10000" step="1" value="${DEFAULT_STUDY_SETUP.resWidth}">
+                  <input type="number" id="resolution-width" class="calculator-input" min="1" max="10000" step="1" value="${studySetup.resWidth}">
                 </label>
                 <label class="input-group" for="resolution-height">
                   <span class="input-label">Height</span>
-                  <input type="number" id="resolution-height" class="calculator-input" min="1" max="10000" step="1" value="${DEFAULT_STUDY_SETUP.resHeight}">
+                  <input type="number" id="resolution-height" class="calculator-input" min="1" max="10000" step="1" value="${studySetup.resHeight}">
                 </label>
               </div>
             </section>
@@ -3569,16 +3597,16 @@ timeline.push({
               <div class="setup-pair">
                 <label class="input-group" for="screen-width">
                   <span class="input-label">Width</span>
-                  <input type="number" id="screen-width" class="calculator-input" min="0.1" max="10000" step="0.1" value="${DEFAULT_STUDY_SETUP.screenWidth}">
+                  <input type="number" id="screen-width" class="calculator-input" min="0.1" max="10000" step="0.1" value="${studySetup.screenWidth}">
                 </label>
                 <label class="input-group" for="screen-height">
                   <span class="input-label">Height</span>
-                  <input type="number" id="screen-height" class="calculator-input" min="0.1" max="10000" step="0.1" value="${DEFAULT_STUDY_SETUP.screenHeight}">
+                  <input type="number" id="screen-height" class="calculator-input" min="0.1" max="10000" step="0.1" value="${studySetup.screenHeight}">
                 </label>
               </div>
               <label class="input-group setup-distance" for="viewing-distance">
                 <span class="input-label">Viewing distance</span>
-                <input type="number" id="viewing-distance" class="calculator-input" min="0.1" max="10000" step="0.5" value="${DEFAULT_STUDY_SETUP.viewingDistance}" aria-label="Viewing distance in centimeters">
+                <input type="number" id="viewing-distance" class="calculator-input" min="0.1" max="10000" step="0.5" value="${studySetup.viewingDistance}" aria-label="Viewing distance in centimeters">
               </label>
             </section>
             <section class="input-section" aria-labelledby="offset-title">

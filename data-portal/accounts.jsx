@@ -9,9 +9,11 @@ import {
   ModalFooter,
   Chip,
   Checkbox,
+  Spinner,
 } from "@heroui/react";
 import { Save, Trash2, UserPlus, Eye, EyeOff } from "lucide-react";
 import { Panel, Notice, api, dateLabel } from "./ui.jsx";
+import StudySetup from "./study-setup.jsx";
 export function PasswordInput({
   value,
   onValueChange,
@@ -113,6 +115,8 @@ export function AddUserModal({ isOpen, onClose, onSaved }) {
 export default function ManageUser({
   user,
   summary,
+  preferences,
+  onPreferencesSaved,
   onSaved,
   onDeleted,
   onDirtyChange,
@@ -124,16 +128,21 @@ export default function ManageUser({
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
     [confirm, setConfirm] = useState(false),
-    [deleteData, setDeleteData] = useState(false);
+    [deleteData, setDeleteData] = useState(false),
+    [setupDirty, setSetupDirty] = useState(false);
   const changed = id !== user.user_id || !!password;
   useEffect(() => {
-    onDirtyChange(changed);
-  }, [changed, onDirtyChange]);
+    onDirtyChange(changed || setupDirty);
+  }, [changed, setupDirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
   const save = async (event) => {
     event.preventDefault();
     setError("");
     setMessage("");
+    if (id !== user.user_id && setupDirty) {
+      setError("Save study parameters before changing the User ID.");
+      return;
+    }
     setBusy(true);
     try {
       await api("/data-portal/api/users", {
@@ -254,6 +263,23 @@ export default function ManageUser({
           </dl>
         </div>
       </Panel>
+      {hasAccount && (
+        <section className="account-study-setup panel-stack" aria-labelledby="study-parameters-heading">
+          <h2 id="study-parameters-heading">Study parameters</h2>
+          {preferences?.user_id === user.user_id ? (
+            <StudySetup
+              preferences={preferences}
+              onSaved={onPreferencesSaved}
+              onDirtyChange={setSetupDirty}
+              admin
+            />
+          ) : (
+            <div className="panel-loading">
+              <Spinner label="Loading study parameters…" />
+            </div>
+          )}
+        </section>
+      )}
       <Modal
         isOpen={confirm}
         onClose={() => setConfirm(false)}

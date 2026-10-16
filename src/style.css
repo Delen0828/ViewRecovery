@@ -274,6 +274,7 @@ input::placeholder { color: var(--study-edge); opacity: 1; }
 .user-id-title { margin: 0 0 var(--study-title-gap); }
 .user-id-instruction { margin: 0 0 var(--study-text-gap); line-height: 1.7; }
 .user-id-input { width: min(280px, 85vw); margin: 0; }
+.user-id-status, .user-id-help { margin: 12px auto 0; max-width: 560px; font-size: 18px; line-height: 1.5; }
 .jspsych-content:has(.startup-message, .user-id-container) #jspsych-html-button-response-btngroup {
 	margin-top: var(--study-action-gap);
 	margin-bottom: 32px;

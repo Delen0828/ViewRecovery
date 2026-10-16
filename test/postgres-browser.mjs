@@ -6,14 +6,21 @@ import {randomUUID} from 'node:crypto';
 import {chromium,expect} from '@playwright/test';
 import {openDatabase,projectRoot} from '../scripts/lib/postgres.mjs';
 import {createServer} from '../server/index.mjs';
+import {portalClient} from './portal-auth-client.mjs';
 
 const pool=await openDatabase();
-const server=createServer(pool);server.listen(0,'127.0.0.1');await once(server,'listening');
+const server=createServer(pool,{portalAuth:{maxAttempts:100}});server.listen(0,'127.0.0.1');await once(server,'listening');
 const base=`http://127.0.0.1:${server.address().port}`;
 const participant='B'+randomUUID().replaceAll('-','').slice(0,8);
 let browser;
 const errors=[];const writes=[];
 try {
+  await server.portalAuthReady;
+  const signup=await portalClient(base).post('/data-portal/auth/sign-up/email',{
+    username:participant,name:`User ${participant}`,email:participant+'@example.com',
+    password:'browser-study-password',invitationCode:'bright'
+  });
+  assert.equal(signup.status,200);
   browser=await chromium.launch({headless:true});
   const context=await browser.newContext({viewport:{width:1280,height:900}});
   await context.route('https://d3js.org/d3.v7.min.js',route=>route.fulfill({contentType:'text/javascript',body:readFileSync(join(projectRoot,'node_modules/d3/dist/d3.min.js'))}));
@@ -26,7 +33,6 @@ try {
   await page.locator('#user-id-input').fill(participant);
   await page.locator('#continue-btn').click();
   await expect(page.locator('#resolution-width')).toBeVisible();
-  await page.getByRole('button',{name:'Continue',exact:true}).click();
   await expect(page.locator('#stimulus-x-offset')).toBeVisible();
   await page.getByRole('button',{name:'Continue',exact:true}).click();
   // Accelerate only test time; the production study configuration is unchanged.
@@ -90,5 +96,6 @@ try {
   }
   // Login's initial rows can reach SQL before the participant ID is known.
   // Their run gets the ID on the next write; no broad cleanup of unrelated runs occurs.
+  await pool.query('DELETE FROM portal_auth."user" WHERE username=$1',[participant]);
   server.close();await once(server,'close');await pool.end();
 }

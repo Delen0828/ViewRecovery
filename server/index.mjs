@@ -8,7 +8,7 @@ import {openDatabase, projectRoot} from '../scripts/lib/postgres.mjs';
 import {ingest, overview, sources, rows, fail} from './store.mjs';
 import {AUTH_PATH,createPortalAuth} from './portal-auth.mjs';
 import {portalFiles,portalTrends,portalPreview,portalDownload} from './portal-store.mjs';
-import {portalUsers,managePortalUser,portalPreferences,savePortalPreferences,portalSchedule,savePortalSchedule,portalScheduleOverview} from './portal-workspace.mjs';
+import {portalUsers,managePortalUser,portalPreferences,savePortalPreferences,portalSchedule,savePortalSchedule,portalScheduleOverview,experimentParticipant} from './portal-workspace.mjs';
 
 const require=createRequire(import.meta.url);
 const d3Bundle=join(dirnamePackage('d3'),'dist/d3.min.js');
@@ -89,6 +89,11 @@ export function createServer(pool, {dist = join(projectRoot,'dist'), viewerToken
         fail('Not found',404);
       }
       if (url.pathname.startsWith('/api/') || url.pathname === '/save_data.php') {
+        if (url.pathname === '/api/experiment/participant') {
+          if (request.method !== 'GET') fail('Method not allowed',405);
+          await auth.ready;
+          return json(response,200,await experimentParticipant(pool,url.searchParams.get('user_id')));
+        }
         if (url.pathname === '/api/health' && request.method === 'GET') {
           await pool.query('SELECT 1'); return json(response,200,{success:true,database:'postgresql'});
         }

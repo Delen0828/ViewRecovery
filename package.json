@@ -12,6 +12,7 @@
     "auth:migrate": "node scripts/migrate-portal-auth.mjs",
     "test": "node --test test/*.test.mjs",
     "test:portal": "node test/portal-browser.mjs",
+    "test:study-portal": "node test/study-portal-browser.mjs",
     "test:browser": "node test/postgres-browser.mjs",
     "test:position": "node test/stimulus-position-browser.mjs",
     "dev": "vite",

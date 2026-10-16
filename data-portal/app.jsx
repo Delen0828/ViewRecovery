@@ -62,9 +62,9 @@ function initialTab(role) {
   return tabs[0][0];
 }
 function Login({ onSignedIn, sessionError }) {
-  const [signup, setSignup] = useState(false),
+  const [signup, setSignup] = useState(() => new URLSearchParams(location.search).get("register") === "1"),
     [mode, setMode] = useState("user"),
-    [username, setUsername] = useState(""),
+    [username, setUsername] = useState(() => new URLSearchParams(location.search).get("user_id") || ""),
     [password, setPassword] = useState(""),
     [email, setEmail] = useState(""),
     [invitation, setInvitation] = useState(""),
@@ -501,7 +501,7 @@ function Portal() {
     setup: "Prepare your screen and stimulus settings.",
     progress: "Follow your progress across study sessions.",
     schedule: "Plan study sessions and breaks for each user.",
-    accounts: "Manage participant accounts and access.",
+    accounts: "Manage participant accounts, access, and study parameters.",
     analytics: "Explore performance and compare sessions.",
     downloads: "Find and download recorded session data.",
   }[tab];
@@ -548,7 +548,7 @@ function Portal() {
           <div className="dashboard-main">
             <NextSession
               sessions={schedule.sessions}
-              onProgress={() => changeTab("progress")}
+              userId={schedule.user_id}
             />
             <Stats summary={summary} preferences={preferences} onPreferences={setPreferences} />
             <ProgressCharts
@@ -606,6 +606,8 @@ function Portal() {
         key={selected + refreshKey}
         user={selectedUser}
         summary={summary}
+        preferences={preferences}
+        onPreferencesSaved={setPreferences}
         onDirtyChange={setDirty}
         onSaved={async (id) => {
           await refresh(id);

@@ -10,7 +10,12 @@ import {
   normalizeStudySetup,
 } from "../src/study-setup.js";
 
-export default function StudySetup({ preferences, onSaved, onDirtyChange }) {
+export default function StudySetup({
+  preferences,
+  onSaved,
+  onDirtyChange,
+  admin = false,
+}) {
   const [value, setValue] = useState(preferences.setup),
     [saving, setSaving] = useState(false),
     [message, setMessage] = useState(""),
@@ -143,7 +148,10 @@ export default function StudySetup({ preferences, onSaved, onDirtyChange }) {
     try {
       const data = await api("/data-portal/api/preferences", {
         method: "PUT",
-        body: JSON.stringify({ setup: normalizeStudySetup(value) }),
+        body: JSON.stringify({
+          user_id: preferences.user_id,
+          setup: normalizeStudySetup(value),
+        }),
       });
       onSaved(data);
       setValue(data.setup);
@@ -158,7 +166,9 @@ export default function StudySetup({ preferences, onSaved, onDirtyChange }) {
     <form className="setup-layout" onSubmit={save}>
       <Panel
         title="Screen & stimulus"
-        subtitle="Use the same values as your study monitor."
+        subtitle={admin
+          ? "Use the same values as this user’s study monitor."
+          : "Use the same values as your study monitor."}
         className="setup-fields"
       >
         <Select
@@ -412,8 +422,9 @@ export default function StudySetup({ preferences, onSaved, onDirtyChange }) {
           </div>
         </div>
         <p className="setup-note">
-          These values are saved to your account for future experiment import.
-          For now, enter the same values when starting the experiment.
+          These values load automatically when {admin ? "this user enters their" : "you enter your"} User ID
+          in the experiment. {admin ? "They" : "You"} can review and adjust them
+          before starting training.
         </p>
       </Panel>
     </form>

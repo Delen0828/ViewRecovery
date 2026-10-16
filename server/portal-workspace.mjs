@@ -253,6 +253,24 @@ export async function portalPreferences(pool, session, requested) {
     updated_at: result.rows[0]?.updated_at || null,
   };
 }
+// ID-only study entry exposes calibration, never account or dashboard data.
+export async function experimentParticipant(pool, id) {
+  if (typeof id !== "string" || !/^[A-Za-z0-9_.-]{1,100}$/.test(id))
+    fail("Enter a valid data portal User ID.");
+  const result = await pool.query(
+    `SELECT u.username AS user_id,p.setup FROM portal_auth."user" u
+     LEFT JOIN experiment_data.portal_preferences p ON p.user_id=u.username
+     WHERE u.username=$1 AND u.role='user'`,
+    [id],
+  );
+  if (!result.rowCount)
+    fail("User ID not found. Please register in the data portal before starting the study.", 404);
+  return {
+    user_id: result.rows[0].user_id,
+    setup: result.rows[0].setup || { ...DEFAULT_STUDY_SETUP },
+    setup_saved: !!result.rows[0].setup,
+  };
+}
 export async function savePortalPreferences(pool, session, data) {
   const id = scopedUser(session, data.user_id);
   await participant(pool, id);

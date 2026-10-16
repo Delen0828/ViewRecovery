@@ -164,6 +164,25 @@ test("portal workspace persists scoped preferences, account changes and synchron
       },
     );
     await t.test(
+      "study entry looks up registered participant IDs without exposing portal account data",
+      async () => {
+        const lookup = (id) => anonymous.api("/api/experiment/participant?user_id=" + encodeURIComponent(id));
+        const response = await lookup(first);
+        assert.equal(response.status, 200);
+        assert.equal(response.headers.get("cache-control"), "no-store");
+        assert.deepEqual(await response.json(), { user_id: first, setup: DEFAULT_STUDY_SETUP, setup_saved: false });
+        for (const id of ["Missing" + suffix, adminId, first.toLowerCase()]) {
+          const missing = await lookup(id);
+          assert.equal(missing.status, 404);
+          assert.match((await missing.json()).error, /register in the data portal/);
+        }
+        for (const id of ["", "a".repeat(101), "' OR true --"])
+          assert.equal((await lookup(id)).status, 400);
+        assert.equal((await anonymous.api("/api/experiment/participant")).status, 400);
+        assert.equal((await mutation(anonymous, "/api/experiment/participant", "POST", { user_id: first })).status, 405);
+      },
+    );
+    await t.test(
       "setup and dashboard preferences persist and remain scoped",
       async () => {
         const settings = await (
@@ -184,6 +203,8 @@ test("portal workspace persists scoped preferences, account changes and synchron
         );
         assert.equal(saved.status, 200);
         assert.deepEqual((await saved.json()).setup, setup);
+        assert.deepEqual(await (await anonymous.api("/api/experiment/participant?user_id=" + first)).json(),
+          { user_id: first, setup, setup_saved: true });
         assert.deepEqual(
           (await (await user.api("/data-portal/api/preferences")).json())
             .dashboard_charts,
@@ -364,6 +385,8 @@ test("portal workspace persists scoped preferences, account changes and synchron
           (await user.api("/data-portal/api/preferences")).status,
           401,
         );
+        assert.equal((await anonymous.api("/api/experiment/participant?user_id=" + first)).status, 404);
+        assert.equal((await (await anonymous.api("/api/experiment/participant?user_id=" + renamed)).json()).setup.xOffsetDeg, 7);
         assert.equal(
           (await user.login(renamed, "changed-password")).response.status,
           200,
@@ -469,6 +492,7 @@ test("portal workspace persists scoped preferences, account changes and synchron
         );
         const retainedUsers = await (await admin.api("/data-portal/api/users")).json();
         assert.equal(retainedUsers.users.find((entry) => entry.user_id === renamed).has_account, false);
+        assert.equal((await anonymous.api("/api/experiment/participant?user_id=" + renamed)).status, 404);
         // Delete the data-only user directly, including data linked to its original ID.
         assert.equal((await mutation(admin, "/data-portal/api/users", "DELETE", {
           user_id: renamed, delete_data: "true",

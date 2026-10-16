@@ -3,6 +3,7 @@ import {mkdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {chromium, expect} from '@playwright/test';
 import {createServer} from 'vite';
+import {DEFAULT_STUDY_SETUP} from '../src/study-setup.js';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const server = await createServer({root, server: {host: '127.0.0.1', port: 0}});
@@ -24,6 +25,9 @@ async function openEditor(task, setup, viewport = {width: 1280, height: 1000}) {
     rows.push(...body.events.map(event => event.payload));
     await route.fulfill({json: {success: true, batch_id: body.batch_id, accepted: body.events.length}});
   });
+  await context.route('**/api/experiment/participant?*', route => route.fulfill({
+    json: {user_id: 'PositionQA', setup: DEFAULT_STUDY_SETUP, setup_saved: false}
+  }));
   // Fullscreen is a browser capability outside the position editor; emulate it for headless QA.
   await context.addInitScript(() => {
     let fullscreen = false;

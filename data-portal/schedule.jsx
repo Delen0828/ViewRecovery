@@ -134,13 +134,16 @@ export function DashboardCalendar({ sessions }) {
     </Panel>
   );
 }
-export function NextSession({ sessions, onProgress }) {
+export function NextSession({ sessions, userId }) {
   const now = Date.now();
   const current = sessions.find(
     (row) => Date.parse(row.starts_at) <= now && Date.parse(row.ends_at) > now,
   );
   const next =
     current || sessions.find((row) => Date.parse(row.starts_at) > now);
+  const trainingLink = next?.session_type === "study" && STUDY_TASKS.includes(next.task_type) && userId
+    ? `/${next.task_type}?${new URLSearchParams({ user_id: userId })}`
+    : undefined;
   return (
     <Panel className="next-session">
       <div className="next-session-copy">
@@ -161,12 +164,14 @@ export function NextSession({ sessions, onProgress }) {
       <div className="next-session-actions">
         {next && <SessionChip type={next.session_type} task={next.task_type} />}
         <Button
+          as="a"
+          href={trainingLink}
+          isDisabled={!trainingLink}
           color="primary"
           variant="flat"
           endContent={<ArrowUpRight size={16} />}
-          onPress={onProgress}
         >
-          My Progress
+          Start Training
         </Button>
       </div>
     </Panel>

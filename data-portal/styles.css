@@ -997,6 +997,10 @@ h3 {
   gap: 20px;
   align-items: start;
 }
+.account-study-setup {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
 .account-form {
   max-width: 600px;
   display: grid;
