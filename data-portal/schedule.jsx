@@ -1,4 +1,4 @@
-import React, { useState, useId, useMemo, useEffect } from "react";
+import React, { useState, useId, useMemo, useEffect, useRef } from "react";
 import {
   Calendar,
   Button,
@@ -127,7 +127,6 @@ export function DashboardCalendar({ sessions }) {
   return (
     <Panel
       title="Your schedule"
-      subtitle="Select a day to view its sessions."
       className="dashboard-calendar"
     >
       <ScheduleCalendar sessions={sessions} day={day} onChange={setDay} />
@@ -173,13 +172,33 @@ export function NextSession({ sessions, onProgress }) {
     </Panel>
   );
 }
-export default function ScheduleEditor({ schedule, onSaved, onPreviewChange, onDirtyChange }) {
+export default function ScheduleEditor({ schedule, sessionTarget, onSaved, onPreviewChange, onDirtyChange }) {
+  const sessionRows = useRef(null);
   const savedRows = useMemo(() => schedule.sessions.map(scheduleFields), [schedule]);
   const [rows, setRows] = useState(savedRows),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [message, setMessage] = useState("");
   useEffect(() => { setRows(savedRows); }, [savedRows]);
+  useEffect(() => {
+    if (!sessionTarget) return;
+    const row = [...(sessionRows.current?.children || [])]
+      .find((node) => node.dataset.sessionId === sessionTarget.sessionId);
+    if (!row) return;
+    const reveal = () => {
+      // The discard dialog retains focus until its closing animation finishes.
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return false;
+      row.scrollIntoView({ block: "center", behavior: "smooth" });
+      row.focus({ preventScroll: true });
+      return true;
+    };
+    if (reveal()) return;
+    const observer = new MutationObserver(() => {
+      if (reveal()) observer.disconnect();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [sessionTarget]);
   const changed = JSON.stringify(rows) !== JSON.stringify(savedRows);
   useEffect(() => { onDirtyChange(changed); }, [changed, onDirtyChange]);
   useEffect(() => {
@@ -214,15 +233,16 @@ export default function ScheduleEditor({ schedule, onSaved, onPreviewChange, onD
   };
   return (
     <Panel title="Sessions" className="schedule-sessions"
-      subtitle={`${rows.length} ${rows.length === 1 ? "session" : "sessions"} · User ${schedule.user_id} · Repeats daily from Starts through Ends`}
       actions={<Button size="sm" color="primary" startContent={<Plus size={16} />} onPress={add} isDisabled={busy}>Add session</Button>}
     >
       <Notice error>{error}</Notice>
       <Notice>{message}</Notice>
       {rows.length ? (
-        <div className="session-rows">
+        <div className="session-rows" ref={sessionRows}>
           {rows.map((row, index) => (
-            <div className="session-row" key={row.session_id}>
+            <div className={`session-row ${sessionTarget?.sessionId === row.session_id ? "is-selected" : ""}`}
+              key={row.session_id} data-session-id={row.session_id} tabIndex={-1}
+              role="group" aria-label={`Session ${index + 1}`}>
               <span className="session-index">{String(index + 1).padStart(2, "0")}</span>
               <DatePicker label="Starts" aria-label={`Session ${index + 1} starts`} labelPlacement="outside"
                 value={row.start_date ? parseDate(row.start_date) : null}
@@ -260,7 +280,7 @@ export default function ScheduleEditor({ schedule, onSaved, onPreviewChange, onD
         </div>
       ) : <Empty title="No sessions yet">Add a study session or break for this user.</Empty>}
       <div className="schedule-footer">
-        <span className="muted"><Clock size={14} /> Daily sessions use Eastern Time. Duration is in minutes.</span>
+        <span className="muted"><Clock size={14} /> Daily sessions use Eastern Time.</span>
         <div className="button-row">
           <Button variant="flat" onPress={() => { setRows(savedRows); setError(""); setMessage(""); }} isDisabled={!changed || busy}>Discard edits</Button>
           <Button color="primary" startContent={<Save size={16} />} onPress={save} isLoading={busy} isDisabled={!changed}>Save schedule</Button>

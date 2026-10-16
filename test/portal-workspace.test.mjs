@@ -170,6 +170,7 @@ test("portal workspace persists scoped preferences, account changes and synchron
           await user.api("/data-portal/api/preferences")
         ).json();
         assert.deepEqual(settings.setup, DEFAULT_STUDY_SETUP);
+        assert.deepEqual(settings.dashboard_stats, ["sessions", "trials", "average_study_time"]);
         const setup = {
           ...DEFAULT_STUDY_SETUP,
           screenWidth: 50,
@@ -179,7 +180,7 @@ test("portal workspace persists scoped preferences, account changes and synchron
           user,
           "/data-portal/api/preferences",
           "PUT",
-          { setup, dashboard_charts: ["accuracy"] },
+          { setup, dashboard_charts: ["accuracy"], dashboard_stats: ["average_accuracy", "total_study_time"] },
         );
         assert.equal(saved.status, 200);
         assert.deepEqual((await saved.json()).setup, setup);
@@ -188,6 +189,26 @@ test("portal workspace persists scoped preferences, account changes and synchron
             .dashboard_charts,
           ["accuracy"],
         );
+        assert.deepEqual(
+          (await (await user.api("/data-portal/api/preferences")).json()).dashboard_stats,
+          ["average_accuracy", "total_study_time"],
+        );
+        assert.deepEqual(
+          (await (await other.api("/data-portal/api/preferences")).json()).dashboard_stats,
+          ["sessions", "trials", "average_study_time"],
+        );
+        for (const dashboard_stats of [[], ["unknown"], ["sessions", "sessions"], "sessions",
+          ["sessions", "trials", "average_study_time", "average_accuracy", "total_study_time"]]) {
+          assert.equal((await mutation(user, "/data-portal/api/preferences", "PUT", { dashboard_stats })).status, 400);
+        }
+        assert.equal((await mutation(user, "/data-portal/api/preferences", "PUT", {
+          user_id: second, dashboard_stats: ["trials"],
+        })).status, 403);
+        assert.equal((await mutation(admin, "/data-portal/api/preferences", "PUT", {
+          user_id: second, dashboard_stats: ["sessions", "trials", "average_study_time", "average_accuracy"],
+        })).status, 200);
+        assert.deepEqual((await (await other.api("/data-portal/api/preferences")).json()).dashboard_stats,
+          ["sessions", "trials", "average_study_time", "average_accuracy"]);
         assert.equal(
           (await user.api("/data-portal/api/preferences?user_id=" + second))
             .status,

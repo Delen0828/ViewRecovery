@@ -173,7 +173,6 @@ export default function ManageUser({
     <div className="account-layout">
       <Panel
         title={hasAccount ? "Account details" : "Recorded data"}
-        subtitle={hasAccount ? `Manage access for User ${user.user_id}.` : `Manage recorded experiment data for User ${user.user_id}.`}
       >
         <Notice error>{!hasAccount && error}</Notice>
         {hasAccount ? <form className="account-form" onSubmit={save}>

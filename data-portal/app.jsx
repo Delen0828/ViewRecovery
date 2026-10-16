@@ -312,6 +312,7 @@ function Portal() {
     [schedule, setSchedule] = useState(null),
     [allSessions, setAllSessions] = useState([]),
     [draftSchedule, setDraftSchedule] = useState(null),
+    [scheduleTarget, setScheduleTarget] = useState(null),
     [detailError, setDetailError] = useState(""),
     [add, setAdd] = useState(false),
     [preview, setPreview] = useState(
@@ -431,6 +432,15 @@ function Portal() {
     if (dirty) setPending(() => action);
     else action();
   };
+  const selectScheduleSession = (row) => {
+    const target = { userId: row.user_id, sessionId: row.session_id };
+    if (row.user_id === selected) setScheduleTarget(target);
+    else guard(() => {
+      setDirty(false);
+      setSelected(row.user_id);
+      setScheduleTarget(target);
+    });
+  };
   useEffect(() => {
     if (!dirty) return;
     const handler = (event) => {
@@ -540,7 +550,7 @@ function Portal() {
               sessions={schedule.sessions}
               onProgress={() => changeTab("progress")}
             />
-            <Stats summary={summary} />
+            <Stats summary={summary} preferences={preferences} onPreferences={setPreferences} />
             <ProgressCharts
               data={data}
               userId={selected}
@@ -578,6 +588,7 @@ function Portal() {
         <ScheduleEditor
           key={selected + refreshKey}
           schedule={schedule}
+          sessionTarget={scheduleTarget?.userId === selected ? scheduleTarget : null}
           onSaved={(result) => {
             setSchedule(result);
             setAllSessions((current) => [
@@ -673,6 +684,7 @@ function Portal() {
         {admin && tab === "schedule" && (
           <ScheduleGantt
             users={users}
+            onSessionSelect={selectScheduleSession}
             sessions={draftSchedule ? [
               ...allSessions.filter((row) => row.user_id !== draftSchedule.user_id),
               ...draftSchedule.sessions,
@@ -688,6 +700,7 @@ function Portal() {
               onSelect={(id) =>
                 guard(() => {
                   setDirty(false);
+                  setScheduleTarget(null);
                   setSelected(id);
                 })
               }

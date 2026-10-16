@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { hashPassword } from "better-auth/crypto";
 import { fail } from "./store.mjs";
 import { expandScheduleRows, MAX_SCHEDULE_OCCURRENCES } from "../src/portal-schedule.js";
+import { DASHBOARD_STATS, DEFAULT_DASHBOARD_STATS } from "../src/portal-analytics.js";
 import {
   DEFAULT_STUDY_SETUP,
   STUDY_TASKS,
@@ -237,7 +238,7 @@ export async function portalPreferences(pool, session, requested) {
   const id = scopedUser(session, requested);
   await participant(pool, id);
   const result = await pool.query(
-    "SELECT setup,dashboard_charts,updated_at FROM experiment_data.portal_preferences WHERE user_id=$1",
+    "SELECT setup,dashboard_charts,dashboard_stats,updated_at FROM experiment_data.portal_preferences WHERE user_id=$1",
     [id],
   );
   return {
@@ -248,12 +249,26 @@ export async function portalPreferences(pool, session, requested) {
       "accuracy",
       "duration",
     ],
+    dashboard_stats: result.rows[0]?.dashboard_stats || [...DEFAULT_DASHBOARD_STATS],
     updated_at: result.rows[0]?.updated_at || null,
   };
 }
 export async function savePortalPreferences(pool, session, data) {
   const id = scopedUser(session, data.user_id);
   await participant(pool, id);
+  if (data.dashboard_stats !== undefined) {
+    if (
+      !Array.isArray(data.dashboard_stats) ||
+      data.dashboard_stats.length < 1 || data.dashboard_stats.length > 4 ||
+      data.dashboard_stats.some((value) => !DASHBOARD_STATS.some((stat) => stat.id === value)) ||
+      new Set(data.dashboard_stats).size !== data.dashboard_stats.length
+    ) fail("Choose between one and four summary cards.");
+    await pool.query(
+      `INSERT INTO experiment_data.portal_preferences(user_id,dashboard_stats) VALUES($1,$2)
+      ON CONFLICT(user_id) DO UPDATE SET dashboard_stats=EXCLUDED.dashboard_stats,updated_at=now()`,
+      [id, JSON.stringify(data.dashboard_stats)],
+    );
+  }
   if (data.setup !== undefined) {
     const error = validateStudySetup(data.setup);
     if (error) fail(error);

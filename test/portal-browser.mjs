@@ -53,7 +53,23 @@ try {
   await expect(page.locator('.portal-footer')).toHaveText(copyright);
   await expect(page.locator('.selected-user-chip')).toHaveCount(0);
   await expect(page.locator('.chart-wrap svg')).toHaveCount(2);
-  await expect(page.locator('.stat-value').first()).toHaveText('2');
+  await expect(page.locator('.stat')).toHaveCount(3);
+  await expect(page.locator('.stat-label')).toHaveText(['Sessions completed','Trials completed','Avg. study time']);
+  await expect(page.locator('[data-stat=trials] .stat-value')).toHaveText('2');
+  await page.locator('.stats-settings summary').click();
+  await page.getByRole('checkbox',{name:'Avg. study time',exact:true}).uncheck();
+  await page.getByRole('checkbox',{name:'Avg. accuracy',exact:true}).check();
+  await page.getByRole('checkbox',{name:'Cumulated study time',exact:true}).check();
+  await page.getByRole('button',{name:'Save cards',exact:true}).click();
+  await expect(page.locator('.stat')).toHaveCount(4);
+  await page.reload();
+  await expect(page.locator('.stat-label')).toHaveText(['Sessions completed','Trials completed','Avg. accuracy','Cumulated study time']);
+  await page.locator('.stats-settings summary').click();
+  await page.getByRole('checkbox',{name:'Avg. accuracy',exact:true}).uncheck();
+  await page.getByRole('checkbox',{name:'Cumulated study time',exact:true}).uncheck();
+  await page.getByRole('checkbox',{name:'Avg. study time',exact:true}).check();
+  await page.getByRole('button',{name:'Save cards',exact:true}).click();
+  await expect(page.locator('.stat')).toHaveCount(3);
   await expect(tab('Study Setup')).toBeVisible();await expect(tab('My Progress')).toBeVisible();
   assert.ok(!requests.some(url=>url.includes('/download')));
   mkdirSync(join(projectRoot,'test/results'),{recursive:true});
@@ -76,13 +92,14 @@ try {
   await expect(page.locator('.chart-wrap svg')).toHaveCount(2);
   await page.getByRole('button',{name:'Unpin Duration across sessions'}).click();
   await tab('Dashboard').click();await expect(page.locator('.chart-wrap svg')).toHaveCount(1);
-  await tab('My Progress').click();await page.getByLabel('Motion',{exact:true}).uncheck();
+  await tab('My Progress').click();await page.locator('.chart-panel-accuracy').getByLabel('Motion',{exact:true}).uncheck();
   await expect(page.locator('.trend-point-Motion')).toHaveCount(0);
-  await page.getByLabel('Motion',{exact:true}).check();
+  await expect(page.locator('.duration-trend-point-Motion')).toHaveCount(2);
+  await page.locator('.chart-panel-accuracy').getByLabel('Motion',{exact:true}).check();
   await expect(page.locator('.trend-point-Motion')).toHaveCount(2);
   const newPayload={...payload,trial_index:2,overall_trial_number:2,correct:false,time_elapsed:400};
   assert.equal((await context.request.post(base+'/api/experiment/ingest',{data:{batch_id:randomUUID(),run,events:[{event_sequence:2,included:true,payload:newPayload}]}})).status(),200);
-  await page.getByRole('button',{name:'Refresh',exact:true}).click();await expect(page.locator('.stat-value').first()).toHaveText('3');
+  await page.getByRole('button',{name:'Refresh',exact:true}).click();await expect(page.locator('[data-stat=trials] .stat-value')).toHaveText('3');
   await page.setViewportSize({width:390,height:844});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
   await expect(page.locator('.account-avatar')).toBeVisible();
@@ -137,6 +154,32 @@ try {
   assert.equal(definition.sessions[0].duration_minutes,45);
   assert.equal(definition.sessions[0].end_date,todayDate.add({days:1}).toString());
   await expect(ganttRow(participant).locator('.gantt-bar')).toHaveAttribute('aria-label',/9:45 AM ET · 45 min daily/);
+  // Bars select the owning user and focus the exact session, including unsaved sessions.
+  const participantSession=page.locator(`.session-row[data-session-id="${definition.sessions[0].session_id}"]`);
+  await ganttRow(other).getByRole('button').click();
+  await expect(page.locator('.user-button[aria-pressed="true"]')).toContainText(other);
+  await expect(page.locator('.session-row input[type=time]')).toHaveValue('14:00:00');
+  await expect(page.locator('.session-row.is-selected')).toBeFocused();
+  await expect(page.locator('.session-row.is-selected')).toBeInViewport();
+  await ganttRow(participant).getByRole('button').press('Enter');
+  await expect(participantSession).toBeFocused();
+  await participantSession.locator('input[type=time]').fill('10:00');
+  await ganttRow(participant).getByRole('button').click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(participantSession).toBeFocused();
+  await expect(participantSession.locator('input[type=time]')).toHaveValue('10:00');
+  await ganttRow(other).getByRole('button').click();
+  await expect(page.getByRole('dialog')).toContainText('Discard unsaved changes?');
+  await page.getByRole('button',{name:'Keep editing',exact:true}).click();
+  await expect(page.locator('.user-button[aria-pressed="true"]')).toContainText(participant);
+  await expect(participantSession.locator('input[type=time]')).toHaveValue('10:00');
+  await ganttRow(other).getByRole('button').click();
+  await page.getByRole('button',{name:'Discard changes',exact:true}).click();
+  await expect(page.locator('.user-button[aria-pressed="true"]')).toContainText(other);
+  await expect(page.locator('.session-row.is-selected')).toBeFocused();
+  await ganttRow(participant).getByRole('button').press('Space');
+  await expect(participantSession).toBeFocused();
+  await expect(participantSession.locator('input[type=time]')).toHaveValue('09:45:00');
   assert.equal(await page.locator('.session-row').getByRole('spinbutton',{name:/hour|minute|AM\/PM/}).count(),0);
   const layout=await page.evaluate(()=>{
     const preview=document.querySelector('.schedule-preview').getBoundingClientRect();
@@ -182,7 +225,64 @@ try {
   await tab('Data Analytics').click();await expect(page.locator('.chart-wrap svg')).toHaveCount(4);
   await expect(page.getByRole('switch',{name:'Advanced charts'})).toHaveCount(0);
   await expect(page.locator('.chart-difficulty-duration svg')).toBeVisible();
+  // Interleaved, unordered absolute indices must align by rank within each task.
+  const trendsRoute=base+'/data-portal/api/user-trends';
+  await page.route(trendsRoute,async route=>{
+    const response=await route.fetch(),data=await response.json();
+    for (const field of ['accuracy_series','duration_series','difficulty_series']) {
+      const points=data[field].filter(point=>point.userId===participant);
+      const names=[...new Set(points.map(point=>point.fileName))];
+      data[field]=data[field].filter(point=>point.userId!==participant).concat(
+        points.map(point=>({...point,sessionIndex:names.indexOf(point.fileName)===0?7:2})),
+        points.map(point=>({...point,task:'Centrality',fileName:'centrality-'+point.fileName,
+          sessionIndex:names.indexOf(point.fileName)===0?6:1})),
+      );
+    }
+    await route.fulfill({response,json:data});
+  });
+  await page.getByRole('button',{name:'Refresh',exact:true}).click();
+  await expect(page.locator('.trend-point-Centrality')).toHaveCount(2);
+  for (const chart of ['accuracy','duration']) {
+    const root=page.locator(`.chart-${chart}`);
+    await expect(root.locator('.session-tick-label')).toHaveText(['1st session','2nd session']);
+    const positions=await root.locator('circle').evaluateAll(nodes=>nodes.map(node=>({task:node.parentNode.getAttribute('class'),x:node.getAttribute('cx'),index:node.parentNode.__data__.sessionIndex})));
+    const motion=positions.filter(point=>point.task.includes('Motion'));
+    const centrality=positions.filter(point=>point.task.includes('Centrality'));
+    assert.deepEqual(motion.map(point=>point.index),[2,7]);
+    assert.deepEqual(centrality.map(point=>point.index),[1,6]);
+    assert.deepEqual(motion.map(point=>point.x),centrality.map(point=>point.x));
+  }
+  await expect(page.locator('.chart-duration .axis').last().locator('.tick text')).toHaveText(['0s','5m','10m','15m','20m','25m','30m']);
+  await expect(page.locator('.chart-difficulty-duration .axis').last().locator('.tick text')).toHaveText(['0s','2s','4s','6s','8s','10s']);
+  const accuracyDifficulty=page.locator('.chart-difficulty');
+  const durationDifficulty=page.locator('.chart-difficulty-duration');
+  await accuracyDifficulty.locator('.date-legend-item').first().hover();
+  await expect(accuracyDifficulty.locator('.difficulty-date-series[display=none]')).toHaveCount(0);
+  await accuracyDifficulty.getByRole('checkbox').first().uncheck();
+  await expect(accuracyDifficulty.locator('.difficulty-date-series[display=none]')).toHaveCount(1);
+  await expect(durationDifficulty.locator('.duration-date-series[display=none]')).toHaveCount(0);
+  await page.setViewportSize({width:1380,height:1000});
+  await expect(accuracyDifficulty.getByRole('checkbox').first()).not.toBeChecked();
+  await expect(accuracyDifficulty.locator('.difficulty-date-series[display=none]')).toHaveCount(1);
+  await durationDifficulty.getByRole('checkbox').last().focus();
+  await page.keyboard.press('Space');
+  await expect(durationDifficulty.locator('.duration-date-series[display=none]')).toHaveCount(1);
+  await expect(durationDifficulty.getByRole('checkbox').last()).toBeFocused();
+  await choose('Accuracy by difficulty task','Centrality');
+  await expect(accuracyDifficulty.locator('svg')).toHaveAttribute('aria-label','Centrality accuracy by difficulty level across sessions');
+  await expect(durationDifficulty.locator('svg')).toHaveAttribute('aria-label','Motion average duration by difficulty level across sessions');
+  await choose('Accuracy by difficulty task','Motion');
+  await expect(accuracyDifficulty.getByRole('checkbox').first()).not.toBeChecked();
+  await page.locator('.chart-panel-accuracy').getByLabel('Centrality',{exact:true}).uncheck();
+  await expect(page.locator('.trend-point-Centrality')).toHaveCount(0);
+  await expect(page.locator('.duration-trend-point-Centrality')).toHaveCount(2);
+  await page.locator('.chart-panel-accuracy').getByLabel('Centrality',{exact:true}).check();
   await page.screenshot({path:join(projectRoot,'test/results/portal-analytics-desktop.png'),fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
+  await page.screenshot({path:join(projectRoot,'test/results/portal-analytics-mobile.png'),fullPage:true});
+  await page.setViewportSize({width:1440,height:1000});
+  await page.unroute(trendsRoute);
   await tab('File Download').click();
   await expect(page.locator('tbody tr')).toHaveCount(1);
   await expect(page.getByRole('columnheader',{name:'Session ID',exact:true})).toHaveCount(0);
@@ -259,6 +359,7 @@ try {
     ]},
   });
   assert.equal(colorSchedule.status(),200);
+  const colorDefinition=await colorSchedule.json();
   await tab('Schedule').click();
   await page.getByRole('button',{name:'Refresh',exact:true}).click();
   await expect(ganttRow(participant).locator('.gantt-bar')).toHaveCount(5);
@@ -267,6 +368,10 @@ try {
       ganttRow(participant).locator(`.gantt-bar[aria-label*="${task} Study"]`);
     await expect(bar).toHaveCSS('color',color);
   }
+  const barSession=colorDefinition.sessions.find(row=>row.task_type==='Bar');
+  await ganttRow(participant).getByRole('button',{name:/Bar Study/}).press('Enter');
+  await expect(page.locator(`.session-row[data-session-id="${barSession.session_id}"]`)).toBeFocused();
+  await expect(page.locator('.session-row.is-selected')).toHaveCount(1);
   await page.screenshot({path:join(projectRoot,'test/results/portal-schedule-task-colors.png'),fullPage:true});
   await page.getByRole('button',{name:'Log Out',exact:true}).click();
   // Recheck participant synchronization and new password after admin edits.
@@ -297,7 +402,7 @@ try {
   await expect(page.locator('.dashboard-calendar')).toBeVisible();
   assert.equal((await pool.query('SELECT role,"emailVerified" FROM portal_auth."user" WHERE username=$1',[signupUser])).rows[0].emailVerified,false);
   assert.deepEqual(errors,[]);assert.ok(requests.every(url=>url.startsWith(base)));
-  console.log('Portal browser passed: role panels, banner refresh, saved setup and drag preview, chart filters/pins, live SQL progress, daily scheduling sync and ReUI Gantt navigation, all analytics charts, duration/break bars, sanity check accuracy, preview/download, account and data-only deletion, invitation signup, desktop/mobile layout.');
+  console.log('Portal browser passed: role panels, banner refresh, saved setup and drag preview, chart filters/pins, live SQL progress, daily scheduling sync and ReUI Gantt user/session navigation with keyboard and unsaved-change guards, all analytics charts, duration/break bars, sanity check accuracy, preview/download, account and data-only deletion, invitation signup, desktop/mobile layout.');
 } catch(error) {
   const failedPage=context?.pages()[0];
   if(failedPage) {

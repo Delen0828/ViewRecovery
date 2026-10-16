@@ -261,10 +261,7 @@ export default function Files({ userId, refreshKey, onPreview }) {
     safePage = Math.min(page, pages),
     shown = visible.slice((safePage - 1) * 20, safePage * 20);
   return (
-    <Panel
-      title="Session data"
-      subtitle="Browse recorded sessions and download their original data."
-    >
+    <Panel title="Session data">
       <div className="file-filters">
         <Input
           aria-label="Search session data"
@@ -330,7 +327,6 @@ export default function Files({ userId, refreshKey, onPreview }) {
         >
           Include pause files
         </Checkbox>
-        <span className="muted">{visible.length} records</span>
       </div>
       <Notice error>{error}</Notice>
       <Table

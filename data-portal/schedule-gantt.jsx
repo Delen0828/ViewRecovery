@@ -57,7 +57,7 @@ function sessionDescription(row) {
   return `${row.task_type} ${type} · ${time} ET · ${row.duration_minutes} min${row.start_date !== row.end_date ? " daily" : ""}`;
 }
 
-function ScheduleTimeline({ users }) {
+function ScheduleTimeline({ users, onSessionSelect }) {
   const { date, goTo } = useGanttNavigation();
   const today = todayET();
   const anchor = parseDate(dateKey(date.toISOString()));
@@ -89,7 +89,6 @@ function ScheduleTimeline({ users }) {
   return (
     <Panel
       title="Calendar preview"
-      subtitle="Scheduled users · Five weeks, Sunday–Saturday · Eastern Time"
       className="schedule-preview"
       actions={
         <div className="button-row">
@@ -135,11 +134,13 @@ function ScheduleTimeline({ users }) {
                     const name = userNames.get(id) || id;
                     return (
                       <Tooltip key={row.session_id} content={`${name} · ${id} · ${dates} · ${description}`} delay={0}>
-                        <div className={`gantt-bar ${row.session_type === "break" ? "break" : ""}`} tabIndex={0}
+                        <button type="button" className={`gantt-bar ${row.session_type === "break" ? "break" : ""}`}
+                          data-session-id={row.session_id}
                           aria-label={`${name} · ${id} · ${dates} · ${description}`}
+                          onClick={() => onSessionSelect(row)}
                           style={{ "--session-color": sessionColor(row), left: left * DAY_WIDTH + 4, width: span * DAY_WIDTH - 8, top: ROW_PADDING + lane * LANE_HEIGHT }}>
                           <span className="gantt-bar-name">{name}</span>
-                        </div>
+                        </button>
                       </Tooltip>
                     );
                   })}
@@ -150,12 +151,12 @@ function ScheduleTimeline({ users }) {
         </div>
       </div>
       {!rows.length && <p className="gantt-empty muted" role="status">No schedules in this date range.</p>}
-      <ScheduleLegend>Scroll horizontally to explore dates. Hover or focus a session for details.</ScheduleLegend>
+      <ScheduleLegend />
     </Panel>
   );
 }
 
-export default function ScheduleGantt({ users, sessions }) {
+export default function ScheduleGantt({ users, sessions, onSessionSelect }) {
   const events = useMemo(() => sessions.flatMap((row) => {
     try {
       // One inclusive date-range bar represents each daily schedule definition.
@@ -187,7 +188,7 @@ export default function ScheduleGantt({ users, sessions }) {
       defaultDate={todayET().toDate(TIME_ZONE)}
       interactions={{ drag: false, resize: false, selectSlot: false }}
       rowCheckboxes={false} selection={{ eventKeys: [], slot: null }}>
-      <ScheduleTimeline users={users} />
+      <ScheduleTimeline users={users} onSessionSelect={onSessionSelect} />
     </Gantt>
   );
 }

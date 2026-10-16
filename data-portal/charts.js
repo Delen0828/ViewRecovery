@@ -1,10 +1,10 @@
 import * as d3 from "d3";
 import { TASK_COLORS } from "./task-colors.js";
+import { ordinalSession } from "../src/portal-analytics.js";
 export { TASK_COLORS } from "./task-colors.js";
 
-// The existing aggregation, session ordering, task toggles and chart interactions
-// are retained here, independent of the React/HeroUI application shell.
 const TASKS = Object.keys(TASK_COLORS);
+let clipSequence = 0;
 const easternDateKeyFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York",
   year: "numeric",
@@ -19,7 +19,7 @@ const sessionDateLabelFormatter = new Intl.DateTimeFormat("en-US", {
 });
 export function renderPortalChart(
   container,
-  { data, userId, type, visibleTasks, task = "Motion", metrics },
+  { data, userId, type, visibleTasks = TASK_COLORS, task = "Motion", metrics, hiddenSessions = [], onSessionToggle },
 ) {
   const state = {
     users: {
@@ -632,17 +632,14 @@ export function renderPortalChart(
   function getSessionAxisItems(points) {
     const sessions = new Map();
     points.forEach((point) => {
-      const sessionIndex = normalizeSessionIndex(point.sessionIndex);
+      const sessionIndex = point.sessionRank;
       if (!sessionIndex || sessions.has(sessionIndex)) {
         return;
       }
 
       sessions.set(sessionIndex, {
         sessionIndex,
-        sessionLabel: normalizeSessionLabel(point.sessionLabel, sessionIndex),
-        dateKey: point.dateKey,
-        date: point.date,
-        fileName: point.fileName,
+        sessionLabel: ordinalSession(sessionIndex),
       });
     });
 
@@ -675,23 +672,52 @@ export function renderPortalChart(
         .attr("x", 0)
         .attr("dy", "0.15em")
         .text(item.sessionLabel);
-      text
-        .append("tspan")
-        .attr("class", "session-tick-date")
-        .attr("x", 0)
-        .attr("dy", "1.45em")
-        .text(formatSessionDateLabel(item.dateKey));
     });
 
     return axis;
   }
 
   function formatSessionDescription(item) {
-    return `${item.sessionLabel} (${formatSessionDateLabel(item.dateKey)}, Eastern Time)`;
+    return `${ordinalSession(item.sessionRank)} (${formatSessionDateLabel(item.dateKey)}, Eastern Time)`;
+  }
+
+  function rankSessions(items) {
+    return [...items].sort(compareSessionOrder).map((item, index) => ({
+      ...item,
+      sessionRank: index + 1,
+    }));
+  }
+
+  function clipDurationPlot(svg, margin, innerWidth, innerHeight) {
+    const id = `duration-clip-${++clipSequence}`;
+    svg.append("defs").append("clipPath").attr("id", id)
+      .append("rect")
+      .attr("x", margin.left - 6).attr("y", margin.top - 6)
+      .attr("width", innerWidth + 12).attr("height", innerHeight + 12);
+    return `url(#${id})`;
   }
 
   function getSessionIdentity(item) {
     return String(item?.fileName || item?.sessionIndex || item?.dateKey || "");
+  }
+
+  function renderSessionLegend(container, dateSeries, color) {
+    const legend = d3.select(container).append("div")
+      .attr("class", "date-legend")
+      .attr("role", "group")
+      .attr("aria-label", "Visible sessions");
+    const items = legend.selectAll(".date-legend-item")
+      .data(dateSeries).enter().append("label")
+      .attr("class", "date-legend-item");
+    items.append("input")
+      .attr("type", "checkbox")
+      .property("checked", (item) => !hiddenSessions.includes(getSessionIdentity(item)))
+      .attr("aria-label", (item) => `Show ${formatSessionDescription(item)}`)
+      .on("change", (event, item) => onSessionToggle?.(getSessionIdentity(item), event.target.checked));
+    items.append("span").attr("class", "date-legend-swatch")
+      .style("background", color).style("opacity", (item) => item.opacity);
+    items.append("span")
+      .text((item) => `${ordinalSession(item.sessionRank)} · ${formatSessionDateLabel(item.dateKey)} ET`);
   }
 
   function renderDifficultyChart(container, points) {
@@ -801,9 +827,7 @@ export function renderPortalChart(
       .filter((item) => state.users.visibleTasks[item.task])
       .map((item) => ({
         ...item,
-        values: item.values.filter((point) =>
-          normalizeSessionIndex(point.sessionIndex),
-        ),
+        values: rankSessions(item.values),
       }))
       .filter((item) => item.values.length);
     const points = visibleSeries.flatMap((item) => item.values);
@@ -837,7 +861,7 @@ export function renderPortalChart(
       .attr("role", "img")
       .attr(
         "aria-label",
-        "User accuracy across sessions by task; session dates are shown in Eastern Time",
+        "User accuracy by session within each task; session dates in point details are in Eastern Time",
       );
 
     const x = d3
@@ -880,7 +904,7 @@ export function renderPortalChart(
             "d",
             d3
               .line()
-              .x((point) => x(point.sessionIndex))
+              .x((point) => x(point.sessionRank))
               .y((point) => y(point.accuracy)),
           );
       }
@@ -894,7 +918,7 @@ export function renderPortalChart(
 
       point
         .append("circle")
-        .attr("cx", (value) => x(value.sessionIndex))
+        .attr("cx", (value) => x(value.sessionRank))
         .attr("cy", (value) => y(value.accuracy))
         .attr("r", 5)
         .attr("fill", item.color);
@@ -912,7 +936,7 @@ export function renderPortalChart(
       .attr("x", margin.left + innerWidth / 2)
       .attr("y", height - 12)
       .attr("text-anchor", "middle")
-      .text("Session (Eastern Time)");
+      .text("Session within task");
 
     svg
       .append("text")
@@ -931,9 +955,7 @@ export function renderPortalChart(
       .filter((item) => state.users.visibleTasks[item.task])
       .map((item) => ({
         ...item,
-        values: item.values.filter((point) =>
-          normalizeSessionIndex(point.sessionIndex),
-        ),
+        values: rankSessions(item.values),
       }))
       .filter((item) => item.values.length);
     const points = visibleSeries.flatMap((item) => item.values);
@@ -957,7 +979,6 @@ export function renderPortalChart(
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
 
-    const maxDuration = d3.max(points, (point) => point.durationMs) || 1000;
     const svg = d3
       .select(container)
       .append("svg")
@@ -968,7 +989,7 @@ export function renderPortalChart(
       .attr("role", "img")
       .attr(
         "aria-label",
-        "User duration across sessions by task; session dates are shown in Eastern Time",
+        "User duration by session within each task; session dates in point details are in Eastern Time",
       );
 
     const x = d3
@@ -978,15 +999,16 @@ export function renderPortalChart(
       .padding(0.45);
     const y = d3
       .scaleLinear()
-      .domain([0, maxDuration * 1.12])
-      .nice()
+      .domain([0, 30 * 60 * 1000])
       .range([margin.top + innerHeight, margin.top]);
+    const clip = clipDurationPlot(svg, margin, innerWidth, innerHeight);
+    const durationTicks = d3.range(0, 31, 5).map((minutes) => minutes * 60 * 1000);
 
     svg
       .append("g")
       .attr("class", "grid-lines")
       .attr("transform", `translate(${margin.left},0)`)
-      .call(d3.axisLeft(y).ticks(5).tickSize(-innerWidth).tickFormat(""));
+      .call(d3.axisLeft(y).tickValues(durationTicks).tickSize(-innerWidth).tickFormat(""));
 
     renderSessionAxis(svg, x, sessionItems, margin.top + innerHeight);
 
@@ -994,7 +1016,7 @@ export function renderPortalChart(
       .append("g")
       .attr("class", "axis")
       .attr("transform", `translate(${margin.left},0)`)
-      .call(d3.axisLeft(y).ticks(5).tickFormat(formatDurationTick));
+      .call(d3.axisLeft(y).tickValues(durationTicks).tickFormat(formatDurationTick));
 
     visibleSeries.forEach((item) => {
       if (item.values.length > 1) {
@@ -1002,12 +1024,13 @@ export function renderPortalChart(
           .append("path")
           .datum(item.values)
           .attr("class", "task-line")
+          .attr("clip-path", clip)
           .attr("stroke", item.color)
           .attr(
             "d",
             d3
               .line()
-              .x((point) => x(point.sessionIndex))
+              .x((point) => x(point.sessionRank))
               .y((point) => y(point.durationMs)),
           );
       }
@@ -1020,11 +1043,12 @@ export function renderPortalChart(
         .attr(
           "class",
           `duration-trend-point duration-trend-point-${item.task}`,
-        );
+        )
+        .attr("clip-path", clip);
 
       point
         .append("circle")
-        .attr("cx", (value) => x(value.sessionIndex))
+        .attr("cx", (value) => x(value.sessionRank))
         .attr("cy", (value) => y(value.durationMs))
         .attr("r", 5)
         .attr("fill", item.color);
@@ -1042,7 +1066,7 @@ export function renderPortalChart(
       .attr("x", margin.left + innerWidth / 2)
       .attr("y", height - 12)
       .attr("text-anchor", "middle")
-      .text("Session (Eastern Time)");
+      .text("Session within task");
 
     svg
       .append("text")
@@ -1056,6 +1080,7 @@ export function renderPortalChart(
 
   function renderUserDifficultyTrendChart(container, dateSeries, task) {
     container.innerHTML = "";
+    dateSeries = rankSessions(dateSeries);
 
     const color = TASK_COLORS[task] || "#0b6b61";
     const points = dateSeries.flatMap((item) => item.values);
@@ -1134,28 +1159,12 @@ export function renderPortalChart(
           .tickFormat((value) => `${value}%`),
       );
 
-    function highlightSession(sessionKey) {
-      const hasHighlight = Boolean(sessionKey);
-      svg
-        .selectAll(".difficulty-date-series")
-        .attr("display", (item) =>
-          !hasHighlight || getSessionIdentity(item) === sessionKey
-            ? null
-            : "none",
-        );
-      d3.select(container)
-        .selectAll(".date-legend-item")
-        .classed(
-          "muted",
-          (item) => hasHighlight && getSessionIdentity(item) !== sessionKey,
-        );
-    }
-
     dateSeries.forEach((item) => {
       const dateGroup = svg
         .append("g")
         .datum(item)
-        .attr("class", "difficulty-date-series");
+        .attr("class", "difficulty-date-series")
+        .attr("display", hiddenSessions.includes(getSessionIdentity(item)) ? "none" : null);
 
       if (item.values.length > 1) {
         const path = dateGroup
@@ -1218,40 +1227,12 @@ export function renderPortalChart(
       .attr("text-anchor", "middle")
       .text("Accuracy");
 
-    const legend = d3
-      .select(container)
-      .append("div")
-      .attr("class", "date-legend");
-    const legendItem = legend
-      .selectAll(".date-legend-item")
-      .data(dateSeries)
-      .enter()
-      .append("span")
-      .attr("class", "date-legend-item")
-      .attr("tabindex", 0)
-      .attr(
-        "aria-label",
-        (item) => `Show only ${formatSessionDescription(item)}`,
-      )
-      .on("mouseenter focus", (event, item) =>
-        highlightSession(getSessionIdentity(item)),
-      )
-      .on("mouseleave blur", () => highlightSession(""));
-    legendItem
-      .append("span")
-      .attr("class", "date-legend-swatch")
-      .style("background", color)
-      .style("opacity", (item) => item.opacity);
-    legendItem
-      .append("span")
-      .text(
-        (item) =>
-          `${item.sessionLabel} · ${formatSessionDateLabel(item.dateKey)} ET`,
-      );
+    renderSessionLegend(container, dateSeries, color);
   }
 
   function renderUserDurationDifficultyTrendChart(container, dateSeries, task) {
     container.innerHTML = "";
+    dateSeries = rankSessions(dateSeries);
 
     const color = TASK_COLORS[task] || "#0b6b61";
     const points = dateSeries.flatMap((item) => item.values);
@@ -1285,8 +1266,6 @@ export function renderPortalChart(
     const margin = { top: 24, right: 34, bottom: 56, left: 72 };
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
-    const maxDuration =
-      d3.max(points, (point) => point.averageDurationMs) || 1000;
 
     const svg = d3
       .select(container)
@@ -1306,9 +1285,9 @@ export function renderPortalChart(
       .padding(0.45);
     const y = d3
       .scaleLinear()
-      .domain([0, maxDuration * 1.12])
-      .nice()
+      .domain([0, 10 * 1000])
       .range([margin.top + innerHeight, margin.top]);
+    const clip = clipDurationPlot(svg, margin, innerWidth, innerHeight);
 
     svg
       .append("g")
@@ -1328,28 +1307,13 @@ export function renderPortalChart(
       .attr("transform", `translate(${margin.left},0)`)
       .call(d3.axisLeft(y).ticks(5).tickFormat(formatDurationTick));
 
-    function highlightSession(sessionKey) {
-      const hasHighlight = Boolean(sessionKey);
-      svg
-        .selectAll(".duration-date-series")
-        .attr("display", (item) =>
-          !hasHighlight || getSessionIdentity(item) === sessionKey
-            ? null
-            : "none",
-        );
-      d3.select(container)
-        .selectAll(".date-legend-item")
-        .classed(
-          "muted",
-          (item) => hasHighlight && getSessionIdentity(item) !== sessionKey,
-        );
-    }
-
     dateSeries.forEach((item) => {
       const dateGroup = svg
         .append("g")
         .datum(item)
-        .attr("class", "duration-date-series");
+        .attr("class", "duration-date-series")
+        .attr("clip-path", clip)
+        .attr("display", hiddenSessions.includes(getSessionIdentity(item)) ? "none" : null);
 
       if (item.values.length > 1) {
         const path = dateGroup
@@ -1412,35 +1376,6 @@ export function renderPortalChart(
       .attr("text-anchor", "middle")
       .text("Avg Trial Time");
 
-    const legend = d3
-      .select(container)
-      .append("div")
-      .attr("class", "date-legend");
-    const legendItem = legend
-      .selectAll(".date-legend-item")
-      .data(dateSeries)
-      .enter()
-      .append("span")
-      .attr("class", "date-legend-item")
-      .attr("tabindex", 0)
-      .attr(
-        "aria-label",
-        (item) => `Show only ${formatSessionDescription(item)}`,
-      )
-      .on("mouseenter focus", (event, item) =>
-        highlightSession(getSessionIdentity(item)),
-      )
-      .on("mouseleave blur", () => highlightSession(""));
-    legendItem
-      .append("span")
-      .attr("class", "date-legend-swatch")
-      .style("background", color)
-      .style("opacity", (item) => item.opacity);
-    legendItem
-      .append("span")
-      .text(
-        (item) =>
-          `${item.sessionLabel} · ${formatSessionDateLabel(item.dateKey)} ET`,
-      );
+    renderSessionLegend(container, dateSeries, color);
   }
 }

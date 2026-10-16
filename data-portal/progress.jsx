@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Button,
   CheckboxGroup,
@@ -11,12 +11,18 @@ import { Pin, PinOff, ArrowUpRight } from "lucide-react";
 import { Panel, Stats, Notice, api } from "./ui.jsx";
 import { renderPortalChart, TASK_COLORS } from "./charts.js";
 
-export function Chart({ data, userId, type, visibleTasks, task, metrics }) {
+const NO_HIDDEN_SESSIONS = [];
+
+export function Chart({ data, userId, type, visibleTasks, task, metrics, hiddenSessions = NO_HIDDEN_SESSIONS, onSessionToggle }) {
   const ref = useRef(null);
+  const focusedLabel = useRef(null);
   useEffect(() => {
     const node = ref.current;
     let width = 0;
     const render = () => {
+      const activeLabel = node.contains(document.activeElement)
+        ? document.activeElement.getAttribute("aria-label") : focusedLabel.current;
+      focusedLabel.current = null;
       renderPortalChart(node, {
         data,
         userId,
@@ -24,7 +30,13 @@ export function Chart({ data, userId, type, visibleTasks, task, metrics }) {
         visibleTasks,
         task,
         metrics,
+        hiddenSessions,
+        onSessionToggle,
       });
+      if (activeLabel) {
+        [...node.querySelectorAll(".date-legend input")]
+          .find((input) => input.getAttribute("aria-label") === activeLabel)?.focus();
+      }
       // Keep the original point details available to mouse and keyboard users.
       node
         .querySelectorAll(
@@ -48,9 +60,11 @@ export function Chart({ data, userId, type, visibleTasks, task, metrics }) {
     observer.observe(node);
     return () => {
       observer.disconnect();
+      focusedLabel.current = node.contains(document.activeElement)
+        ? document.activeElement.getAttribute("aria-label") : null;
       node.replaceChildren();
     };
-  }, [data, userId, type, visibleTasks, task, metrics]);
+  }, [data, userId, type, visibleTasks, task, metrics, hiddenSessions, onSessionToggle]);
   return <div ref={ref} className={`chart-wrap chart-${type}`} />;
 }
 export const CHART_TITLES = {
@@ -61,7 +75,7 @@ export const CHART_TITLES = {
 };
 export function TaskControls({ data, userId, visible, onChange }) {
   const available = new Set(
-    (data?.accuracy_series || [])
+    [...(data?.accuracy_series || []), ...(data?.duration_series || [])]
       .filter((point) => point.userId === userId)
       .map((point) => point.task),
   );
@@ -87,6 +101,68 @@ export function TaskControls({ data, userId, visible, onChange }) {
     </CheckboxGroup>
   );
 }
+
+function Visualization({ data, userId, type, actions }) {
+  const [visible, setVisible] = useState(Object.keys(TASK_COLORS));
+  const [difficultyTask, setDifficultyTask] = useState("Motion");
+  const [hiddenByTask, setHiddenByTask] = useState({});
+  const available = Object.keys(TASK_COLORS).filter((name) =>
+    (data?.difficulty_series || []).some((point) => point.userId === userId && point.task === name),
+  );
+  const task = available.includes(difficultyTask) ? difficultyTask : available[0] || "Motion";
+  const toggleSession = useCallback((key, checked) => {
+    setHiddenByTask((current) => ({
+      ...current,
+      [task]: checked
+        ? (current[task] || []).filter((item) => item !== key)
+        : [...(current[task] || []), key],
+    }));
+  }, [task]);
+  const difficulty = type.includes("difficulty");
+  return (
+    <Panel
+      title={CHART_TITLES[type]}
+      actions={actions}
+      className={`chart-panel-${type}`}
+    >
+      <div className="chart-configuration" role="group" aria-label={`${CHART_TITLES[type]} configuration`}>
+        {difficulty ? (
+          <>
+            <Select
+              label="Task"
+              aria-label={`${CHART_TITLES[type]} task`}
+              size="sm"
+              selectedKeys={[task]}
+              onSelectionChange={(keys) => {
+                const next = [...keys][0];
+                if (next) setDifficultyTask(next);
+              }}
+              variant="bordered"
+              className="difficulty-task-select"
+            >
+              {(available.length ? available : ["Motion", "Centrality"]).map((name) => (
+                <SelectItem key={name}>{name}</SelectItem>
+              ))}
+            </Select>
+            <p className="muted chart-filter-hint">Later sessions appear darker.</p>
+          </>
+        ) : (
+          <TaskControls data={data} userId={userId} visible={visible} onChange={setVisible} />
+        )}
+      </div>
+      <Chart
+        data={data}
+        userId={userId}
+        type={type}
+        visibleTasks={Object.fromEntries(Object.keys(TASK_COLORS).map((name) => [name, visible.includes(name)]))}
+        task={task}
+        hiddenSessions={hiddenByTask[task] || NO_HIDDEN_SESSIONS}
+        onSessionToggle={toggleSession}
+      />
+    </Panel>
+  );
+}
+
 export function ProgressCharts({
   data,
   userId,
@@ -97,20 +173,8 @@ export function ProgressCharts({
   dashboard = false,
   onProgress,
 }) {
-  const [visible, setVisible] = useState(Object.keys(TASK_COLORS)),
-    [error, setError] = useState(""),
+  const [error, setError] = useState(""),
     [pinBusy, setPinBusy] = useState(false);
-  const available = Object.keys(TASK_COLORS).filter((task) =>
-    (data?.difficulty_series || []).some(
-      (point) => point.userId === userId && point.task === task,
-    ),
-  );
-  const [difficultyTask, setDifficultyTask] = useState(
-    available[0] || "Motion",
-  );
-  const task = available.includes(difficultyTask)
-    ? difficultyTask
-    : available[0] || "Motion";
   const pinned = preferences?.dashboard_charts || ["accuracy", "duration"];
   const types = dashboard
     ? pinned
@@ -138,26 +202,17 @@ export function ProgressCharts({
       setPinBusy(false);
     }
   };
-  const visibleTasks = Object.fromEntries(
-    Object.keys(TASK_COLORS).map((name) => [name, visible.includes(name)]),
-  );
   return (
     <div className="progress-content">
-      {!dashboard && <Stats summary={summary} />}
+      {!dashboard && <Stats summary={summary} preferences={preferences} onPreferences={onPreferences} />}
       <Notice error>{error}</Notice>
       <div className="chart-toolbar">
         <div>
           <h2>
             {dashboard ? "Progress at a glance" : "Session visualizations"}
           </h2>
-          <TaskControls
-            data={data}
-            userId={userId}
-            visible={visible}
-            onChange={setVisible}
-          />
         </div>
-        {dashboard ? (
+        {dashboard && (
           <Button
             variant="light"
             size="sm"
@@ -166,46 +221,16 @@ export function ProgressCharts({
           >
             View progress
           </Button>
-        ) : !admin && (
-          <span className="muted pin-hint">Pin charts to your dashboard.</span>
         )}
       </div>
-      {admin && !dashboard && (
-        <div className="difficulty-controls">
-          <Select
-            label="Difficulty task"
-            aria-label="Difficulty task"
-            size="sm"
-            selectedKeys={[task]}
-            onSelectionChange={(keys) => {
-              const next = [...keys][0];
-              if (next) setDifficultyTask(next);
-            }}
-            variant="bordered"
-          >
-            {(available.length ? available : ["Motion", "Centrality"]).map(
-              (name) => (
-                <SelectItem key={name}>{name}</SelectItem>
-              ),
-            )}
-          </Select>
-          <span className="muted">
-            Hover a session in the legend to compare it. Newer sessions appear
-            darker.
-          </span>
-        </div>
-      )}
       {types.length ? (
         <div className="charts-grid">
           {types.map((type) => (
-            <Panel
+            <Visualization
               key={type}
-              title={CHART_TITLES[type]}
-              subtitle={
-                type.includes("difficulty")
-                  ? `${task} · compare sessions by level`
-                  : "By task · session dates in Eastern Time"
-              }
+              data={data}
+              userId={userId}
+              type={type}
               actions={
                 !admin &&
                 !dashboard && (
@@ -234,15 +259,7 @@ export function ProgressCharts({
                   </Tooltip>
                 )
               }
-            >
-              <Chart
-                data={data}
-                userId={userId}
-                type={type}
-                visibleTasks={visibleTasks}
-                task={task}
-              />
-            </Panel>
+            />
           ))}
         </div>
       ) : (
